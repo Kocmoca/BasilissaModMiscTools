@@ -1,0 +1,159 @@
+<?xml version="1.0" encoding="utf-8"?>
+<GameData>
+	<BaseGameText>
+		<!-- LeftSideBar -->
+		<Row Tag="LOC_MODMISC_TOGGLE_SIDEBAR">
+			<Text>Expand Toolbar</Text>
+		</Row>
+		<Row Tag="LOC_MODMISC_COLLAPSE_SIDEBAR">
+			<Text>Collapse Toolbar</Text>
+		</Row>
+		<Row Tag="LOC_MODMISC_HIDE_SIDEBAR">
+			<Text>Hide Toolbar</Text>
+		</Row>
+		<Row Tag="LOC_MODMISC_HIDE_SIDEBAR_TOOLTIP">
+			<Text>Hide this toolbar and make the edge button transparent</Text>
+		</Row>
+		<Row Tag="LOC_MODMISC_CANCEL_HIDE_SIDEBAR">
+			<Text>Cancel Hiding Toolbar</Text>
+		</Row>
+		<Row Tag="LOC_MODMISC_CANCEL_HIDE_SIDEBAR_TOOLTIP">
+			<Text>Restore the edge button transparency setting</Text>
+		</Row>
+		<Row Tag="LOC_MODMISC_SIDEBAR_TITLE">
+			<Text>Mod Tools</Text>
+		</Row>
+		<Row Tag="LOC_MODMISC_SIDEBAR_PAGE_UP">
+			<Text>Previous Page</Text>
+		</Row>
+		<Row Tag="LOC_MODMISC_SIDEBAR_PAGE_DOWN">
+			<Text>Next Page</Text>
+		</Row>
+		<Row Tag="LOC_MODMISC_SIDEBAR_PAGE_UP_TOOLTIP">
+			<Text>Show previous toolbar buttons</Text>
+		</Row>
+		<Row Tag="LOC_MODMISC_SIDEBAR_PAGE_DOWN_TOOLTIP">
+			<Text>Show next toolbar buttons</Text>
+		</Row>
+		<Row Tag="LOC_MODMISC_PRESET_BUTTON">
+			<Text>Game Info</Text>
+		</Row>
+		<Row Tag="LOC_MODMISC_PRESET_TOOLTIP">
+			<Text>Show yields, resources and game info</Text>
+		</Row>
+		<Row Tag="LOC_MODMISC_BUTTON_PLACEHOLDER">
+			<Text>Button</Text>
+		</Row>
+		<Row Tag="LOC_MODMISC_INFO_TITLE">
+			<Text>Empire Overview</Text>
+		</Row>
+
+		<!-- Section labels -->
+		<Row Tag="LOC_MODMISC_YIELDS">
+			<Text>Yields</Text>
+		</Row>
+
+		<!-- Yield names -->
+		<Row Tag="LOC_MODMISC_YIELD_SCIENCE">
+			<Text>Science</Text>
+		</Row>
+		<Row Tag="LOC_MODMISC_YIELD_CULTURE">
+			<Text>Culture</Text>
+		</Row>
+		<Row Tag="LOC_MODMISC_YIELD_GOLD">
+			<Text>Gold</Text>
+		</Row>
+		<Row Tag="LOC_MODMISC_YIELD_FAITH">
+			<Text>Faith</Text>
+		</Row>
+		<Row Tag="LOC_MODMISC_YIELD_PRODUCTION">
+			<Text>Production</Text>
+		</Row>
+		<Row Tag="LOC_MODMISC_YIELD_TOURISM">
+			<Text>Tourism</Text>
+		</Row>
+
+		<!-- Yield tooltips -->
+		<Row Tag="LOC_MODMISC_YIELD_SCIENCE_TOOLTIP">
+			<Text>Science per turn</Text>
+		</Row>
+		<Row Tag="LOC_MODMISC_YIELD_CULTURE_TOOLTIP">
+			<Text>Culture per turn</Text>
+		</Row>
+		<Row Tag="LOC_MODMISC_YIELD_GOLD_TOOLTIP">
+			<Text>Gold per turn</Text>
+		</Row>
+		<Row Tag="LOC_MODMISC_YIELD_FAITH_TOOLTIP">
+			<Text>Faith per turn</Text>
+		</Row>
+		<Row Tag="LOC_MODMISC_YIELD_PRODUCTION_TOOLTIP">
+			<Text>Production per turn</Text>
+		</Row>
+		<Row Tag="LOC_MODMISC_YIELD_TOURISM_TOOLTIP">
+			<Text>Tourism per turn</Text>
+		</Row>
+
+		<!-- ExtensiveUnitPanel -->
+		<Row Tag="LOC_EXTENSIVEUNIT_PANEL_TITLE">
+			<Text>Extended Unit Build</Text>
+		</Row>
+		<Row Tag="LOC_EXTENSIVEUNIT_NO_UNIT">
+			<Text>No unit selected</Text>
+		</Row>
+		<Row Tag="LOC_EXTENSIVEUNIT_NO_CASES">
+			<Text>No available build cases</Text>
+		</Row>
+		<Row Tag="LOC_EXTENSIVEUNIT_TOGGLE_TOOLTIP">
+			<Text>Extended Unit Build Menu</Text>
+		</Row>
+		<Row Tag="LOC_EXTENSIVEUNIT_CASE_NAME">
+			<Text>Build Case</Text>
+		</Row>
+		<Row Tag="LOC_EXTENSIVEUNIT_CASE_DESC">
+			<Text>Build description</Text>
+		</Row>
+		<Row Tag="LOC_EXTENSIVEUNIT_EXT_BUTTON">
+			<Text>Extension</Text>
+		</Row>
+		<Row Tag="LOC_EXTENSIVEUNIT_EXT_DESC">
+			<Text>Custom extension</Text>
+		</Row>
+
+		<!-- Sample Build Case Descriptions -->
+		<Row Tag="LOC_CASE_FARM_DESC">
+			<Text>Build a Farm improvement on the selected plot.</Text>
+		</Row>
+		<Row Tag="LOC_CASE_MINE_DESC">
+			<Text>Build a Mine improvement on the selected plot.</Text>
+		</Row>
+		<Row Tag="LOC_CASE_LUMBER_MILL_DESC">
+			<Text>Build a Lumber Mill on the selected plot.</Text>
+		</Row>
+		<Row Tag="LOC_CASE_FORT_DESC">
+			<Text>Build a Fort on the selected plot.</Text>
+		</Row>
+		<Row Tag="LOC_CASE_ROAD_DESC">
+			<Text>Build an Ancient Road to the selected plot (range: 1).</Text>
+		</Row>
+		<Row Tag="LOC_CASE_REMOVE_FEATURE_DESC">
+			<Text>Remove a Forest feature from the selected plot.</Text>
+		</Row>
+		<Row Tag="LOC_CASE_REPAIR_DESC">
+			<Text>Repair a pillaged improvement on the selected plot.</Text>
+		</Row>
+
+		<!-- ModTool Build Charge Abilities -->
+		<Row Tag="LOC_ABILITY_INCREASE_BUILD_CHARGE_NAME">
+			<Text>Increase Build Charge</Text>
+		</Row>
+		<Row Tag="LOC_ABILITY_INCREASE_BUILD_CHARGE_DESCRIPTION">
+			<Text>Increases this unit's build charges by 1.</Text>
+		</Row>
+		<Row Tag="LOC_ABILITY_DECREASE_BUILD_CHARGE_NAME">
+			<Text>Decrease Build Charge</Text>
+		</Row>
+		<Row Tag="LOC_ABILITY_DECREASE_BUILD_CHARGE_DESCRIPTION">
+			<Text>Decreases this unit's build charges by 1.</Text>
+		</Row>
+	</BaseGameText>
+</GameData>

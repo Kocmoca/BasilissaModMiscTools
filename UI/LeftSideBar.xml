@@ -1,0 +1,276 @@
+<?xml version="1.0" encoding="utf-8"?>
+
+<Context>
+    <!-- ============================================ -->
+    <!-- LeftSideBar: 透明可折叠左侧工具栏 -->
+    <!-- 参照 PartialScreenHooks_PHONE： -->
+    <!--   SlideAnim 负责横向滑动，AlphaAnim 负责淡入淡出 -->
+    <!--   基底完全透明（不使用 Box / ScrollPanel 背景） -->
+    <!-- ============================================ -->
+
+    <!-- 根容器（挂载到 /InGame，运行时撑满屏幕以保证 C,C 锚点居中） -->
+    <Container ID="LeftSideBarRoot" Anchor="L,C" Offset="0,0" Size="parent,parent" Hidden="0">
+
+        <!-- 统一承载 切换键 + 按钮栏：移动这个容器的 Offset，两者会一起移动。 -->
+        <!-- 高度需容纳 ToggleButton(96) + SlideAnim 起点(104) + 侧栏内容；
+             保持 Anchor=L,C 时调整 Offset，使 ToggleButton 的屏幕位置不变。 -->
+        <Container ID="SidebarAnchor" Anchor="L,C" Offset="0,-90" Size="96,256">
+
+        <!-- 折叠/展开按钮：始终固定在左屏幕边缘，使用 Vanilla iOS 箭头纹理 -->
+        <Button ID="ToggleButton" Anchor="L,T" Offset="0,0" Size="96,96"
+            Texture="Controls_iOSExpandFlipped" StretchMode="Fill"
+            StateOffsetIncrement="0,89" SingleStateTextureHeight="89"
+            States="5"
+            ToolTip="LOC_MODMISC_TOGGLE_SIDEBAR" />
+
+        <!-- SlideAnim: 横向滑动整个透明按钮栏（Start=展开位置，EndOffset=收起位置） -->
+        <SlideAnim ID="SidebarSlide" Anchor="L,T" Start="0,104" EndOffset="-128,0"
+            Size="96,parent" Cycle="Once" Stopped="1"
+            Function="OutQuad" Speed="6">
+            <AlphaAnim ID="SidebarAlphaAnim" Size="parent,parent" Speed="3"
+                AlphaBegin="1" AlphaEnd="0"
+                Cycle="Once" Function="Root" Stopped="1">
+                <!-- 透明基底：纵向 Stack（上一页 / 当前页按钮 / 页码 / 下一页） -->
+                <Stack ID="SidebarContentStack" Anchor="L,T" Offset="0,0"
+                    StackGrowth="Down" StackPadding="4" Size="96,auto">
+
+                    <!-- 上一页：仅在按钮数量超过单页上限时显示 -->
+                    <Button ID="PageUpButton" Size="96,56" Anchor="L,C"
+                        Hidden="1" StretchMode="Fill" ConsumeMouse="1"
+                        Texture="Controls_ButtonControlLargePhone"
+                        SliceCorner="38,19" SliceTextureSize="75,75"
+                        StateOffsetIncrement="0,75" SingleStateTextureHeight="75"
+                        Style="ButtonNormalText">
+                        <Label ID="PageUpLabel" Anchor="C,C" FontSize="20"
+                            FontStyle="glow" ColorSet="ShellHeader"
+                            String="LOC_MODMISC_SIDEBAR_PAGE_UP" />
+                    </Button>
+
+                    <!-- 当前页实际显示的按钮列表（超出单页上限的按钮会被隐藏） -->
+                    <Stack ID="ButtonStack" Anchor="L,T" Offset="0,0"
+                        StackGrowth="Down" StackPadding="8" Size="96,auto">
+                        <!-- 预设“游戏概况”按钮：固定写在 XML 中，便于检查和调试；
+                             其他 mod 仍可通过 RegisterSidebarButton() 动态追加。 -->
+                        <Button ID="InfoButton" Size="96,96"
+                            Anchor="L,C" StretchMode="Fill" ConsumeMouse="1"
+                            Texture="LaunchBar_Hook_ButtonLarge"
+                            StateOffsetIncrement="0,102" SingleStateTextureHeight="102"
+                            Style="ButtonNormalText">
+                            <Image ID="InfoIcon" Anchor="C,C" Size="64,64" />
+                            <!-- 文本仍在 Button 内，通过 Offset 向右漂移到按钮视觉范围外。 -->
+                            <Label ID="InfoLabel" Anchor="L,C" Offset="104,0"
+                                Size="180,96" FontSize="26"
+                                FontStyle="glow" ColorSet="ShellHeader"
+                                VerticalAlignment="Center" />
+                        </Button>
+                    </Stack>
+
+                    <!-- 页码指示 -->
+                    <Label ID="PageLabel" Anchor="C,C" Size="96,24" FontSize="18"
+                        Align="Center" Color="210,210,210,255"
+                        Hidden="1" String="1/1" />
+
+                    <!-- 下一页：仅在按钮数量超过单页上限时显示 -->
+                    <Button ID="PageDownButton" Size="96,56" Anchor="L,C"
+                        Hidden="1" StretchMode="Fill" ConsumeMouse="1"
+                        Texture="Controls_ButtonControlLargePhone"
+                        SliceCorner="38,19" SliceTextureSize="75,75"
+                        StateOffsetIncrement="0,75" SingleStateTextureHeight="75"
+                        Style="ButtonNormalText">
+                        <Label ID="PageDownLabel" Anchor="C,C" FontSize="20"
+                            FontStyle="glow" ColorSet="ShellHeader"
+                            String="LOC_MODMISC_SIDEBAR_PAGE_DOWN" />
+                    </Button>
+
+                </Stack>
+            </AlphaAnim>
+        </SlideAnim>
+
+        </Container><!-- /SidebarAnchor -->
+
+        <!-- ============================================ -->
+        <!-- 信息面板（帝国概况，参照 TopPanel_PHONE） -->
+        <!-- ============================================ -->
+        <Container ID="InfoPanel" Anchor="C,C" Size="1200,900"
+            ConsumeMouse="1" Hidden="1">
+            <!-- Begin=展开(可见)位置，End=收起位置；OpenInfoPanel 从 End 反向播放到 Begin -->
+            <SlideAnim ID="InfoPanelSlide" Anchor="C,C" Begin="0,0" End="0,20"
+                Cycle="Once" Stopped="1" Function="OutQuad" Speed="6">
+                <Box Anchor="C,C" Size="parent,parent" Color="20,20,30,245">
+                    <Grid Anchor="C,C" Size="parent+16,parent+16" Style="ScreenFrame" />
+
+                    <!-- ============================================ -->
+                    <!-- 顶部横栏（参照 TopPanel_PHONE，水平可滚动防溢出） -->
+                    <!-- ============================================ -->
+                    <Grid ID="InfoTopBar" Anchor="L,T" Size="parent,56"
+                        Texture="TopBar_Bar" SliceCorner="28,8"
+                        SliceTextureSize="57,29">
+                        <!-- 水平 ScrollPanel：内容溢出时可滚动，关闭按钮固定右侧 -->
+                        <ScrollPanel Anchor="L,C" Offset="8,0"
+                            Size="parent-52,48" Vertical="0"
+                            Horizontal="1" AutoScrollBar="1" FullClip="1">
+                            <Stack ID="InfoTopBarContent" Anchor="L,C"
+                                StackGrowth="Right" Padding="6">
+                                <!-- 科技产出 -->
+                                <Label ID="InfoScienceLabel" FontSize="26"
+                                    Style="FontNormal14" ColorSet="ResScienceLabelCS"
+                                    String="[ICON_ScienceLarge] 0" />
+                                <!-- 文化产出 -->
+                                <Label ID="InfoCultureLabel" FontSize="26"
+                                    Style="FontNormal14" ColorSet="ResCultureLabelCS"
+                                    String="[ICON_CultureLarge] 0" />
+                                <!-- 信仰 -->
+                                <Label ID="InfoFaithLabel" FontSize="26"
+                                    Style="FontNormal14" ColorSet="ResFaithLabelCS"
+                                    String="[ICON_FaithLarge] 0  0" />
+                                <!-- 金币 -->
+                                <Label ID="InfoGoldLabel" FontSize="26"
+                                    Style="FontNormal14" ColorSet="ResGoldLabelCS"
+                                    String="[ICON_GoldLarge] 0  0" />
+                                <!-- 旅游 -->
+                                <Label ID="InfoTourismLabel" FontSize="26"
+                                    Style="FontNormal14" ColorSet="ResTourismLabelCS"
+                                    String="[ICON_TourismLarge] 0" Hidden="1" />
+                                <!-- 分隔线 -->
+                                <Grid ID="InfoYieldDivider" Style="Divider3VGrid" Size="3,34" />
+                                <!-- 商路 -->
+                                <Label ID="InfoTradeLabel" FontSize="26"
+                                    Style="FontNormal14" ColorSet="ResGoldLabelCS"
+                                    String="[ICON_TradeRouteLarge] 0/0" />
+                                <!-- 使者 -->
+                                <Label ID="InfoEnvoyLabel" FontSize="26"
+                                    Style="FontNormal14" ColorSet="TopBarValueCS"
+                                    String="[ICON_Envoy] 0" />
+                                <!-- 分隔线 -->
+                                <Grid ID="InfoStaticDivider" Style="Divider3VGrid" Size="3,34" />
+                                <!-- 回合/日期 -->
+                                <Label ID="InfoTurnLabel" FontSize="24"
+                                    Style="TopBarMeta" String="1" />
+                                <Label ID="InfoDateLabel" FontSize="24"
+                                    Style="TopBarMeta" String="4000 BC" />
+                            </Stack>
+                        </ScrollPanel>
+
+                        <!-- 关闭按钮（固定在右侧，不随内容滚动） -->
+                        <Button ID="InfoCloseButton" Anchor="R,C" Offset="-12,0"
+                            Size="88,88" StretchMode="Fill"
+                            Style="CloseButtonLargeDouble"
+                            ToolTip="LOC_HUD_CLOSE" />
+                    </Grid>
+
+                    <!-- 分隔线 -->
+                    <Grid Style="DividerGrid" Size="parent-8,2" Anchor="C,T"
+                        Offset="0,58" Color="60,75,90,255" />
+
+                    <!-- ============================================ -->
+                    <!-- 4 列内容网格 -->
+                    <!-- ============================================ -->
+                    <ScrollPanel ID="InfoContentScrollPanel" Anchor="L,T" Offset="4,64"
+                        Size="parent-8,parent-70" Vertical="1"
+                        AutoScrollBar="1" FullClip="1">
+                        <ScrollBar Anchor="R,C" Size="11,parent"
+                            AnchorSide="O,I" Offset="8,0"
+                            Style="ScrollVerticalBar" />
+                        <Grid ID="InfoContentRow" Anchor="L,T" Offset="0,4"
+                            Size="parent,auto" AutoSize="V" AutoSizePadding="0,4">
+                            <Stack ID="InfoColumn1" Anchor="L,T" Offset="0,0" StackGrowth="Down"
+                                Padding="4" Size="394,auto" />
+                            <Stack ID="InfoColumn2" Anchor="L,T" Offset="398,0" StackGrowth="Down"
+                                Padding="4" Size="394,auto" />
+                            <Stack ID="InfoColumn3" Anchor="L,T" Offset="796,0" StackGrowth="Down"
+                                Padding="4" Size="394,auto" />
+                        </Grid>
+                    </ScrollPanel>
+                </Box>
+            </SlideAnim>
+        </Container>
+    </Container>
+
+    <!-- ============================================ -->
+    <!-- 实例模板 -->
+    <!-- ============================================ -->
+
+    <!-- 侧栏按钮（固定宽度，保证 SlideAnim 收起距离可精确计算） -->
+    <Instance Name="SidebarButtonInstance">
+        <Button ID="SidebarActionButton" Size="96,96"
+            Anchor="L,C" StretchMode="Fill" ConsumeMouse="1"
+            Texture="LaunchBar_Hook_ButtonLarge"
+            StateOffsetIncrement="0,102" SingleStateTextureHeight="102"
+            Style="ButtonNormalText">
+            <Image ID="ButtonIcon" Anchor="C,C" Size="64,64" />
+            <!-- 文本仍在 Button 内，通过 Offset 向右漂移到按钮视觉范围外。 -->
+            <Label ID="ButtonLabel" Anchor="L,C" Offset="104,0"
+                Size="180,96" FontSize="26"
+                FontStyle="glow" ColorSet="ShellHeader"
+                VerticalAlignment="Center" />
+        </Button>
+    </Instance>
+
+    <!-- 产出格子（4列紧凑布局） -->
+    <Instance Name="YieldGridInstance">
+        <Grid ID="Grid" Size="parent,52" Anchor="L,T"
+            Texture="DestinationChooser_Button"
+            SliceCorner="14,14" SliceSize="19,44"
+            SliceTextureSize="48,76">
+            <Stack Anchor="L,C" Offset="4,4" Size="parent-8,parent-8"
+                StackGrowth="Right" Padding="4">
+                <Label ID="IconLabel" Anchor="L,C" Size="30,30" FontSize="26" />
+                <Label ID="NameLabel" Anchor="L,C" String="---"
+                    Size="100,28" FontSize="20"
+                    Color="220,220,220,255" VerticalAlignment="Center"
+                    TruncateWidth="100" />
+                <Label ID="ValueLabel" Anchor="R,C" String="0"
+                    Size="70,28" FontSize="22"
+                    ColorSet="TopBarValueCS" VerticalAlignment="Center"
+                    HorizontalAlignment="Right" />
+            </Stack>
+        </Grid>
+    </Instance>
+
+    <!-- 资源行（紧凑） -->
+    <Instance Name="ResourceRowInstance">
+        <Grid ID="Row" Size="parent,144" Anchor="L,T"
+            Texture="DestinationChooser_Button"
+            SliceCorner="14,14" SliceSize="19,44"
+            SliceTextureSize="48,76">
+            <Label ID="ResourceIcon" Anchor="L,C" Offset="12,0" Size="96,96"
+                FontSize="64" VerticalAlignment="Center" HorizontalAlignment="Center" />
+            <Label ID="ResourceName" Anchor="L,C" Offset="126,0"
+                Size="240,96" FontSize="32" TruncateWidth="240"
+                Color="220,220,220,255" VerticalAlignment="Center" />
+            <Label ID="ResourceAmount" Hidden="1" Size="1,1" String="" />
+            <Label ID="ResourceRate" Hidden="1" Size="1,1" String="" />
+        </Grid>
+    </Instance>
+
+    <!-- 自定义格子（紧凑） -->
+    <Instance Name="CustomGridInstance">
+        <Grid ID="Grid" Size="parent,144" Anchor="L,T"
+            Texture="DestinationChooser_Button"
+            SliceCorner="14,14" SliceSize="19,44"
+            SliceTextureSize="48,76">
+            <Image ID="CustomIcon" Anchor="L,C" Offset="12,0" Size="96,96" />
+            <Label ID="CustomLabel" Anchor="L,C" Offset="126,0"
+                Size="240,96" FontSize="32"
+                Color="220,220,220,255" VerticalAlignment="Center"
+                TruncateWidth="240" />
+        </Grid>
+    </Instance>
+
+    <!-- 自定义行（紧凑） -->
+    <Instance Name="CustomRowInstance">
+        <Grid ID="Row" Size="parent,144" Anchor="L,T"
+            Texture="DestinationChooser_Button"
+            SliceCorner="14,14" SliceSize="19,44"
+            SliceTextureSize="48,76">
+            <Image ID="CustomIcon" Anchor="L,C" Offset="12,0" Size="96,96" />
+            <Label ID="CustomLabel" Anchor="L,T" Offset="126,18"
+                Size="240,44" FontSize="32" TruncateWidth="240"
+                Color="220,220,220,255" VerticalAlignment="Center" />
+            <Label ID="CustomValue" Anchor="L,T" Offset="126,72"
+                Size="240,44" FontSize="32"
+                ColorSet="TopBarValueCS" VerticalAlignment="Center" />
+        </Grid>
+    </Instance>
+
+</Context>

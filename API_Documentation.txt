@@ -1,0 +1,569 @@
+==============================================================================
+  Basilissa Mod Misc Tools — API Documentation
+  用于其他 mod 与本 mod 交互的完整接口参考
+==============================================================================
+
+## 一、LuaEvents（跨 mod 事件通知）
+
+其他 mod 通过 LuaEvents.{EventName}.Add(handler) 订阅，
+本 mod 在适当时候通过 LuaEvents.{EventName}.Call(...) 触发。
+
+------------------------------------------------------------------------------
+### 1.1 建造系统
+------------------------------------------------------------------------------
+
+ModMiscToolBuildCompleted(playerID, unitID, plotIndex, itemType, itemCatagory, costModel)
+  触发时机：BuildItemOnMap 成功执行完毕后
+  参数：
+    playerID     (number)  建造者玩家ID
+    unitID       (number)  执行建造的单位ID（可能为nil）
+    plotIndex    (number)  建造目标地块索引（可能为nil）
+    itemType     (string)  建造的物件类型（如 "IMPROVEMENT_FARM"）
+    itemCatagory (string)  物件分类："District"|"Building"|"Improvement"|"Route"|"Feature"|"Resource"|"Terrain"
+    costModel    (string)  花费模型名称（对应 Kocmoca_Build_CostModels.CostModel，可能为nil）
+  示例：
+    LuaEvents.ModMiscToolBuildCompleted.Add(function(playerID, unitID, plotIndex, itemType, itemCatagory, costModel)
+        print("Build completed: " .. itemType .. " at plot " .. (plotIndex or "nil"))
+    end)
+
+------------------------------------------------------------------------------
+### 1.2 面板状态
+------------------------------------------------------------------------------
+
+ModMiscToolExtensivePanelOpened(playerID, unitID)
+  触发时机：ExtensiveUnitPanel（单位操作面板）打开时
+  参数：
+    playerID (number) 选中单位所属玩家ID，-1表示无选中
+    unitID   (number) 选中单位ID，-1表示无选中
+
+ModMiscToolExtensivePanelClosed()
+  触发时机：ExtensiveUnitPanel 关闭时
+  参数：无
+
+ModMiscToolInfoPanelOpened()
+  触发时机：帝国信息面板（InfoPanel）打开时
+  参数：无
+
+ModMiscToolInfoPanelClosed()
+  触发时机：帝国信息面板关闭时
+  参数：无
+
+ModMiscToolSidebarExpanded()
+  触发时机：左侧工具栏展开时
+  参数：无
+
+ModMiscToolSidebarCollapsed()
+  触发时机：左侧工具栏折叠时（折叠时会自动关闭已打开的InfoPanel）
+  参数：无
+
+------------------------------------------------------------------------------
+### 1.3 城市与领土
+------------------------------------------------------------------------------
+
+ModMiscToolCityOwnerChanged(oldPlayerID, newPlayerID, cityID, iX, iY, plotIndex)
+  触发时机：城市从一个玩家转移到另一个玩家（通过移除+添加检测）
+  参数：
+    oldPlayerID (number) 原所有者玩家ID
+    newPlayerID (number) 新所有者玩家ID
+    cityID      (number) 城市ID
+    iX, iY      (number) 城市坐标
+    plotIndex   (number) 城市地块索引
+
+ModMiscToolReturnCityToDefeated(oldOwnerID, newOwnerID, cityID, iX, iY)
+  触发时机：已被击败的玩家通过城市转移复活
+  参数：
+    oldOwnerID (number) 转让方玩家ID
+    newOwnerID (number) 接收方（复活方）玩家ID
+    cityID     (number) 城市ID
+    iX, iY     (number) 城市坐标
+
+ModMiscToolLastCityCaptured(playerID, cityID)
+  触发时机：玩家失去最后一座城市（判定为被击败）
+  参数：
+    playerID (number) 被击败的玩家ID
+    cityID   (number)  最后失去的城市ID
+
+------------------------------------------------------------------------------
+### 1.4 单位与战斗
+------------------------------------------------------------------------------
+
+ModMiscToolCombat(pCombatResult, iX, iY, plotIndex)
+  触发时机：任意战斗结算完成后（由 Mod Misc Tool 监听官方 Events.Combat 后重新分发）
+  参数：
+    pCombatResult (table)  原始 CombatResultParameters 战斗结果表
+    iX, iY       (number)  战斗发生地块坐标，可能为 nil
+    plotIndex    (number)  战斗发生地块索引，可能为 nil
+  说明：
+    其他 mod 可改用 LuaEvents.ModMiscToolCombat.Add(handler)，
+    避免直接注册官方 Events.Combat 造成重复解析和全局函数名冲突。
+    handler 仍可通过 pCombatResult 读取：
+      ATTACKER / DEFENDER -> ID -> player, id, type
+      LOCATION -> x, y
+      DAMAGE_TO 等官方字段
+    当前其他 mod 的典型用法见本节末尾“战斗接口迁移说明”。
+
+ModMiscToolUnitKilledInCombat(killedPlayerID, killedUnitID,
+                               killerPlayerID, killerUnitID,
+                               iX, iY, plotIndex, pCombatResult)
+  触发时机：单位 vs 单位战斗中，Mod Misc Tool 通过官方 Events.Combat 判定有单位阵亡后分发
+  参数：
+    killedPlayerID (number) 阵亡单位所属玩家ID
+    killedUnitID   (number) 阵亡单位ID
+    killerPlayerID (number) 击杀者所属玩家ID
+    killerUnitID   (number) 击杀单位ID
+    iX, iY         (number) 战斗发生地块坐标，可能为 nil
+    plotIndex      (number) 战斗发生地块索引，可能为 nil
+    pCombatResult  (table)  原始 CombatResultParameters 战斗结果表
+  说明：
+    该事件只对应“单位攻击单位”的战斗，用于替代官方 Events.UnitKilledInCombat。
+    killer/killed 的对应关系由 Mod Misc Tool 根据 CombatResult 的
+    ATTACKER / DEFENDER 自动判定。一个单位在同一场战斗中被判定阵亡时只触发一次。
+    单位攻击区域等非单位对单位的战斗，请使用 ModMiscToolDistrictAttacked。
+
+ModMiscToolDistrictAttacked(attackerPlayerID, attackerComponentID,
+                            districtOwnerPlayerID, districtID,
+                            districtType, cityID,
+                            iX, iY, plotIndex, pCombatResult)
+  触发时机：任何攻击方对区域类型目标（ComponentType.DISTRICT）发动攻击后分发
+  参数：
+    attackerPlayerID      (number) 攻击方玩家ID
+    attackerComponentID   (number) 攻击方 component ID；攻击方是单位时即 unitID
+    districtOwnerPlayerID (number) 区域所属玩家ID
+    districtID            (number) 区域 component ID
+    districtType          (string) 区域类型，如 "DISTRICT_CITY_CENTER"、"DISTRICT_ENCAMPMENT"
+    cityID                (number) 该区域所属城市ID；无法取得时为 nil
+    iX, iY                (number) 战斗发生地块坐标，可能为 nil
+    plotIndex             (number) 战斗发生地块索引，可能为 nil
+    pCombatResult         (table)  原始 CombatResultParameters 战斗结果表
+  说明：
+    该事件用于区分“攻击区域”和“单位击杀单位”。
+    区域类型通过 DISTRICT 类型的 Component ID 或战斗地点反查；
+    城市ID通过区域对象 GetCity():GetID() 获取。
+
+ModMiscToolUnitLostInCombat(playerID, unitID, pCombatResult)
+  触发时机：单位在战斗中阵亡（兼容旧接口，仍然触发）
+  参数：
+    playerID      (number) 单位所属玩家ID
+    unitID        (number) 阵亡单位ID
+    pCombatResult (table)  战斗结果数据（CombatResultParameters格式）
+  说明：
+    该事件只包含阵亡单位，不包含击杀者信息，且不区分是单位对单位还是攻击区域。
+    新代码建议：
+      单位对单位 -> ModMiscToolUnitKilledInCombat
+      攻击区域   -> ModMiscToolDistrictAttacked
+
+ModMiscToolUnitUpgraded(playerID, oldUnitID, newUnitID)
+  触发时机：单位升级完成
+  参数：
+    playerID  (number) 玩家ID
+    oldUnitID (number) 升级前单位ID
+    newUnitID (number) 升级后单位ID
+
+战斗接口迁移说明：
+  当前其他 mod 中常见的战斗处理方式为直接注册 Events.Combat：
+    Events.Combat.Add(OnCombat)
+  然后在 OnCombat(pCombatResult) 中读取：
+    pCombatResult[CombatResultParameters.LOCATION]
+    pCombatResult[CombatResultParameters.ATTACKER][CombatResultParameters.ID]
+    pCombatResult[CombatResultParameters.DEFENDER][CombatResultParameters.ID]
+    pCombatResult[CombatResultParameters.DAMAGE_TO] 等
+  这些 mod 可以逐步改为：
+    LuaEvents.ModMiscToolCombat.Add(OnCombat)
+  从而由 Mod Misc Tool 统一监听官方战斗事件，避免每个 mod 各自注册 Events.Combat。
+  如果只需要“谁击杀了谁”，应优先改为订阅：
+    LuaEvents.ModMiscToolUnitKilledInCombat.Add(OnUnitKilledInCombat)
+  如果处理“攻击区域”，应订阅：
+    LuaEvents.ModMiscToolDistrictAttacked.Add(OnDistrictAttacked)
+
+------------------------------------------------------------------------------
+### 1.5 建筑与改良设施
+------------------------------------------------------------------------------
+
+ModMiscToolBuildingRemoved(playerID, iX, iY, plotIndex, asset)
+  触发时机：建筑被移除（含区域被拆除时连带移除）
+  参数：
+    playerID  (number) 玩家ID
+    iX, iY    (number) 地块坐标
+    plotIndex (number) 地块索引
+    asset     (string) 被移除的建筑类型（如 "BUILDING_LIBRARY"）
+
+ModMiscToolImprovementRemoved(playerID, iX, iY, plotIndex, asset)
+  触发时机：改良设施被移除
+  参数：
+    playerID  (number) 玩家ID
+    iX, iY    (number) 地块坐标
+    plotIndex (number) 地块索引
+    asset     (string) 被移除的改良设施类型（如 "IMPROVEMENT_FARM"）
+
+==============================================================================
+## 二、ExposedMembers.ModMiscToolScript（Gameplay 层 API）
+==============================================================================
+
+这些接口在 Gameplay 脚本环境中可用，供其他 mod 的 Gameplay 脚本调用。
+通过 ExposedMembers.ModMiscToolScript.{name} 访问。
+
+------------------------------------------------------------------------------
+### 2.1 数据表（直接读取）
+------------------------------------------------------------------------------
+
+ModMiscToolScript.allUnitData
+  类型：table  结构：allUnitData[playerID][unitID] = { unitType, promotionClass,
+        iX, iY, plotIndex, expPoint, promotions, militaryFormation, damage,
+        removed, upgradeTo, upgradeFrom, combatDeathX, combatDeathY }
+  说明：所有单位的运行时数据缓存，由 ModTool.lua 维护
+
+ModMiscToolScript.defeatedPlayers
+  类型：table (array)  元素：playerID (number)
+  说明：已被击败的玩家ID列表
+
+ModMiscToolScript.playerCitiesInfo
+  类型：table  结构：playerCitiesInfo[playerID][cityID] = { iX, iY, plotIndex }
+  说明：所有城市的坐标信息缓存
+
+ModMiscToolScript.buildingsOfDistrict
+  类型：table  结构：buildingsOfDistrict[districtType] = { buildingType, ... }
+  说明：每个区域类型可建造的建筑列表（从数据库 Buildings.PrereqDistrict 生成）
+
+------------------------------------------------------------------------------
+### 2.2 查询与通用辅助函数
+------------------------------------------------------------------------------
+
+GetUnitData(playerID, unitID)
+  返回：unitData (table) 或 nil
+  说明：获取指定单位的缓存数据
+
+GetPlayerAssetNumber(playerID, assetType)
+  返回：number（该类型资产的数量）
+  参数：assetType 为建筑/区域/改良设施类型字符串
+  说明：获取某玩家拥有的特定类型资产总数；返回值来自 assetType -> plotIndex 字典计数。
+        返回 0 时会输出 [ModMiscTool][Asset] 日志。
+
+GetPlayerAssetPlotIndexes(playerID, assetType)
+  返回：table（plotIndex 数组，已排序）
+  说明：获取某玩家某类资产所在的所有 plotIndex
+
+GetPlotAssetTypes(playerID, plotIndex)
+  返回：table（assetType 数组，已排序）
+  说明：获取某玩家在某 plot 上持有的所有 assetType
+
+HasPlayerAsset(playerID, assetType, plotIndex)
+  返回：boolean
+  说明：O(1) 判断某玩家是否在某 plot 持有某类资产
+
+TableContains(testTable, testElement)
+  返回：boolean
+  说明：判断数组表中是否包含指定元素
+
+PlotIndexToXY(plotIndex)
+  返回：iX, iY 或 nil, nil
+  说明：通过地块索引获取坐标
+
+GetCityPlotIndex(city)
+  返回：plotIndex 或 nil
+  说明：通过城市对象获取城市中心地块索引
+
+GetUnitCoordinate(unit)
+  返回：iX, iY 或 nil, nil
+  说明：通过单位对象获取坐标；单位不存在或已阵亡时返回 nil
+
+DamageToUnit(targetUnit, damageFromPlayer, damageNum, isDamageToOwner)
+  返回：boolean（目标单位是否阵亡）
+  说明：对单位造成伤害；damageNum 为负数时可治疗。
+        默认只伤害敌方单位，isDamageToOwner=true 时才允许伤害同玩家单位。
+
+AoeAllUnitsForPlot(aoeX, aoeY, aoeOwner, aoeAmount, aoeRadius)
+  说明：对范围内所有敌方单位造成范围伤害
+
+------------------------------------------------------------------------------
+### 2.3 判定函数
+------------------------------------------------------------------------------
+
+IsPlayerMatchRequirement(CaseType, playerID)
+  返回：boolean
+  说明：检查玩家是否满足 CaseType 的全部硬性要求
+        （TraitType, TechType, CivicType, GoldAmount, FaithAmount,
+         ResourceType/Amount, PlayerPropertyType/Num）
+
+IsUnitMatchRequirement(unitID, CaseType, playerID)
+  返回：boolean
+  说明：检查单位是否满足 CaseType 的要求
+        （UnitType, AbilityType, UnitPropertyType/Num）
+
+IsPlotMatchRequirement(plotIndex, CaseType, playerID)
+  返回：boolean
+  说明：检查地块是否满足 CaseType 的全部要求
+        （TerrainType, FeatureType, ResourceType, PlotOwnerList, ItemCatagory）
+
+------------------------------------------------------------------------------
+### 2.4 操作函数
+------------------------------------------------------------------------------
+
+BuildItemOnMap(playerID, unitID, plotIndex, itemType, itemCatagory, costModel)
+  说明：在地图上执行建造操作
+  流程：
+    1. 扣除花费（ProcessBuildCost）：建造次数/金币/信仰/资源
+    2. 放置物件（ProcessBuildEffect）：根据 itemCatagory 执行对应建造逻辑
+    3. 扣除单位移动力（根据 CostModel.UnitMovement 或全部剩余）
+    4. 触发 ModMiscToolBuildCompleted 事件
+  注意：所有需求检查应在调用此函数前完成（本函数不做验证）
+
+ChangeBuildCharge(playerID, unitID, amount)
+  说明：修改单位的建造次数属性
+  参数：amount > 0 增加，amount < 0 减少
+
+SaveAsset(playerID, assetType, plotIndex)
+  说明：向 asset 缓存写入“某玩家在某 plot 持有某 asset”
+  参数：assetType 为建筑/区域/改良设施类型字符串；plotIndex 为地块索引
+  说明：同时更新 playerAssetsInfo 与 playerPlotsInfo 两个字典索引，不产生重复计数
+
+RemoveSpecificAssets(playerID, assetType, plotIndex)
+  说明：移除“某玩家某类 asset 在某 plot”的记录
+  参数：assetType、plotIndex 同上
+
+RemoveAssetFromPlot(playerID, assetType, plotIndex)
+  说明：从某 plot 移除某玩家的某类 asset 记录
+  说明：与 RemoveSpecificAssets 使用同一底层删除逻辑
+
+------------------------------------------------------------------------------
+### 2.5 强制生效表（调试/override）
+------------------------------------------------------------------------------
+
+ModMiscToolScript.forceValidPlots
+  类型：table  结构：forceValidPlots[CaseType] = { plotIndex, ... }
+  说明：向表中添加地块索引可使 IsPlotMatchRequirement 直接返回true
+
+ModMiscToolScript.forceValidUnits
+  类型：table  结构：forceValidUnits[CaseType] = { unitID, ... }
+  说明：向表中添加单位ID可使 IsUnitMatchRequirement 直接返回true
+
+ModMiscToolScript.forceValidPlayers
+  类型：table  结构：forceValidPlayers[CaseType] = { playerID, ... }
+  说明：向表中添加玩家ID可使 IsPlayerMatchRequirement 直接返回true
+
+==============================================================================
+## 三、ExposedMembers.ModMiscToolUI（UI 层 API）
+==============================================================================
+
+这些接口在 UI 脚本环境中可用，供其他 mod 的 UI 脚本调用。
+通过 ExposedMembers.ModMiscToolUI.{name} 访问。
+
+------------------------------------------------------------------------------
+### 3.1 左侧工具栏（LeftSideBar）
+------------------------------------------------------------------------------
+
+说明：侧栏为透明基底的可滑动按钮栏，使用左侧屏幕边缘的展开/收起按钮控制；
+      注册或清除按钮后会自动重新计算滑动距离与展开/收起按钮的显示状态。
+      单页最多显示 4 个按钮（同时根据屏幕高度自适应），超出后会出现
+      上一页/下一页按钮和页码指示，用于翻页显示更多按钮。
+
+RegisterSidebarButton(icon, label, tooltip, callback)
+  参数：
+    icon     (string) 图标纹理名（如 "Controls_Empty"）或 ICON_* 图标定义名（如 "ICON_FORT_LEVEL"），可选
+    label    (string) 按钮显示文本
+    tooltip  (string) 兼容参数，保留位置；当前不再显示 tooltip，因为按钮右侧已有文字说明
+    callback (function) 点击回调函数
+  返回：button 控件对象
+  说明：向左侧透明工具栏注册一个新按钮
+
+ClearSidebarButtons()
+  说明：清除所有已注册的侧栏按钮
+
+ToggleSidebar()
+  说明：切换侧栏展开/折叠状态
+
+ExpandSidebar(bInstant)
+  参数：bInstant (boolean) true=瞬间展开无动画
+  说明：展开侧栏
+
+CollapseSidebar(bInstant)
+  参数：bInstant (boolean) true=瞬间折叠无动画
+  说明：折叠侧栏（会自动关闭InfoPanel）
+
+HideSidebar()
+  说明：切换“隐藏/取消隐藏”侧栏。
+        未隐藏时：折叠侧栏并使左侧展开键 alpha 变为 0，按钮变为“取消隐藏”。
+        已隐藏时：取消隐藏并恢复展开键 alpha，按钮变回“隐藏工具栏”。
+        该隐藏状态不写入存档；重新进入游戏后展开键恢复可见。
+        隐藏状态下再次点击透明展开键，会临时恢复展开键透明度；侧栏折叠后继续透明。
+
+------------------------------------------------------------------------------
+### 3.2 帝国信息面板（InfoPanel）
+------------------------------------------------------------------------------
+
+OpenInfoPanel()
+  说明：打开帝国概况面板（1200x900），显示TopPanel风格横栏 + 4列产出/资源详情
+
+CloseInfoPanel()
+  说明：关闭帝国概况面板
+
+RefreshInfoPanel()
+  说明：刷新帝国概况面板内容（横栏数据 + 4列产出/资源）
+
+RegisterCustomGrid(iconTexture, defaultText, refreshFunc)
+  参数：
+    iconTexture  (string)   图标纹理名或 ICON_* 图标定义名
+    defaultText  (string)   默认显示文本
+    refreshFunc  (function) 刷新回调，返回 (iconTexture, text)
+  返回：instance 对象
+  说明：向信息面板注册一个自定义数据格子
+
+RegisterCustomRow(iconTexture, defaultLabel, defaultValue, refreshFunc)
+  参数：
+    iconTexture  (string)   图标纹理名或 ICON_* 图标定义名
+    defaultLabel (string)   默认标签文本
+    defaultValue (string)   默认值文本
+    refreshFunc  (function) 刷新回调，返回 (iconTexture, label, value)
+  返回：instance 对象
+  说明：向信息面板注册一个自定义数据行
+
+------------------------------------------------------------------------------
+### 3.3 单位操作面板（ExtensiveUnitPanel）
+------------------------------------------------------------------------------
+
+说明：面板按单位/玩家/地块要求过滤建造案例；BuildRange>0 的案例会在地图上
+      只显示满足地块要求的落点，可用右上角取消按钮返回面板。
+
+OpenExtensiveUnitPanel()
+  说明：打开单位扩展建造面板（最大 1200x900，按屏幕自适应，3列网格布局）
+
+CloseExtensiveUnitPanel()
+  说明：关闭单位扩展建造面板
+
+RegisterExtensiveUnitCustomButton(icon, name, description, callback, visibleFunc)
+  参数：
+    icon        (string)   图标纹理名
+    name        (string)   按钮名称
+    description (string)   按钮描述文本
+    callback    (function) 点击回调
+    visibleFunc (function, 可选) 可见性判断，调用 visibleFunc(unit)，
+                                返回 true 时显示该按钮；不提供时始终显示
+  说明：向单位操作面板注册一个自定义操作按钮
+
+------------------------------------------------------------------------------
+### 3.4 地图按键（Map Buttons）
+------------------------------------------------------------------------------
+
+框架文件：
+  UI/MapButton_UI.lua
+  UI/MapButton_UI.xml
+
+
+ShowMapButtons(config)
+  说明：在世界上显示一组可点击的地图按键，并在屏幕右上角显示一个大号关闭按钮。
+        关闭按钮不会自动清除调用方的业务状态；清除完成后会调用 config.onClose（如果提供）。
+  参数 config：
+    playerID       (number, 可选) 所属玩家ID，默认 Game.GetLocalPlayer()
+    buttonSize     (number, 可选) 地图按键与图标尺寸，默认 128
+    buttons        (table, 必填) 数组，元素可以是 plotIndex(number)，也可以是 table：
+        {
+          plotIndex = number,       -- 地块索引
+          icon      = string,       -- 可选，图标名；默认使用 config.icon
+          callback  = function,     -- 可选，点击回调 callback(plotIndex, buttonData)
+          tooltip   = string,       -- 可选，支持 LOC_ 文本键或普通文本
+          size      = number,       -- 可选，单按键尺寸
+        }
+    icon           (string, 可选) buttons 未指定 icon 时的默认图标
+    callback       (function, 可选) buttons 未指定 callback 时的默认点击回调
+    tooltip        (string, 可选) buttons 未指定 tooltip 时的默认提示
+    highlightPlots (table, 可选) 高亮地块数组，默认使用所有 buttons 的 plotIndex
+    highlightColor (number/table, 可选) 高亮颜色；
+                    number 直接作为 UI color value；
+                    table 格式 {r,g,b,a}，值可以是 0..1 或 0..255；
+                    默认 UI.GetColorValue(1.0, 0.15, 0.1, 0.35)
+    highlight      (boolean, 可选) 是否显示高亮，默认 true
+    closeTooltip   (string, 可选) 右上角关闭按钮提示文本，支持 LOC_ 文本键
+    onClose        (function, 可选) 点击右上角关闭按钮后调用
+
+HideMapButtons()
+  说明：立即隐藏并释放当前地图按键、高亮层和右上角关闭按钮。
+
+IsMapButtonsOpen()
+  返回：boolean，当前是否存在地图按键。
+
+示例：
+  ExposedMembers.ModMiscToolUI.ShowMapButtons({
+      playerID = Game.GetLocalPlayer(),
+      buttonSize = 180,
+      buttons = {
+          {
+              plotIndex = plotIndex,
+              icon = "ICON_UNITOPERATION_AIR_ATTACK",
+              callback = function(index, data)
+                  -- 执行对应操作
+              end,
+              tooltip = "LOC_MY_MOD_TARGET_TOOLTIP",
+          },
+      },
+      highlightPlots = targetPlotIndexes,
+      highlightColor = UI.GetColorValue(1.0, 0.15, 0.1, 0.35),
+      closeTooltip = "LOC_MY_MOD_CANCEL_TARGETING",
+      onClose = function()
+          -- 关闭按钮点击后恢复自己的面板/状态
+      end,
+  })
+
+------------------------------------------------------------------------------
+### 3.5 工具函数
+------------------------------------------------------------------------------
+
+GetExperienceAndPromotionsUI(playerID, unitID)
+  返回：expPoint (number), promotions (table of promoIndex)
+  说明：获取单位的经验值和已晋升列表（仅在UI环境可用）
+
+GetBuildingsIndexAtPlotUI(iX, iY)
+  返回：table of buildingTypeIndex
+  说明：获取指定地块上的所有建筑类型索引（仅在UI环境可用）
+
+GetUnitIconAndName(unitIndex)
+  返回：unitIcon, unitPortrait, unitName
+  说明：获取单位的图标、单位头像和名称（仅在UI环境可用）
+
+CanUnitTypeGetExp(unitIndex)
+  返回：boolean
+  说明：判断该单位类型是否可获得经验值（仅在UI环境可用）
+
+==============================================================================
+## 四、数据库表（供其他 mod 插入数据）
+==============================================================================
+
+------------------------------------------------------------------------------
+### 4.1 Kocmoca_Build_Cases（建造案例）
+------------------------------------------------------------------------------
+  CaseType         TEXT PK   案例类型标识
+  Name             TEXT      显示名称（可选，未指定则用Description）
+  Description      TEXT      描述文本（可选）
+  Icon             TEXT      图标名称（可选，未指定则用 "ICON_"..CaseType）
+  ItemType         TEXT NOT NULL  建造的物件类型
+  ItemCatagory     TEXT NOT NULL  物件分类（District|Building|Improvement|Route|Feature|Resource|Terrain）
+  RequirementModel TEXT      要求模型（FK → Kocmoca_Build_RequirementModels）
+  CostModel        TEXT      花费模型（FK → Kocmoca_Build_CostModels）
+  BuildRange       INTEGER   建造范围（0=无需地块选择）
+
+------------------------------------------------------------------------------
+### 4.2 Kocmoca_Build_RequirementModels（要求模型）
+------------------------------------------------------------------------------
+  RequirementModel TEXT PK   模型标识
+  TerrainList      TEXT      所需地形列表（FK → Kocmoca_Build_RequireTerrainList）
+  FeatureList      TEXT      所需地貌列表（FK → Kocmoca_Build_RequireFeatureList）
+  ResourceList     TEXT      所需资源列表（FK → Kocmoca_Build_RequireResourceList）
+  PlotOwnerList    TEXT      地块归属列表（FK → Kocmoca_Build_RequirePlotOwnerList）
+  UnitType         TEXT      所需单位类型
+  AbilityType      TEXT      所需单位能力
+  TechType         TEXT      所需科技（如 "TECH_IRRIGATION"）
+  CivicType        TEXT      所需市政（如 "CIVIC_FEUDALISM"）
+  TraitType        TEXT      所需玩家特质
+
+------------------------------------------------------------------------------
+### 4.3 Kocmoca_Build_CostModels（花费模型）
+------------------------------------------------------------------------------
+  CostModel           TEXT PK  模型标识
+  BuildCharge         INTEGER  消耗建造次数
+  GoldAmount          INTEGER  消耗金币
+  FaithAmount         INTEGER  消耗信仰
+  ResourceType        TEXT     消耗资源类型
+  ResourceAmount      INTEGER  消耗资源数量
+  UnitMovement        INTEGER  消耗移动力（默认=全部剩余）
+  UnitPropertyType    TEXT     单位属性检查类型
+  UnitPropertyNum     INTEGER  单位属性阈值
+  PlayerPropertyType  TEXT     玩家属性检查类型
+  PlayerPropertyNum   INTEGER  玩家属性阈值
