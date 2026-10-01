@@ -636,6 +636,11 @@ LeaderTraits / CityNames`。
 `Icons_Civilizations.xml` 同一种写法，交给 XML 序列化器处理，既不依赖跨库查询，
 也避开 SQL 侧 `Index` 这类保留字/方言坑。
 
+**只做 base 的 24 个城邦图标，不碰 XP1/XP2/DLC**：复制本身也只复制 base 城邦
+（本文件与 SQL 都不设 LoadOrder，加载在资料片数据之前），资料片城邦根本不会被复制，
+自然不需要它们的图标；更要紧的是 **XP1/XP2 的图集（`ICON_ATLAS_EXPANSION_*`）由资料片
+自己的图标动作加载**，引用它们会因为“图集还不存在”直接报数据库错。
+
 * 由同一个选项判据 `ModMisc_DuplicateCityStates_ON` 控制，挂在 `<UpdateIcons>` 上，不设 LoadOrder；
 * `Icons` 行由 `IconDefinitions` 的触发器自动建，文件里再显式写一遍（`INSERT OR IGNORE`）以防万一，
   因此**重复执行是幂等的**；
