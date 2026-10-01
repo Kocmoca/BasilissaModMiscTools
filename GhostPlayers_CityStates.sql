@@ -11,9 +11,10 @@
 --   关掉该选项时，本文件完全不会加载，数据库保持原版状态。
 --
 -- 复制方式：全部用 INSERT ... SELECT，条件就是“当前数据库里所有城邦文明”。
---   不在 modinfo 里设 LoadOrder → 本文件在资料片/DLC 数据之前加载，
---   所以复制到的就是 **base 的 24 个城邦**，XP1/XP2/DLC 的城邦都不在范围内
---   （它们的相关数据在资料片自己的表里，复制了反而会报数据库错）。
+--   本文件不设 LoadOrder（按用户要求）：复制范围就是“加载到这一刻数据库里已有的城邦”，
+--   实测正常对局包含 Base 24 + 资料片 11 + DLC 6 = 41 个（场景专属的不在正常对局里）。
+--   只复制文明/领袖/特质/城市名这些 gameplay 表的行，不碰配色、不碰图标
+--   （那两个是独立数据库，见 GhostPlayers_CityStateIcons.xml）。
 --
 -- 涉及的表（按外键顺序）：
 --   Types → Civilizations → TypeProperties → Leaders → CivilizationLeaders

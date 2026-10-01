@@ -207,6 +207,24 @@ function MovePlayerOffMap(playerID)
 	--      就不会出现在地图上）
 	if not hasOffMapUnit then
 		UnitManager.InitUnit(playerID, UNIT_TYPE_SETTLER, -1, -1)
+		-- 确认地图外真的多出单位了再清场：万一 InitUnit 没生效就把图上的单位全杀掉，
+		-- 这个玩家会变成“零单位”当场灭亡（也可能是幽灵溢出的成因之一）
+		hasOffMapUnit = false
+		local recheck = player:GetUnits()
+		if recheck ~= nil then
+			for _, unit in recheck:Members() do
+				if unit:GetX() < 0 or unit:GetY() < 0 then
+					hasOffMapUnit = true
+					break
+				end
+			end
+		end
+	end
+
+	if not hasOffMapUnit then
+		print("[ModMiscTool][Ghost] player " .. tostring(playerID)
+			.. " off-map settler NOT created -> 放弃清场，避免把玩家清成零单位而灭亡")
+		return false
 	end
 
 	-- 2) 再清掉地图上的单位。
@@ -221,8 +239,7 @@ function MovePlayerOffMap(playerID)
 
 	print("[ModMiscTool][Ghost] player " .. tostring(playerID) .. " moved off-map"
 		.. " onMapUnits=" .. tostring(#onMapUnits)
-		.. " killed=" .. tostring(killedCount)
-		.. " offMapSettlerCreated=" .. tostring(not hasOffMapUnit))
+		.. " killed=" .. tostring(killedCount))
 	return true
 end
 
@@ -643,6 +660,27 @@ end
 
 -- originalCount：玩家在创建游戏时原本设置的城邦数量（UI 层从 CustomData 读出后传入）
 -- 比它多出来的城邦会被搬到地图外，作为幽灵玩家池；没传值或不是新开局则不处理。
+-- 诊断：列出**运行时数据库**里所有城邦文明（含本 mod 复制的 _GHOST1）。
+-- 图标没法动态生成，只能按这份清单逐个写死，所以把它打到日志里，
+-- 用来核对“哪些复制体还没有图标定义”。在 InitializeGhostPlayers 里调用一次。
+local function LogCityStateCivTypes()
+	local originals, duplicates = {}, {}
+	for civRow in GameInfo.Civilizations() do
+		if civRow.StartingCivilizationLevelType == 'CIVILIZATION_LEVEL_CITY_STATE' then
+			local civType = tostring(civRow.CivilizationType)
+			if string.sub(civType, -7) == '_GHOST1' then
+				table.insert(duplicates, civType)
+			else
+				table.insert(originals, civType)
+			end
+		end
+	end
+	print("[ModMiscTool][Ghost] city state civ types: originals=" .. tostring(#originals)
+		.. " duplicates=" .. tostring(#duplicates))
+	print("[ModMiscTool][Ghost]   originals: " .. table.concat(originals, ','))
+	print("[ModMiscTool][Ghost]   duplicates: " .. table.concat(duplicates, ','))
+end
+
 -- 城邦玩家的落地清点：引擎可能已经把一部分城邦落到图上（有首都），
 -- 那些动不了（拆城＝玩家死亡，硬规则），所以要单独数出来。
 -- 返回：已落地数量、已落地的描述串（含文明类型，便于看清是不是复制体）
@@ -682,6 +720,8 @@ end
 
 function InitializeGhostPlayers(originalCount)
 	if originalCount == nil then return end
+
+	LogCityStateCivTypes()
 
 	-- 只搬“还没建城”的城邦：读老档时城邦都已建城 → 候选为空 → 什么都不会动
 	local candidates = GetUnsettledCityStatePlayerIDs()

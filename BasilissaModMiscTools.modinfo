@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<Mod id="a1b2c3d4-5e6f-7a8b-9c0d-1e2f3a4b5c6d" version="1.50">
+<Mod id="a1b2c3d4-5e6f-7a8b-9c0d-1e2f3a4b5c6d" version="1.51">
     <Properties>
         <Name>Basilissa Mod Misc Tools</Name>
         <Description>LOC_MODMISC_MOD_DESCRIPTION</Description>
@@ -56,8 +56,14 @@
         </UpdateDatabase>
         <!-- 复制城邦的图标：图标是独立数据库，没法用 SQL 批量拉取，只能逐个定义；
              用 XML（与游戏自己的 Icons_Civilizations.xml 同格式），交给 XML 序列化器，
-             避免 SQL 里 "Index" 之类的保留字坑。同一个选项判据、同样不设 LoadOrder。 -->
+             避免 SQL 里 "Index" 之类的保留字坑。
+             这里【必须设 LoadOrder】：复制体要引用 XP1/XP2/DLC 的图集，
+             而官方图标动作加载更早；排在它们之后引用才不会报数据库错
+             （报错会中断图标库构建，连官方的图标如 Palenque 一起丢）。 -->
         <UpdateIcons id="GhostPlayersCityStateIcons">
+            <Properties>
+                <LoadOrder>9000</LoadOrder>
+            </Properties>
             <Criteria>ModMisc_DuplicateCityStates_ON</Criteria>
             <File>GhostPlayers_CityStateIcons.xml</File>
         </UpdateIcons>
