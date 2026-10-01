@@ -1,0 +1,145 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Context>
+	<!-- Unit action button (moved to StandardActionsStack via ChangeParent) -->
+	<Grid ID="ExtensiveUnitGrid" Anchor="R,B" Size="46,41" AutoSizePadding="2,0"
+		Texture="SelectionPanel_ActionGroupSlot" SliceCorner="5,19" SliceSize="1,1"
+		SliceTextureSize="12,41" ConsumeMouse="1" Alpha="1" Hidden="1">
+		<Button ID="ExtensiveUnitButton" Anchor="C,B" Size="44,53"
+			Texture="UnitPanel_ActionButton"
+			ToolTip="LOC_EXTENSIVEUNIT_TOGGLE_TOOLTIP">
+			<Image ID="ExtensiveUnitButtonIcon" Anchor="C,C" Offset="0,-2"
+				Size="38,38" Icon="ICON_UNITOPERATION_BUILD_IMPROVEMENT"/>
+		</Button>
+	</Grid>
+
+	<!-- Main panel 1200x900 (moved to /InGame via ChangeParent) -->
+	<Container ID="ExtensiveUnitPanelMain" Anchor="C,C" Size="1200,900"
+		ConsumeMouse="1" Hidden="1">
+		<!-- Begin=收起(向下隐藏)，End=展开(可见)；Size 必须显式声明，否则内部 parent 尺寸会失效 -->
+		<SlideAnim ID="PanelSlide" Anchor="C,C" Size="parent,parent"
+			Begin="0,40" End="0,0"
+			Cycle="Once" Stopped="1" Function="OutQuad" Speed="7">
+			<Box Anchor="C,C" Size="parent,parent" Color="20,20,30,245">
+				<Grid Anchor="C,C" Size="parent+16,parent+16" Style="ScreenFrame" />
+
+				<!-- 标题栏 -->
+				<Grid ID="PanelHeader" Anchor="L,T" Size="parent+4,100" Offset="0,0"
+					Texture="Controls_SubHeader3" SliceCorner="10,10"
+					SliceSize="14,14" SliceTextureSize="34,34">
+					<Label ID="PanelTitle" Anchor="C,C" FontSize="40"
+						String="{LOC_EXTENSIVEUNIT_PANEL_TITLE:upper}"
+						SmallCaps="52" SmallCapsType="EveryWord"
+						FontStyle="glow" Color="255,255,255,255" />
+					<Button ID="CloseButton" Anchor="R,T" Offset="-6,0"
+						Size="90,90" Style="CloseButtonLargeDouble"
+						StretchMode="Fill" ToolTip="LOC_HUD_CLOSE" />
+				</Grid>
+
+				<!-- 单位信息栏 -->
+				<Container ID="UnitInfoBar" Anchor="L,T" Offset="16,110"
+					Size="parent-32,56">
+					<Stack Anchor="L,C" Size="parent,parent" StackGrowth="Right" StackPadding="12">
+						<Image ID="UnitPortrait" Anchor="L,C" Size="44,44"
+							Texture="Controls_Blank" />
+						<Label ID="UnitNameLabel" FontSize="32"
+							FontStyle="glow" ColorSet="TopBarValueCS"
+							String="LOC_EXTENSIVEUNIT_NO_UNIT" Anchor="L,C" />
+					</Stack>
+				</Container>
+
+				<!-- 分隔线 -->
+				<Grid Style="DividerGrid" Size="parent-32,2" Anchor="C,T"
+					Offset="0,170" Color="60,75,90,255" />
+
+				<!-- 案例列表滚动区（2列网格布局） -->
+				<ScrollPanel ID="CaseScrollPanel" Anchor="L,T" Offset="8,178"
+					Size="parent-16,parent-188" Vertical="1"
+					AutoScrollBar="1" FullClip="1">
+					<ScrollBar Anchor="R,C" Offset="8,0" Size="11,parent"
+						AnchorSide="O,I" Style="ScrollVerticalBar" />
+					<Stack ID="CaseRow" Anchor="C,T" Offset="0,8"
+						Size="parent-16,auto" StackGrowth="Right" Padding="6">
+						<Stack ID="CaseColumn1" StackGrowth="Down"
+							Padding="4" Size="parent/2-8,auto" />
+						<Stack ID="CaseColumn2" StackGrowth="Down"
+							Padding="4" Size="parent/2-8,auto" />
+					</Stack>
+				</ScrollPanel>
+
+				<!-- 空列表提示 -->
+				<Label ID="EmptyLabel" Anchor="C,C" Offset="0,60" FontSize="36"
+					FontStyle="glow" ColorSet="TopBarValueCS"
+					String="LOC_EXTENSIVEUNIT_NO_CASES" Hidden="1" />
+			</Box>
+		</SlideAnim>
+	</Container>
+
+	<!-- Map selection container (moved to /InGame/WorldViewControls via ChangeParent) -->
+	<Container ID="MapSelectContainer" />
+
+	<!-- Full screen container for map selector close button (moved to /InGame via ChangeParent) -->
+	<Container ID="FullScreenContainer" Size="parent,parent">
+		<!-- Anchor=R,T 时负向 Offset 才会向内收，原来的 200,100 会把取消按钮推到屏幕外 -->
+		<Button ID="ClearMapButton" Anchor="R,T" Style="CloseButtonAltQuadruple"
+			Offset="-20,60" Hidden="1" ToolTip="LOC_HUD_CLOSE"/>
+	</Container>
+
+	<!-- Instance: case entry in the panel list (2列版，左侧按钮 + 右侧两行文本) -->
+	<Instance Name="CaseEntryInstance">
+		<Grid ID="Entry" Size="parent,120" Style="SubContainer3Double"
+			Color="30,45,60,200">
+			<Stack Anchor="C,C" Size="parent,parent" StackGrowth="Right" Padding="6">
+				<GridButton ID="ActionButton" Anchor="L,C"
+					Size="104,104" Style="ButtonLightWeightGridDouble"
+					Color="40,55,70,230">
+					<Image ID="ItemIcon" Anchor="C,C" Size="64,64" Texture="Controls_Blank" />
+				</GridButton>
+				<Stack ID="CaseTextStack" Anchor="L,C"
+					Size="parent-124,104" StackGrowth="Down" Padding="2">
+					<Label ID="ItemName" FontSize="24" Style="ButtonFont16"
+						ColorSet="TopBarValueCS" String="LOC_EXTENSIVEUNIT_CASE_NAME"
+						WrapWidth="parent" HorizontalAlignment="Left" />
+					<Label ID="ItemDescription" FontSize="18" Style="FontNormal14"
+						ColorSet="TopBarValueCS" String="LOC_EXTENSIVEUNIT_CASE_DESC"
+						WrapWidth="parent" HorizontalAlignment="Left" />
+				</Stack>
+			</Stack>
+		</Grid>
+	</Instance>
+
+	<!-- Instance: custom extension button (2列版，左侧按钮 + 右侧两行文本) -->
+	<Instance Name="CustomButtonInstance">
+		<Grid ID="Entry" Size="parent,120" Style="SubContainer3Double"
+			Color="40,60,80,200">
+			<Stack Anchor="C,C" Size="parent,parent" StackGrowth="Right" Padding="6">
+				<GridButton ID="ActionButton" Anchor="L,C"
+					Size="104,104" Style="ButtonLightWeightGridDouble"
+					Color="50,70,90,230">
+					<Image ID="ButtonIcon" Anchor="C,C" Size="64,64" Texture="Controls_Blank" />
+				</GridButton>
+				<Stack ID="CustomTextStack" Anchor="L,C"
+					Size="parent-124,104" StackGrowth="Down" Padding="2">
+					<Label ID="ButtonName" FontSize="24" Style="ButtonFont16"
+						ColorSet="TopBarValueCS" String="LOC_EXTENSIVEUNIT_EXT_BUTTON"
+						WrapWidth="parent" HorizontalAlignment="Left" />
+					<Label ID="ButtonDescription" FontSize="18" Style="FontNormal14"
+						ColorSet="TopBarValueCS" String="LOC_EXTENSIVEUNIT_EXT_DESC"
+						WrapWidth="parent" HorizontalAlignment="Left" />
+				</Stack>
+			</Stack>
+		</Grid>
+	</Instance>
+
+	<!-- Instance: map select button (Norn_UI pattern) -->
+	<Instance Name="MapSelectInstance">
+		<ZoomAnchor ID="SelectAnchor" ZoomOffsetNear="0,0,0" ZoomOffsetFar="0,0,0">
+			<GridButton ID="SelectButton" Anchor="C,C" Offset="0,0"
+				Size="96,96" Hidden="1">
+				<Image ID="SelectIcon" Anchor="C,C" Size="96,96"
+					Icon="ICON_UNITOPERATION_BUILD_IMPROVEMENT" Hidden="1"/>
+				<Image ID="SelectHighlight" Anchor="C,C" Size="128,128"
+					Texture="UnitPanel_ActionButton" Hidden="1"/>
+			</GridButton>
+		</ZoomAnchor>
+	</Instance>
+</Context>

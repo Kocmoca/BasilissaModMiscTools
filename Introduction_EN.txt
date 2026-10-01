@@ -1,0 +1,8 @@
+This mod is intended to collect commonly used modding utilities, so that other mods do not need to reimplement the same systems or waste performance on duplicated work. It also provides a scalable left sidebar and an information panel that other mods can use to expose their own content without replacing vanilla UI files, reducing compatibility risks. In addition, it adds a new unit operation panel and exposes interfaces for building districts, buildings, improvements, routes, features, resources, and terrain on the map, bypassing the usual construction restrictions where needed.
+
+When used alone, this mod does not add any gameplay functionality. Features currently added by my other mods include:
+1. Vassal System: allows units to build improvements on vassal territory and adds the vassal system button to the left sidebar.
+2. Another Strategic Fort: adds a left-sidebar button to toggle fort icon visibility, and shows the number of garrisoned and ungarrisoned forts in the information panel.
+
+Additional note:
+The interfaces are still being organized, with backward compatibility kept in mind where possible. Other mods can access these capabilities through ExposedMembers and API_Documentation.txt. When the related extension mods are not enabled, this mod does not intentionally alter vanilla behavior. UI compatibility issues should be handled inside the isolated UI layer rather than by replacing vanilla UI files.

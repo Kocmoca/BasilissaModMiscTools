@@ -1,0 +1,138 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Context>
+    <!-- 注意：控件 ID 不能与上下文/文件名（WorldBuilderTestPanel）同名。
+         尺寸/字号是设计基准（900x930），运行时按屏幕尺寸等比缩放。
+         选择器 = 收起状态按钮 + 点击后在本面板内展开的列表（列表自绘，不依赖引擎下拉弹窗）。 -->
+    <Container ID="WorldBuilderTestRoot" Anchor="C,C" Size="900,930" ConsumeMouse="1" Hidden="1">
+        <Box Anchor="C,C" Size="parent,parent" Color="20,20,30,248">
+            <Grid Anchor="C,C" Size="parent+16,parent+16" Style="ScreenFrame" />
+
+            <Grid ID="WorldBuilderTestHeader" Anchor="L,T" Size="parent,56"
+                  Texture="TopBar_Bar" SliceCorner="28,8" SliceTextureSize="57,29">
+                <Label ID="WorldBuilderTestTitle" Anchor="L,C" Offset="24,0" Size="740,44"
+                       FontSize="32" FontStyle="glow" ColorSet="ShellHeader"
+                       String="LOC_MODMISC_WB_TEST_TITLE" />
+                <Button ID="WorldBuilderTestCloseButton" Anchor="R,C" Offset="-14,0" Size="44,44"
+                       Texture="Controls_CloseButton" Style="ButtonNormalText" ConsumeMouse="1" />
+            </Grid>
+
+            <Label ID="WorldBuilderTestStatus" Anchor="L,T" Offset="20,64" Size="parent-40,32"
+                   FontSize="22" Color="225,225,225,255" WrapWidth="860" VerticalAlignment="Center" />
+
+            <!-- ============ 选择器 1：目标玩家 ============ -->
+            <Label ID="WorldBuilderTestPlayerLabel" Anchor="L,T" Offset="20,110" Size="170,56"
+                   FontSize="26" Color="225,225,225,255" VerticalAlignment="Center"
+                   String="LOC_MODMISC_WB_TEST_PLAYER" />
+            <GridButton ID="WorldBuilderTestPlayerButton" Anchor="L,T" Offset="200,110" Size="660,56"
+                        Style="ButtonControl" FontSize="26" String="" />
+
+            <!-- ============ 选择器 2：目标文明 ============ -->
+            <Label ID="WorldBuilderTestCivLabel" Anchor="L,T" Offset="20,178" Size="170,56"
+                   FontSize="26" Color="225,225,225,255" VerticalAlignment="Center"
+                   String="LOC_MODMISC_WB_TEST_CIV" />
+            <GridButton ID="WorldBuilderTestCivButton" Anchor="L,T" Offset="200,178" Size="660,56"
+                        Style="ButtonControl" FontSize="26" String="" />
+
+            <!-- ============ 选择器 3：目标领袖 ============ -->
+            <Label ID="WorldBuilderTestLeaderLabel" Anchor="L,T" Offset="20,246" Size="170,56"
+                   FontSize="26" Color="225,225,225,255" VerticalAlignment="Center"
+                   String="LOC_MODMISC_WB_TEST_LEADER" />
+            <GridButton ID="WorldBuilderTestLeaderButton" Anchor="L,T" Offset="200,246" Size="660,56"
+                        Style="ButtonControl" FontSize="26" String="" />
+
+            <!-- ============ 选择器 4：玩家类型（主要文明 / 城邦） ============ -->
+            <Label ID="WorldBuilderTestTypeLabel" Anchor="L,T" Offset="20,314" Size="170,56"
+                   FontSize="26" Color="225,225,225,255" VerticalAlignment="Center"
+                   String="LOC_MODMISC_WB_TEST_PLAYER_TYPE" />
+            <GridButton ID="WorldBuilderTestTypeButton" Anchor="L,T" Offset="200,314" Size="660,56"
+                        Style="ButtonControl" FontSize="26" String="" />
+
+            <!-- ============ 选择器 5：放置范围（2 / 4 / 6 格） ============ -->
+            <Label ID="WorldBuilderTestRangeLabel" Anchor="L,T" Offset="20,382" Size="170,56"
+                   FontSize="26" Color="225,225,225,255" VerticalAlignment="Center"
+                   String="LOC_MODMISC_WB_TEST_PLACE_RANGE" />
+            <GridButton ID="WorldBuilderTestRangeButton" Anchor="L,T" Offset="200,382" Size="660,56"
+                        Style="ButtonControl" FontSize="26" String="" />
+
+            <!-- ============ 操作按钮（每行 3 个）：第一行 = 幽灵玩家 ============ -->
+            <GridButton ID="WorldBuilderTestActivateGhost" Anchor="L,T" Offset="20,448" Size="280,60"
+                        Style="ButtonControl" FontSize="26" String="LOC_MODMISC_WB_TEST_ACTIVATE_GHOST" />
+            <GridButton ID="WorldBuilderTestRecycleGhost" Anchor="L,T" Offset="310,448" Size="280,60"
+                        Style="ButtonControl" FontSize="26" String="LOC_MODMISC_WB_TEST_RECYCLE_GHOST" />
+            <GridButton ID="WorldBuilderTestRemove" Anchor="L,T" Offset="600,448" Size="280,60"
+                        Style="ButtonControl" FontSize="26" String="LOC_MODMISC_WB_TEST_REMOVE" />
+
+            <GridButton ID="WorldBuilderTestApply" Anchor="L,T" Offset="20,520" Size="280,60"
+                        Style="ButtonControl" FontSize="26" String="LOC_MODMISC_WB_TEST_APPLY" />
+            <GridButton ID="WorldBuilderTestCreateCity" Anchor="L,T" Offset="310,520" Size="280,60"
+                        Style="ButtonControl" FontSize="26" String="LOC_MODMISC_WB_TEST_CREATE_CITY" />
+            <GridButton ID="WorldBuilderTestCreateUnit" Anchor="L,T" Offset="600,520" Size="280,60"
+                        Style="ButtonControl" FontSize="26" String="LOC_MODMISC_WB_TEST_CREATE_UNIT" />
+
+            <GridButton ID="WorldBuilderTestPlaceSettler" Anchor="L,T" Offset="20,592" Size="280,60"
+                        Style="ButtonControl" FontSize="26" String="LOC_MODMISC_WB_TEST_PLACE_SETTLER" />
+            <GridButton ID="WorldBuilderTestClearStart" Anchor="L,T" Offset="310,592" Size="280,60"
+                        Style="ButtonControl" FontSize="26" String="LOC_MODMISC_WB_TEST_CLEAR_START" />
+            <GridButton ID="WorldBuilderTestSetEra" Anchor="L,T" Offset="600,592" Size="280,60"
+                        Style="ButtonControl" FontSize="26" String="LOC_MODMISC_WB_TEST_SET_ERA" />
+
+            <GridButton ID="WorldBuilderTestGold" Anchor="L,T" Offset="20,664" Size="280,60"
+                        Style="ButtonControl" FontSize="26" String="LOC_MODMISC_WB_TEST_GOLD" />
+            <GridButton ID="WorldBuilderTestFaith" Anchor="L,T" Offset="310,664" Size="280,60"
+                        Style="ButtonControl" FontSize="26" String="LOC_MODMISC_WB_TEST_FAITH" />
+            <GridButton ID="WorldBuilderTestReveal" Anchor="L,T" Offset="600,664" Size="280,60"
+                        Style="ButtonControl" FontSize="26" String="LOC_MODMISC_WB_TEST_REVEAL" />
+
+            <!-- ============ 运行时补建幽灵槽位（测试 EXera 路径） ============ -->
+            <GridButton ID="WorldBuilderTestCreateGhost" Anchor="L,T" Offset="20,736" Size="280,60"
+                        Style="ButtonControl" FontSize="26" String="LOC_MODMISC_WB_TEST_CREATE_GHOST" />
+            <GridButton ID="WorldBuilderTestConvertCityState" Anchor="L,T" Offset="310,736" Size="280,60"
+                        Style="ButtonControl" FontSize="26" String="LOC_MODMISC_WB_TEST_CONVERT_CITY_STATE" />
+            <GridButton ID="WorldBuilderTestPlayerStats" Anchor="L,T" Offset="600,736" Size="280,60"
+                        Style="ButtonControl" FontSize="26" String="LOC_MODMISC_WB_TEST_PLAYER_STATS" />
+
+            <!-- ============ 打开提示信息小窗 ============ -->
+            <GridButton ID="WorldBuilderTestMessages" Anchor="L,T" Offset="20,808" Size="860,60"
+                        Style="ButtonControl" FontSize="26" String="LOC_MODMISC_WB_TEST_MESSAGES" />
+
+            <!-- ============ 展开的选项列表（点击选择器后出现在其正下方） ============ -->
+            <Container ID="WorldBuilderTestOptionPanel" Anchor="L,T" Size="660,300" ConsumeMouse="1" Hidden="1">
+                <Box Anchor="L,T" Size="parent,parent" Color="10,18,28,252">
+                    <Grid Anchor="C,C" Size="parent+8,parent+8" Style="ScreenFrame" />
+                    <ScrollPanel ID="WorldBuilderTestOptionScroll" Anchor="C,T" Size="parent-8,parent-8"
+                                 Vertical="1" AutoScrollBar="0">
+                        <Stack ID="WorldBuilderTestOptionList" StackGrowth="Bottom" Anchor="C,T" StackPadding="3" />
+                        <ScrollBar Anchor="R,C" Size="11,parent" Offset="2,0" AnchorSide="O,I" Style="ScrollVerticalBar" />
+                    </ScrollPanel>
+                </Box>
+            </Container>
+        </Box>
+
+        <!-- ============ 提示信息小窗（操作结果 / 提示） ============ -->
+        <Container ID="WorldBuilderTestMessageWindow" Anchor="C,C" Size="680,340" ConsumeMouse="1" Hidden="1">
+            <Box Anchor="C,C" Size="parent,parent" Color="14,22,34,250">
+                <Grid Anchor="C,C" Size="parent+16,parent+16" Style="ScreenFrame" />
+
+                <Grid ID="WorldBuilderTestMessageHeader" Anchor="L,T" Size="parent,52"
+                      Texture="TopBar_Bar" SliceCorner="28,8" SliceTextureSize="57,29">
+                    <Label ID="WorldBuilderTestMessageTitle" Anchor="L,C" Offset="20,0" Size="520,40"
+                           FontSize="28" FontStyle="glow" ColorSet="ShellHeader"
+                           String="LOC_MODMISC_WB_TEST_MESSAGES" />
+                    <Button ID="WorldBuilderTestMessageClose" Anchor="R,C" Offset="-12,0" Size="40,40"
+                            Texture="Controls_CloseButton" Style="ButtonNormalText" ConsumeMouse="1" />
+                </Grid>
+
+                <Label ID="WorldBuilderTestMessageText" Anchor="C,T" Offset="0,66" Size="parent-40,parent-86"
+                       FontSize="24" Color="225,225,225,255" WrapWidth="640" VerticalAlignment="Top" />
+            </Box>
+        </Container>
+    </Container>
+
+    <!-- 展开列表的条目模板 -->
+    <Instance Name="WorldBuilderTestOptionEntry">
+        <GridButton ID="EntryButton" Size="620,48" Style="ButtonControl" Anchor="C,T">
+            <Label ID="EntryLabel" Anchor="L,C" Offset="12,0" Size="parent-24,parent"
+                   FontSize="24" Color="225,225,225,255" VerticalAlignment="Center" TruncateWidth="590" />
+        </GridButton>
+    </Instance>
+</Context>

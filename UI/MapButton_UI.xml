@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Context>
+	<!-- Generic map-button layer used by other mods. -->
+	<Container ID="ModMiscMapButtonContainer"/>
+	<!-- Full-screen container for the large top-right close button. -->
+	<Container ID="ModMiscMapFullScreenContainer" Size="parent,parent">
+		<Button ID="ModMiscMapCloseButton" Anchor="R,T" Style="CloseButtonAltQuadruple" Offset="192,128" Hidden="1" ToolTip="LOC_HUD_CLOSE"/>
+	</Container>
+	<Instance Name="ModMiscMapButtonInstance">
+		<WorldAnchor ID="ModMiscMapButtonAnchor" Size="4,4">
+			<GridButton ID="ModMiscMapButton" Anchor="C,C" Size="128,128" Hidden="1">
+				<Image ID="ModMiscMapButtonIcon" Anchor="C,C" Size="128,128" Icon="ICON_UNITOPERATION_REBASE"/>
+			</GridButton>
+		</WorldAnchor>
+	</Instance>
+</Context>

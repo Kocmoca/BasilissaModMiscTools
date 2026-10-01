@@ -1,0 +1,178 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Mod id="a1b2c3d4-5e6f-7a8b-9c0d-1e2f3a4b5c6d" version="1.47">
+    <Properties>
+        <Name>Basilissa Mod Misc Tools</Name>
+        <Description>LOC_MODMISC_MOD_DESCRIPTION</Description>
+        <Created></Created>
+        <Teaser>LOC_MODMISC_MOD_DESCRIPTION</Teaser>
+        <Authors>Kocmoca</Authors>
+        <AffectsSavedGames>0</AffectsSavedGames>
+        <CompatibleVersions>1.2,2.0</CompatibleVersions>
+    </Properties>
+    <!-- 选项判据：创建游戏界面的开关值 → 决定数据库文件是否加载 -->
+    <ActionCriteria>
+        <Criteria id="ModMisc_DuplicateCityStates_ON">
+            <ConfigurationValueMatches>
+                <ConfigurationId>MODMISC_DUPLICATE_CITY_STATES</ConfigurationId>
+                <Group>Game</Group>
+                <Value>1</Value>
+            </ConfigurationValueMatches>
+        </Criteria>
+    </ActionCriteria>
+    <FrontEndActions>
+        <!-- 创建游戏界面的选项行（Parameters 表） -->
+        <UpdateDatabase id="GhostPlayersOptions">
+            <File>GhostPlayers_Options.xml</File>
+        </UpdateDatabase>
+        <!-- 选项名/说明要在前端就显示，所以前端也挂一份文案 -->
+        <UpdateText id="GhostPlayersFrontEndTexts">
+            <File>Text.xml</File>
+            <File>Text_CN.xml</File>
+        </UpdateText>
+        <!-- 幽灵玩家池需要城邦槽位：只抬高上限（配置数据库） -->
+        <UpdateDatabase id="GhostPlayersMapSizes">
+            <File>GhostPlayers_MapSizes.sql</File>
+        </UpdateDatabase>
+        <!-- 创建游戏界面：拉满城邦数量并用 WriteCustomData 记下玩家原本的选择 -->
+        <ImportFiles id="FrontEndUIReplacements">
+            <Properties>
+                <LoadOrder>10000</LoadOrder>
+            </Properties>
+            <File>UI/Replacements/Civ6Common.lua</File>
+        </ImportFiles>
+    </FrontEndActions>
+    <InGameActions>
+        <UpdateDatabase id="Base">
+            <Properties>
+                <LoadOrder>-1</LoadOrder>
+            </Properties>
+            <File>ExpansiveUnitBuild.sql</File>
+        </UpdateDatabase>
+        <!-- 复制城邦：由创建游戏界面的选项控制加载（默认开启）。
+             不设 LoadOrder：按默认顺序加载；关掉选项时本文件完全不加载。 -->
+        <UpdateDatabase id="GhostPlayersCityStates">
+            <Criteria>ModMisc_DuplicateCityStates_ON</Criteria>
+            <File>GhostPlayers_CityStates.sql</File>
+        </UpdateDatabase>
+        <UpdateDatabase id="Support">
+            <File>SupportData.sql</File>
+        </UpdateDatabase>
+        <AddGameplayScripts id="Scripts">
+            <Properties>
+                <LoadOrder>-1</LoadOrder>
+            </Properties>
+            <File>ModTool.lua</File>
+            <File>ExtensiveUnitBuild.lua</File>
+        </AddGameplayScripts>
+        <ImportFiles id="Imports">
+            <File>ModTool_Support_Functions.lua</File>
+            <File>ModTool_Support_UI.lua</File>
+            <File>ModTool_WorldBuilderAPI.lua</File>
+            <File>ModTool_GhostPlayers.lua</File>
+        </ImportFiles>
+        <ImportFiles id="UIReplacements">
+            <Properties>
+                <LoadOrder>10000</LoadOrder>
+            </Properties>
+            <File>UI/Replacements/Civ6Common.lua</File>
+        </ImportFiles>
+        <AddUserInterfaces id="SupportUI">
+            <Properties>
+                <Context>InGame</Context>
+                <LoadOrder>-1</LoadOrder>
+            </Properties>
+            <File>UI/Support_UI.xml</File>
+        </AddUserInterfaces>
+        <AddUserInterfaces id="MapButtonUI">
+            <Properties>
+                <Context>InGame</Context>
+                <LoadOrder>-1</LoadOrder>
+            </Properties>
+            <File>UI/MapButton_UI.xml</File>
+        </AddUserInterfaces>
+        <AddUserInterfaces id="LeftSideBar">
+            <Properties>
+                <Context>InGame</Context>
+                <LoadOrder>-1</LoadOrder>
+            </Properties>
+            <File>UI/LeftSideBar.xml</File>
+        </AddUserInterfaces>
+        <AddUserInterfaces id="WorldBuilderTestPanel">
+            <Properties>
+                <Context>InGame</Context>
+                <LoadOrder>-1</LoadOrder>
+            </Properties>
+            <File>UI/WorldBuilderTestPanel.xml</File>
+        </AddUserInterfaces>
+        <AddUserInterfaces id="ModMiscDebugUI">
+            <Properties>
+                <Context>InGame</Context>
+                <LoadOrder>10</LoadOrder>
+            </Properties>
+            <File>UI/ModMiscDebugUI.xml</File>
+            <File>UI/ButtonAdjust.xml</File>
+        </AddUserInterfaces>
+        <AddUserInterfaces id="ExtensiveUnitPanel">
+            <Properties>
+                <Context>InGame</Context>
+                <LoadOrder>-1</LoadOrder>
+            </Properties>
+            <File>UI/ExtensiveUnitPanel.xml</File>
+        </AddUserInterfaces>
+        <UpdateText id="Texts">
+            <File>Text.xml</File>
+            <File>Text_CN.xml</File>
+        </UpdateText>
+    </InGameActions>
+    <Files>
+        <!-- sql -->
+        <File>ExpansiveUnitBuild.sql</File>
+        <File>SupportData.sql</File>
+        <!-- scripts -->
+        <File>ModTool.lua</File>
+        <File>ModTool_Support_Functions.lua</File>
+        <File>ModTool_Support_UI.lua</File>
+        <File>ModTool_WorldBuilderAPI.lua</File>
+        <File>ModTool_GhostPlayers.lua</File>
+        <File>GhostPlayers_MapSizes.sql</File>
+        <File>GhostPlayers_Options.xml</File>
+        <File>GhostPlayers_CityStates.sql</File>
+        <File>ExtensiveUnitBuild.lua</File>
+        <!-- UI -->
+        <File>UI/Support_UI.xml</File>
+        <File>UI/Support_UI.lua</File>
+        <File>UI/MapButton_UI.xml</File>
+        <File>UI/MapButton_UI.lua</File>
+        <File>UI/ExtensiveUnitPanel.xml</File>
+        <File>UI/ExtensiveUnitPanel.lua</File>
+        <File>UI/LeftSideBar.xml</File>
+        <File>UI/LeftSideBar.lua</File>
+        <File>UI/WorldBuilderTestPanel.xml</File>
+        <File>UI/WorldBuilderTestPanel.lua</File>
+        <File>UI/ModMiscDebugUI.xml</File>
+        <File>UI/ModMiscDebugUI.lua</File>
+        <File>UI/ButtonAdjust.xml</File>
+        <File>UI/ButtonAdjust.lua</File>
+        <File>UI/ButtonAdjust_PHONE.lua</File>
+        <File>UI/Replacements/Civ6Common.lua</File>
+        <!-- texts -->
+        <File>Text.xml</File>
+        <File>Text_CN.xml</File>
+        <!-- docs -->
+        <File>API_Documentation.txt</File>
+        <!-- API_Verification_Status.md 只在仓库里做文档，不进 mod 清单：
+             .txt 文档一直在清单里没问题，.md 属未验证扩展名；而 2026-10-01 的连续
+             “游戏加载出错”最终以“回退 + 只扩城邦”收场（见 API_Verification_Status.md 第 7 节），
+             文档不参与运行，就不放进分发清单了。 -->
+        <File>Introduction.txt</File>
+        <File>Introduction_EN.txt</File>
+    </Files>
+    <LocalizedText>
+        <Text id="LOC_MODMISC_MOD_DESCRIPTION">
+            <en_US>Basilissa Mod - Misc Tools: Extended unit build system with dynamic toolbar and empire overview panel.</en_US>
+            <zh_Hans_CN>Basilissa Mod - 杂项工具：扩展单位建造系统、动态工具栏与帝国概况面板。</zh_Hans_CN>
+        </Text>
+        <File>Text.xml</File>
+        <File>Text_CN.xml</File>
+    </LocalizedText>
+</Mod>

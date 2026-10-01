@@ -1,0 +1,294 @@
+<?xml version="1.0" encoding="utf-8"?>
+<GameData>
+	<LocalizedText>
+		<!-- LeftSideBar -->
+		<Replace Tag="LOC_MODMISC_TOGGLE_SIDEBAR" Language="zh_Hans_CN">
+			<Text>展开工具栏</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_COLLAPSE_SIDEBAR" Language="zh_Hans_CN">
+			<Text>收起工具栏</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_HIDE_SIDEBAR" Language="zh_Hans_CN">
+			<Text>隐藏工具栏</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_HIDE_SIDEBAR_TOOLTIP" Language="zh_Hans_CN">
+			<Text>隐藏此工具栏，并使左侧展开键透明</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_CANCEL_HIDE_SIDEBAR" Language="zh_Hans_CN">
+			<Text>取消隐藏工具栏</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_CANCEL_HIDE_SIDEBAR_TOOLTIP" Language="zh_Hans_CN">
+			<Text>恢复左侧展开键的透明度设置</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_SIDEBAR_TITLE" Language="zh_Hans_CN">
+			<Text>模组工具</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_SIDEBAR_PAGE_UP" Language="zh_Hans_CN">
+			<Text>上一页</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_SIDEBAR_PAGE_DOWN" Language="zh_Hans_CN">
+			<Text>下一页</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_SIDEBAR_PAGE_UP_TOOLTIP" Language="zh_Hans_CN">
+			<Text>显示上一页工具栏按钮</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_SIDEBAR_PAGE_DOWN_TOOLTIP" Language="zh_Hans_CN">
+			<Text>显示下一页工具栏按钮</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_PRESET_BUTTON" Language="zh_Hans_CN">
+			<Text>游戏概况</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_PRESET_TOOLTIP" Language="zh_Hans_CN">
+			<Text>查看产出、资源和游戏信息</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_BUTTON_PLACEHOLDER" Language="zh_Hans_CN">
+			<Text>按钮</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_INFO_TITLE" Language="zh_Hans_CN">
+			<Text>帝国概况</Text>
+		</Replace>
+
+		<!-- Section labels -->
+		<Replace Tag="LOC_MODMISC_YIELDS" Language="zh_Hans_CN">
+			<Text>产出</Text>
+		</Replace>
+
+		<!-- Yield names -->
+		<Replace Tag="LOC_MODMISC_YIELD_SCIENCE" Language="zh_Hans_CN">
+			<Text>科技</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_YIELD_CULTURE" Language="zh_Hans_CN">
+			<Text>文化</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_YIELD_GOLD" Language="zh_Hans_CN">
+			<Text>金币</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_YIELD_FAITH" Language="zh_Hans_CN">
+			<Text>信仰</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_YIELD_PRODUCTION" Language="zh_Hans_CN">
+			<Text>生产力</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_YIELD_TOURISM" Language="zh_Hans_CN">
+			<Text>旅游业绩</Text>
+		</Replace>
+
+		<!-- Yield tooltips -->
+		<Replace Tag="LOC_MODMISC_YIELD_SCIENCE_TOOLTIP" Language="zh_Hans_CN">
+			<Text>每回合科技值</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_YIELD_CULTURE_TOOLTIP" Language="zh_Hans_CN">
+			<Text>每回合文化值</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_YIELD_GOLD_TOOLTIP" Language="zh_Hans_CN">
+			<Text>每回合金币</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_YIELD_FAITH_TOOLTIP" Language="zh_Hans_CN">
+			<Text>每回合信仰值</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_YIELD_PRODUCTION_TOOLTIP" Language="zh_Hans_CN">
+			<Text>每回合生产力</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_YIELD_TOURISM_TOOLTIP" Language="zh_Hans_CN">
+			<Text>每回合旅游业绩</Text>
+		</Replace>
+
+		<!-- ExtensiveUnitPanel -->
+		<Replace Tag="LOC_EXTENSIVEUNIT_PANEL_TITLE" Language="zh_Hans_CN">
+			<Text>扩展单位建造</Text>
+		</Replace>
+		<Replace Tag="LOC_EXTENSIVEUNIT_NO_UNIT" Language="zh_Hans_CN">
+			<Text>未选择单位</Text>
+		</Replace>
+		<Replace Tag="LOC_EXTENSIVEUNIT_NO_CASES" Language="zh_Hans_CN">
+			<Text>无可用的建造方案</Text>
+		</Replace>
+		<Replace Tag="LOC_EXTENSIVEUNIT_TOGGLE_TOOLTIP" Language="zh_Hans_CN">
+			<Text>扩展单位建造菜单</Text>
+		</Replace>
+		<Replace Tag="LOC_EXTENSIVEUNIT_CASE_NAME" Language="zh_Hans_CN">
+			<Text>建造方案</Text>
+		</Replace>
+		<Replace Tag="LOC_EXTENSIVEUNIT_CASE_DESC" Language="zh_Hans_CN">
+			<Text>建造描述</Text>
+		</Replace>
+		<Replace Tag="LOC_EXTENSIVEUNIT_EXT_BUTTON" Language="zh_Hans_CN">
+			<Text>扩展功能</Text>
+		</Replace>
+		<Replace Tag="LOC_EXTENSIVEUNIT_EXT_DESC" Language="zh_Hans_CN">
+			<Text>自定义扩展</Text>
+		</Replace>
+
+		<!-- Sample Build Case Descriptions -->
+		<Replace Tag="LOC_CASE_FARM_DESC" Language="zh_Hans_CN">
+			<Text>在选定地块建造农场改良设施。</Text>
+		</Replace>
+		<Replace Tag="LOC_CASE_MINE_DESC" Language="zh_Hans_CN">
+			<Text>在选定地块建造矿井改良设施。</Text>
+		</Replace>
+		<Replace Tag="LOC_CASE_LUMBER_MILL_DESC" Language="zh_Hans_CN">
+			<Text>在选定地块建造伐木场。</Text>
+		</Replace>
+		<Replace Tag="LOC_CASE_FORT_DESC" Language="zh_Hans_CN">
+			<Text>在选定地块建造要塞。</Text>
+		</Replace>
+		<Replace Tag="LOC_CASE_ROAD_DESC" Language="zh_Hans_CN">
+			<Text>在选定地块建造远古道路（范围：1）。</Text>
+		</Replace>
+		<Replace Tag="LOC_CASE_REMOVE_FEATURE_DESC" Language="zh_Hans_CN">
+			<Text>移除选定地块的森林地貌。</Text>
+		</Replace>
+		<Replace Tag="LOC_CASE_REPAIR_DESC" Language="zh_Hans_CN">
+			<Text>修复选定地块被劫掠的改良设施。</Text>
+		</Replace>
+
+		<!-- ModTool Build Charge Abilities -->
+		<Replace Tag="LOC_ABILITY_INCREASE_BUILD_CHARGE_NAME" Language="zh_Hans_CN">
+			<Text>增加建造次数</Text>
+		</Replace>
+		<Replace Tag="LOC_ABILITY_INCREASE_BUILD_CHARGE_DESCRIPTION" Language="zh_Hans_CN">
+			<Text>使该单位的建造次数 +1。</Text>
+		</Replace>
+		<Replace Tag="LOC_ABILITY_DECREASE_BUILD_CHARGE_NAME" Language="zh_Hans_CN">
+			<Text>减少建造次数</Text>
+		</Replace>
+		<Replace Tag="LOC_ABILITY_DECREASE_BUILD_CHARGE_DESCRIPTION" Language="zh_Hans_CN">
+			<Text>使该单位的建造次数 -1。</Text>
+		</Replace>
+
+		<!-- WorldBuilder API test panel -->
+		<Replace Tag="LOC_MODMISC_WB_TEST_TITLE" Language="zh_Hans_CN">
+			<Text>WorldBuilder 接口测试</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_WB_TEST_TOOLTIP" Language="zh_Hans_CN">
+			<Text>打开 WorldBuilder 接口测试面板</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_WB_TEST_PLAYER" Language="zh_Hans_CN">
+			<Text>玩家</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_WB_TEST_CIV" Language="zh_Hans_CN">
+			<Text>文明</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_WB_TEST_LEADER" Language="zh_Hans_CN">
+			<Text>领袖</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_WB_TEST_REMOVE" Language="zh_Hans_CN">
+			<Text>删除玩家</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_WB_TEST_APPLY" Language="zh_Hans_CN">
+			<Text>更改文明 / 领袖</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_WB_TEST_SET_ERA" Language="zh_Hans_CN">
+			<Text>设为远古时代</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_WB_TEST_GOLD" Language="zh_Hans_CN">
+			<Text>金币设为 1000</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_WB_TEST_FAITH" Language="zh_Hans_CN">
+			<Text>信仰设为 1000</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_WB_TEST_REVEAL" Language="zh_Hans_CN">
+			<Text>全部揭示</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_WB_TEST_CLEAR_START" Language="zh_Hans_CN">
+			<Text>清除起始位置</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_WB_TEST_READY" Language="zh_Hans_CN">
+			<Text>WorldBuilder 接口已就绪。</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_WB_TEST_PLAYER_INFO" Language="zh_Hans_CN">
+			<Text>玩家 {1_ID}：{2_Info}</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_WB_TEST_INITIALIZED" Language="zh_Hans_CN">
+			<Text>已初始化</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_WB_TEST_NOT_INITIALIZED" Language="zh_Hans_CN">
+			<Text>未初始化</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_WB_TEST_RESULT" Language="zh_Hans_CN">
+			<Text>{1_Test}：{2_Result}</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_WB_TEST_ERROR" Language="zh_Hans_CN">
+			<Text>{1_Test} 错误：{2_Error}</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_WB_TEST_CREATE_CITY" Language="zh_Hans_CN">
+			<Text>创建城市（地图选点）</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_WB_TEST_CREATE_UNIT" Language="zh_Hans_CN">
+			<Text>创建单位（地图选点）</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_WB_TEST_PLACE_SETTLER" Language="zh_Hans_CN">
+			<Text>放置开拓者（地图选点）</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_WB_TEST_PICK_PLOT" Language="zh_Hans_CN">
+			<Text>{1_Action}：请在地图上点选高亮地块。</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_WB_TEST_PLAYER_NOT_READY" Language="zh_Hans_CN">
+			<Text>玩家尚未就绪，请稍后再试。</Text>
+		</Replace>
+		<!-- 创建游戏界面的选项 -->
+		<Replace Tag="LOC_MODMISC_OPTION_DUPLICATE_CITY_STATES_NAME" Language="zh_Hans_CN">
+			<Text>复制城邦以提供更多自定义玩家槽位</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_OPTION_DUPLICATE_CITY_STATES_DESC" Language="zh_Hans_CN">
+			<Text>把数据库里的每个城邦各复制一份（名称、类别、加成完全相同），让引擎能创建多得多的城邦玩家；多出来的城邦会留在地图外，作为可供其它 mod 使用的玩家槽位。关闭后数据库保持原版状态。</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_WB_TEST_GHOST_RECYCLE_BLOCKED" Language="zh_Hans_CN">
+			<Text>无法把玩家 {1_PlayerID} 回收成幽灵：它已经有城市，而移除全部城市会让玩家死亡（开拓者也救不回来）。</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_WB_TEST_MESSAGES" Language="zh_Hans_CN">
+			<Text>提示信息</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_WB_TEST_NO_PLOT" Language="zh_Hans_CN">
+			<Text>锚点周围没有可用地块。</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_WB_TEST_PLAYER_TYPE" Language="zh_Hans_CN">
+			<Text>玩家类型</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_WB_TEST_TYPE_MAJOR" Language="zh_Hans_CN">
+			<Text>主要文明</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_WB_TEST_TYPE_CITY_STATE" Language="zh_Hans_CN">
+			<Text>城邦</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_WB_TEST_PLACE_RANGE" Language="zh_Hans_CN">
+			<Text>放置范围</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_WB_TEST_RANGE_VALUE" Language="zh_Hans_CN">
+			<Text>{1_Range} 格</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_WB_TEST_ACTIVATE_GHOST" Language="zh_Hans_CN">
+			<Text>启用幽灵玩家</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_WB_TEST_RECYCLE_GHOST" Language="zh_Hans_CN">
+			<Text>回收到地图外</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_WB_TEST_GHOST" Language="zh_Hans_CN">
+			<Text>幽灵</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_WB_TEST_NO_GHOST" Language="zh_Hans_CN">
+			<Text>没有可用的幽灵玩家（请在本 mod 启用的情况下开新局）。</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_WB_TEST_GHOST_ACTIVATED" Language="zh_Hans_CN">
+			<Text>已将幽灵玩家 {1_PlayerID} 启用为 {2_Civ}。</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_WB_TEST_CREATE_GHOST" Language="zh_Hans_CN">
+			<Text>补建幽灵槽位</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_WB_TEST_GHOST_CREATED" Language="zh_Hans_CN">
+			<Text>运行时补建成功：玩家 {1_PlayerID}。</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_WB_TEST_GHOST_CREATE_FAILED" Language="zh_Hans_CN">
+			<Text>补建幽灵槽位失败：{1_Reason}</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_WB_TEST_CONVERT_CITY_STATE" Language="zh_Hans_CN">
+			<Text>城邦化选中玩家</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_WB_TEST_PLAYER_STATS" Language="zh_Hans_CN">
+			<Text>玩家槽位统计</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_WB_TEST_PLAYER_STATS_RESULT" Language="zh_Hans_CN">
+			<Text>槽位：{1_Summary}</Text>
+		</Replace>
+</LocalizedText>
+</GameData>

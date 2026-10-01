@@ -1,0 +1,1 @@
+-- Mod Misc Tools debug UI disabled: test InfoPanel rows removed.

@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- ===========================================================================
+     Mod Misc Tool: 创建游戏界面的选项
+
+     机制（参考 Atelier 的做法）：往 Parameters 表写一行，就会在“创建游戏 → 高级选项”
+     里出现一个开关；它的值写进 Game 配置（ConfigurationId），
+     modinfo 里的 <Criteria><ConfigurationValueMatches> 再据此决定要不要加载
+     GhostPlayers_CityStates.sql —— 也就是“在创建游戏界面通过选项控制数据库加载”。
+
+     默认 DefaultValue="1"（开启）。
+     =========================================================================== -->
+<GameData>
+	<Parameters>
+		<Row ParameterId="ModMiscToolDuplicateCityStates"
+		     Name="LOC_MODMISC_OPTION_DUPLICATE_CITY_STATES_NAME"
+		     Description="LOC_MODMISC_OPTION_DUPLICATE_CITY_STATES_DESC"
+		     Domain="bool"
+		     DefaultValue="1"
+		     ConfigurationGroup="Game"
+		     ConfigurationId="MODMISC_DUPLICATE_CITY_STATES"
+		     GroupId="AdvancedOptions"
+		     SortIndex="2020" />
+	</Parameters>
+</GameData>
