@@ -91,11 +91,17 @@
 * **不复制配色**：`PlayerColors`（ColorManager 库）是独立数据库，跟 gameplay 库不互通，
   SQL 里访问不到；而且相同 RGBA 值同时出场时会让其中一方回退到默认颜色。
   复制体沿用引擎默认配色即可。
-* **图标要逐个定义**：`Icons` / `IconDefinitions`（IconManager 库）同样是独立库，
-  不能用 SQL 批量 `INSERT ... SELECT`；改为把 35 个原版城邦的图标逐条写死
-  （`GhostPlayers_CityStateIcons.sql`，复制体照抄原城邦的 Atlas/Index，外观一致），
+* **图标要逐个定义，且用 XML 而不是 SQL**：`Icons` / `IconDefinitions`（IconManager 库）
+  是独立库，不能用 SQL 批量 `INSERT ... SELECT`；把 35 个原版城邦的图标逐条写死
+  （`GhostPlayers_CityStateIcons.xml`，复制体照抄原城邦的 Atlas/Index，外观一致），
   挂在 `<UpdateIcons>` 上、同一个选项判据、不设 LoadOrder。
-* **踩坑**：`Index` 是 SQLite 保留字，写列名必须加双引号 `"Index"`，否则整条 SQL 语法错误。
+  SQL 版实测**图标不生效**（`Index` 是保留字，加引号也未必被加载器的 SQL 方言接受），
+  改用 XML 后与游戏自身图标文件同格式，最稳。
+* **幽灵溢出到地图**：复制城邦后引擎会把更多城邦**直接落到图上**（有首都），
+  这些不能回收（拆城＝玩家死亡）。因此 `InitializeGhostPlayers` 会先清点已落地的城邦，
+  把它们占掉的名额从“保留数”里扣掉（`keepUnsettled = choice - settledOnMap`），
+  保证地图上的城邦总数尽量贴近玩家选择；日志新增 `settledOnMap= / keepUnsettled=` 与
+  已落地城邦的 id+文明类型清单，便于核对是不是复制体被落图。
 * 运行时文件已回退到 2026-10-01 那次“可以进游戏”的构建（`9d6c291`），
   再叠加：主要文明上限开关（关）、构建标记（`MODMISC_BUILD_TAG`，版本 1.45）。
 * 主要文明幽灵相关接口（`InitializeGhostMajorPlayers` / 城邦化）保留在代码里，

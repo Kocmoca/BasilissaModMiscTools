@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<Mod id="a1b2c3d4-5e6f-7a8b-9c0d-1e2f3a4b5c6d" version="1.48">
+<Mod id="a1b2c3d4-5e6f-7a8b-9c0d-1e2f3a4b5c6d" version="1.49">
     <Properties>
         <Name>Basilissa Mod Misc Tools</Name>
         <Description>LOC_MODMISC_MOD_DESCRIPTION</Description>
@@ -54,11 +54,12 @@
             <Criteria>ModMisc_DuplicateCityStates_ON</Criteria>
             <File>GhostPlayers_CityStates.sql</File>
         </UpdateDatabase>
-        <!-- 复制城邦的图标：图标是独立数据库，没法用 SQL 批量拉取，只能逐个定义。
-             同一个选项判据、同样不设 LoadOrder。 -->
+        <!-- 复制城邦的图标：图标是独立数据库，没法用 SQL 批量拉取，只能逐个定义；
+             用 XML（与游戏自己的 Icons_Civilizations.xml 同格式），交给 XML 序列化器，
+             避免 SQL 里 "Index" 之类的保留字坑。同一个选项判据、同样不设 LoadOrder。 -->
         <UpdateIcons id="GhostPlayersCityStateIcons">
             <Criteria>ModMisc_DuplicateCityStates_ON</Criteria>
-            <File>GhostPlayers_CityStateIcons.sql</File>
+            <File>GhostPlayers_CityStateIcons.xml</File>
         </UpdateIcons>
         <UpdateDatabase id="Support">
             <File>SupportData.sql</File>
@@ -143,7 +144,7 @@
         <File>GhostPlayers_MapSizes.sql</File>
         <File>GhostPlayers_Options.xml</File>
         <File>GhostPlayers_CityStates.sql</File>
-        <File>GhostPlayers_CityStateIcons.sql</File>
+        <File>GhostPlayers_CityStateIcons.xml</File>
         <File>ExtensiveUnitBuild.lua</File>
         <!-- UI -->
         <File>UI/Support_UI.xml</File>
