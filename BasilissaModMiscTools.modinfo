@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<Mod id="a1b2c3d4-5e6f-7a8b-9c0d-1e2f3a4b5c6d" version="1.44">
+<Mod id="a1b2c3d4-5e6f-7a8b-9c0d-1e2f3a4b5c6d" version="1.45">
     <Properties>
         <Name>Basilissa Mod Misc Tools</Name>
         <Description>LOC_MODMISC_MOD_DESCRIPTION</Description>
@@ -138,8 +138,8 @@
         <!-- docs -->
         <File>API_Documentation.txt</File>
         <!-- API_Verification_Status.md 只在仓库里做文档，不进 mod 清单：
-             .txt 文档一直在清单里没问题，.md 属未验证扩展名，而加载失败后来定位到
-             “开局自动城邦化”（见 ModTool_GhostPlayers.lua 顶部注释），
+             .txt 文档一直在清单里没问题，.md 属未验证扩展名；而 2026-10-01 的连续
+             “游戏加载出错”最终以“回退 + 只扩城邦”收场（见 API_Verification_Status.md 第 7 节），
              文档不参与运行，就不放进分发清单了。 -->
         <File>Introduction.txt</File>
         <File>Introduction_EN.txt</File>

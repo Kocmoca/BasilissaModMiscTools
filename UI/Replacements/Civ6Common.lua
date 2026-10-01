@@ -866,7 +866,7 @@ end
 -- ===========================================================================
 
 -- 构建标记：前端与 gameplay 是不同 context，各自带一份字面量
-local MODMISC_HOOK_BUILD_TAG = "2026-10-01-E"
+local MODMISC_HOOK_BUILD_TAG = "2026-10-01-F"
 local GHOST_CITY_STATE_CUSTOM_DATA_KEY = "ModMiscToolCityStateCount"
 local GHOST_MAJOR_PLAYER_CUSTOM_DATA_KEY = "ModMiscToolMajorPlayerCount"
 
@@ -876,6 +876,13 @@ local GHOST_MAJOR_PLAYER_CUSTOM_DATA_KEY = "ModMiscToolMajorPlayerCount"
 -- 两个常量都可以按实测结果调整。
 local GHOST_SLOT_BUDGET = 62
 local GHOST_RESERVED_MINOR_SLOTS = 36
+
+-- 【策略】扩容后优先填充城邦：不再抬高主要文明数量。
+-- 原因：主要文明幽灵会参与外交，且城邦化改造（改领袖/文明）本身有风险；
+-- 只抬 CITY_STATE_COUNT 时引擎会给到 36 个城邦（数据库城邦文明条数上限），
+-- 玩家保留自己选的 6 个，其余 30 个进幽灵池 —— 全程零外交副作用。
+-- 需要重新开启时把这里改成 true（配合 ModTool_GhostPlayers.lua 的城邦化开关）。
+local GHOST_RAISE_MAJOR_CAP = false
 
 local function ModMiscToolIsGameSetupContext()
 	return MapSize_ValueChanged ~= nil
@@ -909,8 +916,22 @@ end
 
 -- 主要文明同理：把参与玩家数抬到“预算内允许的上限”，并记下玩家原本选择的数量。
 -- 引擎只在开局按这个数量创建玩家，所以这是唯一能让主要文明多出来的途径。
+-- CustomData 里那把“主要文明数量”的键只需要清一次（轮询里别反复写）
+local m_GhostMajorCapCleared = false
+
 local function ModMiscToolApplyGhostMajorPlayers()
 	if not ModMiscToolIsGameSetupContext() then return end
+
+	-- 策略关闭：把“玩家原本的主要文明数量”清成 0，
+	-- 免得对局内读到上一局（同进程）留下的旧值又去搬主要文明。
+	if not GHOST_RAISE_MAJOR_CAP then
+		if not m_GhostMajorCapCleared then
+			m_GhostMajorCapCleared = true
+			WriteCustomData(GHOST_MAJOR_PLAYER_CUSTOM_DATA_KEY, 0)
+			print("[ModMiscTool][Ghost] major cap raising is OFF -> saved major count cleared")
+		end
+		return
+	end
 
 	local current = GameConfiguration.GetParticipatingPlayerCount()
 	local hidden = GameConfiguration.GetHiddenPlayerCount()

@@ -265,11 +265,8 @@
 		<Row Tag="LOC_MODMISC_WB_TEST_GHOST_ACTIVATED">
 			<Text>Ghost player {1_PlayerID} activated as {2_Civ}.</Text>
 		</Row>
-		<Row Tag="LOC_MODMISC_WB_TEST_CONVERT_ALL_GHOSTS">
-			<Text>Convert All Ghosts</Text>
-		</Row>
-		<Row Tag="LOC_MODMISC_WB_TEST_CONVERT_ALL_RESULT">
-			<Text>Converted {1_Converted}/{2_Total} ghost major civ(s) to city-states (see log).</Text>
+		<Row Tag="LOC_MODMISC_WB_TEST_CREATE_GHOST">
+			<Text>Create Ghost Slot</Text>
 		</Row>
 		<Row Tag="LOC_MODMISC_WB_TEST_GHOST_CREATED">
 			<Text>Runtime ghost slot created: player {1_PlayerID}.</Text>

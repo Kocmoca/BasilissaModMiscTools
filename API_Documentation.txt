@@ -518,6 +518,15 @@ GetPlayerSlotSummary()
   返回：一行统计字符串，如 "major=26 minor=36 engine=62 empty=0 pool=32 free=30"
   说明：面板「玩家槽位统计」按钮用的诊断接口，可用来确认引擎实际建了多少玩家。
 
+—— 当前策略：扩容后优先填充城邦（2026-10-01 定）——
+  * 只抬 CITY_STATE_COUNT（MapSizes.MaxCityStates=62），**不抬主要文明数量**
+    （hook 里的 GHOST_RAISE_MAJOR_CAP = false）；
+  * 引擎给到 36 个城邦（数据库城邦文明条数上限），玩家保留自己选的 6 个，
+    其余 30 个进幽灵池 —— 全程零外交副作用，也不需要城邦化改造；
+  * 主要文明幽灵（曾把池子做到 52）已停用：它们会参与外交，而城邦化改造有风险
+    （见 API_Verification_Status.md 第 29/31 条）。
+  * 需要恢复时把 GHOST_RAISE_MAJOR_CAP 改回 true 即可（预算逻辑仍在）。
+
 —— 幽灵池的槽位预算（前端 hook，UI/Replacements/Civ6Common.lua）——
   * MAX_PLAYERS = 64，减去野蛮人与自由城市两个固定槽位 → GHOST_SLOT_BUDGET = 62；
   * 主要文明与城邦抢同一批槽位，所以给城邦预留 GHOST_RESERVED_MINOR_SLOTS = 36

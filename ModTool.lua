@@ -1,6 +1,6 @@
 -- 构建标记：用来在 Lua.log 里确认“游戏里跑的到底是哪一版”，排查加载类问题必备。
 -- 三个阶段各打一次（gameplay 脚本 / InGame UI / 前端 hook），日志停在哪一步一目了然。
-MODMISC_BUILD_TAG = "2026-10-01-E"
+MODMISC_BUILD_TAG = "2026-10-01-F"
 print("[ModMiscTool] gameplay scripts loading, build=" .. tostring(MODMISC_BUILD_TAG))
 
 include('ModTool_Support_Functions.lua')
@@ -549,7 +549,6 @@ function Initialize()
 	ExposedMembers.ModMiscToolScript.GetGhostPlayerClaims = GetGhostPlayerClaims
 	ExposedMembers.ModMiscToolScript.MovePlayerOffMap = MovePlayerOffMap
 	ExposedMembers.ModMiscToolScript.ConvertGhostPlayerToCityState = ConvertGhostPlayerToCityState
-	ExposedMembers.ModMiscToolScript.ConvertAllGhostMajorPlayersToCityState = ConvertAllGhostMajorPlayersToCityState
 	ExposedMembers.ModMiscToolScript.GetGhostifyBlockReason = GetGhostifyBlockReason
 	ExposedMembers.ModMiscToolScript.PlayerHasOnMapUnit = PlayerHasOnMapUnit
 	ExposedMembers.ModMiscToolScript.allUnitData = allUnitData
