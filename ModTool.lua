@@ -1,4 +1,6 @@
 include('ModTool_Support_Functions.lua')
+include('ModTool_WorldBuilderAPI.lua')
+include('ModTool_GhostPlayers.lua')
 
 local playerCitiesInfo = {}
 local defeatedPlayers = {}
@@ -522,6 +524,26 @@ function Initialize()
 	if not ExposedMembers.ModMiscToolScript then
 		ExposedMembers.ModMiscToolScript = {}
 	end
+	-- 幽灵玩家（引擎认可的 off-map 玩家）：由 UI 层传入玩家原本的城邦数量后建立池子
+	ExposedMembers.ModMiscToolScript.InitializeGhostPlayers = InitializeGhostPlayers
+	ExposedMembers.ModMiscToolScript.InitializeGhostMajorPlayers = InitializeGhostMajorPlayers
+	ExposedMembers.ModMiscToolScript.CreateGhostPlayerFromEmptySlot = CreateGhostPlayerFromEmptySlot
+	ExposedMembers.ModMiscToolScript.CreateGhostPlayerFromMajorCiv = CreateGhostPlayerFromMajorCiv
+	ExposedMembers.ModMiscToolScript.GetLastGhostCreateDiagnostics = GetLastGhostCreateDiagnostics
+	ExposedMembers.ModMiscToolScript.GetPlayerSlotSummary = GetPlayerSlotSummary
+	ExposedMembers.ModMiscToolScript.GetGhostPlayers = GetGhostPlayers
+	ExposedMembers.ModMiscToolScript.GetGhostPlayerCount = GetGhostPlayerCount
+	ExposedMembers.ModMiscToolScript.IsGhostPlayer = IsGhostPlayer
+	ExposedMembers.ModMiscToolScript.IsGhostPlayerAvailable = IsGhostPlayerAvailable
+	ExposedMembers.ModMiscToolScript.GetAvailableGhostPlayers = GetAvailableGhostPlayers
+	ExposedMembers.ModMiscToolScript.GetAvailableGhostPlayerCount = GetAvailableGhostPlayerCount
+	ExposedMembers.ModMiscToolScript.GetAvailableGhostPlayerID = GetAvailableGhostPlayerID
+	ExposedMembers.ModMiscToolScript.ClaimAvailableGhostPlayer = ClaimAvailableGhostPlayer
+	ExposedMembers.ModMiscToolScript.ReleaseGhostPlayer = ReleaseGhostPlayer
+	ExposedMembers.ModMiscToolScript.IsGhostPlayerClaimed = IsGhostPlayerClaimed
+	ExposedMembers.ModMiscToolScript.GetGhostPlayerClaims = GetGhostPlayerClaims
+	ExposedMembers.ModMiscToolScript.MovePlayerOffMap = MovePlayerOffMap
+	ExposedMembers.ModMiscToolScript.PlayerHasOnMapUnit = PlayerHasOnMapUnit
 	ExposedMembers.ModMiscToolScript.allUnitData = allUnitData
 	ExposedMembers.ModMiscToolScript.defeatedPlayers = defeatedPlayers
 	ExposedMembers.ModMiscToolScript.playerCitiesInfo = playerCitiesInfo
@@ -543,5 +565,8 @@ function Initialize()
 	ExposedMembers.ModMiscToolScript.GetUnitCoordinate = GetUnitCoordinate
 	ExposedMembers.ModMiscToolScript.DamageToUnit = DamageToUnit
 	ExposedMembers.ModMiscToolScript.AoeAllUnitsForPlot = AoeAllUnitsForPlot
+	ExposedMembers.ModMiscToolScript.GetPlotsInRange = GetPlotsInRange
+	-- WorldBuilder（地图编辑器）接口模块：Gameplay 后端，UI 层通过它调用
+	ExposedMembers.ModMiscToolScript.WorldBuilderAPI = WorldBuilderAPI
 end
 Events.LoadGameViewStateDone.Add(Initialize)

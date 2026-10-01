@@ -340,6 +340,220 @@ ModMiscToolScript.forceValidPlayers
   类型：table  结构：forceValidPlayers[CaseType] = { playerID, ... }
   说明：向表中添加玩家ID可使 IsPlayerMatchRequirement 直接返回true
 
+------------------------------------------------------------------------------
+### 2.6 WorldBuilder（地图编辑器）接口（Gameplay 层）
+------------------------------------------------------------------------------
+
+访问方式：
+  ExposedMembers.ModMiscToolScript.WorldBuilderAPI
+
+说明：接口模块是独立文件 ModTool_WorldBuilderAPI.lua，由 gameplay 脚本
+      ModTool.lua include（运行在 Gameplay Lua 状态），再由 Initialize()
+      暴露到 ExposedMembers.ModMiscToolScript.WorldBuilderAPI 供 UI 层与
+      其他 mod 使用；与 mod 内 ExtensiveUnitBuild.lua 直接调用
+      WorldBuilder.* 的路径保持一致。
+      不做 API 存在性检测——方法名与参数顺序都取自原版地图编辑器的实际
+      调用，属于已知接口，直接调用（例如 SetPlayerLeader(playerID,
+      leaderType, civType, civLevel)）。
+
+IsActive()
+  返回：boolean
+  说明：是否处于地图编辑器模式，仅作状态参考，不作为接口可用性判定。
+        这些接口在普通对局（非地图编辑器）中同样可以直接调用，
+        测试面板就是在普通对局环境下验证它们的。
+
+PlayerManager（文明 / 领袖 / 时代 / 金币 / 信仰 / 科技 / 市政 / 起始位置）
+  AddPlayer(isAI)                           -> playerID（失败返回 -1）
+  RemovePlayer(playerID)                    -> UninitializePlayer
+  IsPlayerInitialized(playerID)             -> boolean
+  GetPlayerConfig(playerID)                 -> { Name, Civ, Leader, CivLevel, Era, Gold, Faith, IsHuman, IsBarbarian, IsFullCiv, ... }
+  GetSlotStatus(slotIndex)                  -> SlotStatus.*
+  SetPlayerLeader(playerID, leaderType, civType, civLevel)
+  SetPlayerEra(playerID, eraType)
+  SetPlayerGold(playerID, amount) / SetPlayerFaith(playerID, amount)
+  PlayerHasTech / SetPlayerHasTech / PlayerHasCivic / SetPlayerHasCivic
+  SetPlayerStartingPosition / ClearPlayerStartingPosition / ClearStartingPosition
+  GetStartPositionInfo / GetStartPositionPlayer
+  SetRandomMajorStartingPosition / SetRandomMinorStartingPosition
+  SetLeaderStartingPosition / SetCivilizationStartingPosition
+
+CityManager（城市 / 区域 / 建筑 / 地块归属）
+  CreateCity(playerID, plot) / RemoveCityAt(plot) / RemoveCity(city) / GetCity(playerID, cityID)
+  GetPlotOwner(plot) / SetPlotOwner(plot, ownerID)
+  GetCityValue / SetCityValue / CreateDistrict / RemoveDistrict
+  GetDistrictValue / SetDistrictValue / CreateBuilding / RemoveBuilding
+
+MapManager（地形 / 特征 / 资源 / 改良 / 路线 / 河流 / 悬崖 / 可见度）
+  SetTerrainType / SetFeatureType / CanPlaceFeature / GetFeaturePlacementPlotList
+  IsWonderTooClose / SetResourceType / CanPlaceResource
+  SetImprovementType / CanPlaceImprovement / IsImprovementPlaceable / SetImprovementPillaged
+  SetRouteType / SetContinentType / EditRiver / EditCliff / DoesPlotBorderRiver
+  GetContinentPlots / SetCoastalLowland / SetPlotValue
+  SetAllRevealed(revealed, playerID) / SetRevealed(plot, revealed)
+
+UnitManager
+  CreateUnit(unitTypeIndex, playerID, plot) / RemoveUnitAt(plot) / RemoveUnit(unit)
+
+ConfigurationManager / ModManager（地图级配置与文本）
+  SetMapValue / GetMapValues / GetKeyStringPairByIndex / SetKeyStringPairByIndex
+  SetString / RemoveString
+
+WorldBuilder 顶层（撤销 / 重做 / ID / 模式）
+  StartUndoBlock / EndUndoBlock / Undo / Redo / CanUndo / CanRedo
+  GetID / SetID / GenerateID / IsMod / SetMod
+  SetWBAdvancedMode / GetAdvancedMode
+  SetVisibilityPreviewPlayer / ClearVisibilityPreviewPlayer
+
+示例（把某个玩家改成数据库里的罗马 + 默认领袖）：
+  local api = ExposedMembers.ModMiscToolScript.WorldBuilderAPI
+  if api.IsActive() then
+      api.SetPlayerLeader(playerID, "LEADER_TRAJAN", "CIVILIZATION_ROME",
+          "CIVILIZATION_LEVEL_FULL_CIV")
+  end
+
+------------------------------------------------------------------------------
+### 2.7 幽灵玩家（Ghost Players）
+------------------------------------------------------------------------------
+
+背景：运行中的对局里用 PlayerManager():AddPlayer() 新增玩家会让引擎的 AI 外交子系统
+      （GameCore::AI::Diplomatic::GetDiplomaticStateIndex）空指针闪退，因此本 mod 改为
+      “开局多建、多余的搬到地图外”的方案：
+        * 创建游戏界面（UI/Replacements/Civ6Common.lua 的前端 hook）把城邦数量拉满，并用
+          Civ6Common 的 WriteCustomData 记下玩家原本选择的数量；
+        * 进游戏后 ModTool_GhostPlayers.lua 按该数量保留城邦，把多出来的城邦玩家搬到地图外
+          （UnitManager.InitUnit 放一个地图外开拓者，再清掉地图上的单位），得到一批
+          “引擎认可、但不在图上”的玩家，即幽灵玩家。
+        * 幽灵可用 GhostPlayers_CityStates.sql 复制城邦文明来扩容（引擎按城邦文明条数上限
+          创建城邦玩家）。
+      幽灵玩家池记录在存档属性里，随存档走；读老档不会重建池子。
+
+查询接口（均挂在 ExposedMembers.ModMiscToolScript）：
+
+GetGhostPlayers()
+  返回：table of playerID（幽灵池全部成员，可能包含已被带回地图的）
+  说明：池子来自 Game:GetProperty('kocmoca_modmisctool_ghost_players')。
+
+GetGhostPlayerCount()
+  返回：number
+
+IsGhostPlayer(playerID)
+  返回：boolean
+  说明：该玩家是否属于幽灵池（不等于“可用”）。
+
+IsGhostPlayerAvailable(playerID)
+  返回：boolean
+  说明：仍是幽灵、没有首都、也没有地图上的单位 —— 即还没有被带回地图使用。
+
+GetAvailableGhostPlayers()
+  返回：table of playerID（所有可用幽灵）
+
+GetAvailableGhostPlayerCount()
+  返回：number
+
+GetAvailableGhostPlayerID()
+  返回：playerID 或 nil
+  说明：取一个可用幽灵的 ID，方便其他 mod 直接拿来当“新建玩家”的槽位。
+
+ClaimAvailableGhostPlayer()
+  返回：playerID 或 nil
+  说明：预约一个“可用且未被预约”的幽灵，避免多个 mod 同时取到同一个。
+
+ReleaseGhostPlayer(playerID)
+  返回：无
+  说明：释放预约。
+
+IsGhostPlayerClaimed(playerID)
+  返回：boolean
+说明：预约仅是建议性记录，不改变 IsGhostPlayerAvailable 的结果。
+
+GetGhostPlayerClaims()
+  返回：table of playerID（当前被预约的幽灵）
+
+MovePlayerOffMap(playerID)
+  返回：boolean
+  说明：把玩家搬回地图外（清掉地图上的单位、只留地图外的开拓者），
+        等价于“回收到幽灵池”；调用前会先放好地图外单位，因此不会把玩家变成零单位而灭亡。
+
+PlayerHasOnMapUnit(playerID)
+  返回：boolean
+
+InitializeGhostPlayers(originalCount)
+  返回：无
+  说明：按“玩家原本设置的城邦数量”建立/补齐幽灵池（只处理还没有首都的城邦）。
+        通常由 UI 层在 LoadGameViewStateDone 时调用；其他 mod 一般不需要直接调用。
+
+InitializeGhostMajorPlayers(originalCount)
+  返回：无
+  说明：主要文明版的建池：把“超出玩家原本设置的主要文明数量”的主要文明搬到地图外。
+        originalCount 含本机玩家，因此图上保留 originalCount-1 个 AI；
+        本机玩家与已经建城的对手一律不动（不会拆城）。
+        引擎只在开局按“参与玩家数”创建主要文明，所以前端 hook 会先把这个数抬到
+        槽位预算允许的上限（见下），这里再把富余的收进幽灵池。
+
+GetPlayerSlotSummary()
+  返回：一行统计字符串，如 "major=26 minor=36 engine=62 empty=0 pool=32 free=30"
+  说明：面板「玩家槽位统计」按钮用的诊断接口，可用来确认引擎实际建了多少玩家。
+
+—— 幽灵池的槽位预算（前端 hook，UI/Replacements/Civ6Common.lua）——
+  * MAX_PLAYERS = 64，减去野蛮人与自由城市两个固定槽位 → GHOST_SLOT_BUDGET = 62；
+  * 主要文明与城邦抢同一批槽位，所以给城邦预留 GHOST_RESERVED_MINOR_SLOTS = 36
+    （实测引擎最多就建这么多城邦），剩下的 26 个才给主要文明；
+  * 实测结果（玩家原本选 4 个主要文明 + 6 个城邦）：
+      前端：major players -> 26 (player choice 4 saved) / city states -> max 62 (player choice 6 saved)
+      局内：unsettled city states=36 player choice=6 newly off-map=30 pool total=30
+            unsettled major players=25 player choice=4 newly off-map=22 pool total=52
+    引擎给出 26 主要文明（0..25，含本机玩家）+ 36 城邦（26..61）= 62，正好吃满槽位预算，
+    城邦没有被主要文明挤掉；幽灵池 52（改造前只有 30）；
+    留在图上的正是玩家自己选的那批：主要文明 0..3、城邦 26..31。
+  * 槽位 id 规律：引擎先排主要文明（从 0 起）再排城邦，所以“从末尾往前搬”=
+    先搬走城邦里最靠后的、再搬主要文明里的 —— 玩家原本的对手永远留在图上。
+  * 地图脚本会给放不下的城邦打 `-- START FAILED MINOR --`（Minor TotalPlots: 0），
+    这是抬 CITY_STATE_COUNT 的正常副作用，不影响开局。
+  * 创建游戏时 hook 把 CITY_STATE_COUNT 抬到 MapConfiguration.GetMaxMinorPlayers()、
+    把 GameConfiguration.SetParticipatingPlayerCount 抬到预算内的上限，
+    并用 WriteCustomData 记下玩家原本的选择，进游戏后再按原选择把富余的搬离地图。
+  * 结论：玩家对象只能由引擎在开局创建；运行时用 PlayerConfigurations 补建槽位
+    （CreateGhostPlayerFromEmptySlot）不会被引擎兑现（Players[slot] 恒为 nil）。
+
+CreateGhostPlayerFromMajorCiv(civType)
+  返回：新玩家 playerID，或 nil（失败原因打到日志）
+  说明：和 CreateGhostPlayerFromEmptySlot 同一条路径，但用**主要文明**；
+        civType 省略时轮流取数据库里的主要文明。用于验证“不能重复文明 / 玩家数量上限”
+        是否只在 UI 层（引擎层是否允许重复文明、允许超过 MaxPlayers 的玩家数）。
+
+CreateGhostPlayerFromEmptySlot(civType)
+  返回：新玩家 playerID，或 nil（失败原因打到日志）
+  说明：运行时补建幽灵槽位，走 EXera（分封城邦）CreateCityStatePlayer 的路径：
+          空槽位 → PlayerConfigurations[slot]:SetCivilizationTypeName(已有城邦文明)
+                 → SetIsMinorCiv(true) → SetSlotStatus(SS_COMPUTER)
+                 → Players[slot]:StartCityState() → 立刻搬到地图外 → 登记进幽灵池
+        用途：引擎自己创建的城邦玩家数量受“数据库里城邦文明条数”限制（请求 62 只出 36），
+        而“不能重复文明”的拦截很可能只在 UI 层；这条路径直接给空槽位指派已有城邦文明类型
+        （允许重复），用来验证/绕过该限制，不需要复制数据库城邦。
+        注意：它属于“运行时创建玩家”，与 PlayerManager():AddPlayer() 不同（后者会让 AI 外交
+        子系统空指针闪退）；面板上有「补建幽灵槽位」「补建幽灵槽位（主要文明）」两个按钮可单独
+        测试，不影响其他流程。
+        实测记录：给空槽位设好 PlayerConfigurations 之后，引擎并不会立刻把玩家建出来
+        （Players[slot] 仍为 nil，日志会打 “slot N configured but not created by engine”），
+        因此这条路径目前只能作为“验证引擎限制”的手段；真正要更多玩家，走
+        MapSizes.MaxPlayers / MaxCityStates 只抬上限 + 开局由引擎创建的思路。
+
+其他 mod 用法示例（拿一个幽灵槽位来放自己的新玩家）：
+  local api = ExposedMembers.ModMiscToolScript
+  local playerID = api.ClaimAvailableGhostPlayer()
+  if playerID ~= nil then
+      -- 该玩家是引擎认可的既有玩家：可以改文明/领袖、建城、放单位，不会崩
+      WorldBuilder.PlayerManager():SetPlayerLeader(playerID, "LEADER_TRAJAN",
+          "CIVILIZATION_ROME", "CIVILIZATION_LEVEL_FULL_CIV")
+      -- 用完想回收：api.ReleaseGhostPlayer(playerID); api.MovePlayerOffMap(playerID)
+  end
+
+注意：
+  * 可用性以“是否在图上”为准，所以把幽灵带回地图后它会自动从可用列表消失；
+  * 幽灵池随存档保存，“读旧档”不会新建池子；没有池子时上面的接口返回空表/nil；
+  * IsMinor() 只有 UI 端有：UI 层可以用 ExposedMembers.ModMiscToolUI.IsMinorPlayerUI /
+    GetUnsettledCityStatePlayerIDsUI。
+
 ==============================================================================
 ## 三、ExposedMembers.ModMiscToolUI（UI 层 API）
 ==============================================================================
@@ -348,6 +562,45 @@ ModMiscToolScript.forceValidPlayers
 通过 ExposedMembers.ModMiscToolUI.{name} 访问。
 
 ------------------------------------------------------------------------------
+### 2.8 跨存档数据自检（WriteCustomData / ReadCustomData）
+
+> 每条接口“测过没有、结论是什么”，统一记在仓库根目录的
+> **API_Verification_Status.md**（标注 `[已验证可用]` / `[已验证失败]` / `[部分可用]`）；
+> 代码里对应的失败项也都带同名注释，改代码前先看那份清单。
+
+用途：确认“创建游戏时写下的参数”能不能被之后的对局/读档读到（幽灵池的“玩家原本选择”
+就靠它传递）。Civ6Common 里没有 SaveCustomData，写入统一走：
+
+```lua
+WriteCustomData(key, value)   -- 内部是 UI.GetGameParameters():Add(key, value)
+ReadCustomData(key)           -- 读不到返回 nil
+```
+
+**探针**：放在 UI/Support_UI.lua 的启动函数 `Initialize()`（`Events.LoadGameViewStateDone`，
+每次进入游戏只跑一次），**只输出日志**，不占面板：
+
+1. 先 `ReadCustomData("ModMiscToolCrossSaveProbe")`；
+2. 读不到 → 写入 `run=1;load=..;turn=..;prev=nil`；
+3. 下次进游戏（或读档）若读到上次那份 ⇒ 跨存档成立。
+
+日志里 `VERDICT=` 直接给结论：
+
+| VERDICT | 含义 |
+|---|---|
+| `first-write` | 本次没读到 → 已写入第一份，需要再进一局才有结论 |
+| `cross-save-OK` | 读到的是**上一次进游戏/另一个进程**写的数据 → **跨存档成立** |
+| `same-session` | 读到的是**本次进游戏**里刚写的 → 只证明活过了这次读档，不算证据 |
+| `FAILED ...` | 读写本身抛错（例如局内 `UI.GetGameParameters()` 不可写）→ 说明局内只能读不能写 |
+
+payload 形如 `run=3;load=2;turn=0;prev=run=2;...`：`run` 每次进游戏 +1，`load` 是
+“本进程第几次进游戏”，模块内用 `m_ProbeWrittenPayloads[payload] = loadIndex` 记账，
+因此能区分“同一局里又读到自己刚写的”和“真的跨了局”。
+
+两条测试路径：
+
+* **跨局**：新建游戏 → 退回主菜单 → 再新建游戏；
+* **跨进程**：新建游戏 → 存档 → 完全退出进程 → 重开 → 读档。
+
 ### 3.1 左侧工具栏（LeftSideBar）
 ------------------------------------------------------------------------------
 
@@ -385,6 +638,32 @@ HideSidebar()
         已隐藏时：取消隐藏并恢复展开键 alpha，按钮变回“隐藏工具栏”。
         该隐藏状态不写入存档；重新进入游戏后展开键恢复可见。
         隐藏状态下再次点击透明展开键，会临时恢复展开键透明度；侧栏折叠后继续透明。
+
+------------------------------------------------------------------------------
+### 3.1b 移动拦截注册（Civ6Common 统一替换）
+------------------------------------------------------------------------------
+
+RegisterMovementInterceptor(interceptor)
+  参数：
+    interceptor (function) predicate：function(moverID, ownerID) -> boolean
+  返回：true, nil / false, reason
+  说明：注册一个“允许单位移动”的 predicate。
+        Mod Misc Tool 的统一 Civ6Common 替换会遍历所有注册者：
+          * 任一 predicate 返回 true -> 跳过原版 UI 的“走进去会宣战”拦截；
+          * 全部返回 false / 没有注册者 -> 保持原版拦截，不绕过引擎。
+        返回 true 只应表示“本 mod 自己的规则明确允许这次移动”，
+        不能作为无条件放行。
+
+ShouldInterceptMovement(moverID, ownerID)
+  返回：boolean
+  说明：运行所有已注册 predicate。供 Civ6Common 替换层调用；
+        其他 mod 不要直接改这个函数，使用 RegisterMovementInterceptor。
+
+示例：
+  ExposedMembers.ModMiscToolUI.RegisterMovementInterceptor(
+      function(moverID, ownerID)
+          return MyMod.HasMilitaryAccess(moverID, ownerID) == true
+      end)
 
 ------------------------------------------------------------------------------
 ### 3.2 帝国信息面板（InfoPanel）

@@ -155,5 +155,130 @@
 		<Replace Tag="LOC_ABILITY_DECREASE_BUILD_CHARGE_DESCRIPTION" Language="zh_Hans_CN">
 			<Text>使该单位的建造次数 -1。</Text>
 		</Replace>
-	</LocalizedText>
+
+		<!-- WorldBuilder API test panel -->
+		<Replace Tag="LOC_MODMISC_WB_TEST_TITLE" Language="zh_Hans_CN">
+			<Text>WorldBuilder 接口测试</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_WB_TEST_TOOLTIP" Language="zh_Hans_CN">
+			<Text>打开 WorldBuilder 接口测试面板</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_WB_TEST_PLAYER" Language="zh_Hans_CN">
+			<Text>玩家</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_WB_TEST_CIV" Language="zh_Hans_CN">
+			<Text>文明</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_WB_TEST_LEADER" Language="zh_Hans_CN">
+			<Text>领袖</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_WB_TEST_REMOVE" Language="zh_Hans_CN">
+			<Text>删除玩家</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_WB_TEST_APPLY" Language="zh_Hans_CN">
+			<Text>更改文明 / 领袖</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_WB_TEST_SET_ERA" Language="zh_Hans_CN">
+			<Text>设为远古时代</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_WB_TEST_GOLD" Language="zh_Hans_CN">
+			<Text>金币设为 1000</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_WB_TEST_FAITH" Language="zh_Hans_CN">
+			<Text>信仰设为 1000</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_WB_TEST_REVEAL" Language="zh_Hans_CN">
+			<Text>全部揭示</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_WB_TEST_CLEAR_START" Language="zh_Hans_CN">
+			<Text>清除起始位置</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_WB_TEST_READY" Language="zh_Hans_CN">
+			<Text>WorldBuilder 接口已就绪。</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_WB_TEST_PLAYER_INFO" Language="zh_Hans_CN">
+			<Text>玩家 {1_ID}：{2_Info}</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_WB_TEST_INITIALIZED" Language="zh_Hans_CN">
+			<Text>已初始化</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_WB_TEST_NOT_INITIALIZED" Language="zh_Hans_CN">
+			<Text>未初始化</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_WB_TEST_RESULT" Language="zh_Hans_CN">
+			<Text>{1_Test}：{2_Result}</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_WB_TEST_ERROR" Language="zh_Hans_CN">
+			<Text>{1_Test} 错误：{2_Error}</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_WB_TEST_CREATE_CITY" Language="zh_Hans_CN">
+			<Text>创建城市（地图选点）</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_WB_TEST_CREATE_UNIT" Language="zh_Hans_CN">
+			<Text>创建单位（地图选点）</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_WB_TEST_PLACE_SETTLER" Language="zh_Hans_CN">
+			<Text>放置开拓者（地图选点）</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_WB_TEST_PICK_PLOT" Language="zh_Hans_CN">
+			<Text>{1_Action}：请在地图上点选高亮地块。</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_WB_TEST_PLAYER_NOT_READY" Language="zh_Hans_CN">
+			<Text>玩家尚未就绪，请稍后再试。</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_WB_TEST_MESSAGES" Language="zh_Hans_CN">
+			<Text>提示信息</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_WB_TEST_NO_PLOT" Language="zh_Hans_CN">
+			<Text>锚点周围没有可用地块。</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_WB_TEST_PLAYER_TYPE" Language="zh_Hans_CN">
+			<Text>玩家类型</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_WB_TEST_TYPE_MAJOR" Language="zh_Hans_CN">
+			<Text>主要文明</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_WB_TEST_TYPE_CITY_STATE" Language="zh_Hans_CN">
+			<Text>城邦</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_WB_TEST_PLACE_RANGE" Language="zh_Hans_CN">
+			<Text>放置范围</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_WB_TEST_RANGE_VALUE" Language="zh_Hans_CN">
+			<Text>{1_Range} 格</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_WB_TEST_ACTIVATE_GHOST" Language="zh_Hans_CN">
+			<Text>启用幽灵玩家</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_WB_TEST_RECYCLE_GHOST" Language="zh_Hans_CN">
+			<Text>回收到地图外</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_WB_TEST_GHOST" Language="zh_Hans_CN">
+			<Text>幽灵</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_WB_TEST_NO_GHOST" Language="zh_Hans_CN">
+			<Text>没有可用的幽灵玩家（请在本 mod 启用的情况下开新局）。</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_WB_TEST_GHOST_ACTIVATED" Language="zh_Hans_CN">
+			<Text>已将幽灵玩家 {1_PlayerID} 启用为 {2_Civ}。</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_WB_TEST_CREATE_GHOST" Language="zh_Hans_CN">
+			<Text>补建幽灵槽位</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_WB_TEST_GHOST_CREATED" Language="zh_Hans_CN">
+			<Text>运行时补建成功：玩家 {1_PlayerID}。</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_WB_TEST_GHOST_CREATE_FAILED" Language="zh_Hans_CN">
+			<Text>补建幽灵槽位失败：{1_Reason}</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_WB_TEST_CREATE_MAJOR_GHOST" Language="zh_Hans_CN">
+			<Text>补建幽灵槽位（主要文明）</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_WB_TEST_PLAYER_STATS" Language="zh_Hans_CN">
+			<Text>玩家槽位统计</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_WB_TEST_PLAYER_STATS_RESULT" Language="zh_Hans_CN">
+			<Text>槽位：{1_Summary}</Text>
+		</Replace>
+</LocalizedText>
 </GameData>

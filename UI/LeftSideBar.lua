@@ -85,6 +85,9 @@ local m_CustomRowColIndex = 0
 local m_RegisteredCustomGrids = {}
 local m_RegisteredCustomRows = {}
 
+-- 移动拦截器：其他 mod 注册 predicate，Civ6Common 替换层统一调用。
+local m_MovementInterceptors = {}
+
 -- ===========================================================================
 -- HELPERS
 -- ===========================================================================
@@ -792,6 +795,41 @@ function RegisterCustomRow(iconTexture, defaultLabel, defaultValue, refreshFunc)
 end
 
 -- ===========================================================================
+-- MOVEMENT INTERCEPTOR REGISTRATION
+--
+-- Other mods can register a predicate:
+--   function(moverID, ownerID) -> true / false
+-- Return true only when the move is explicitly allowed by that mod's own
+-- rule set. The Civ6Common replacement bypasses the UI war interception only
+-- when at least one registered interceptor returns true.
+-- ===========================================================================
+
+function RegisterMovementInterceptor(interceptor)
+    if type(interceptor) ~= "function" then
+        return false, "INVALID_INTERCEPTOR"
+    end
+    table.insert(m_MovementInterceptors, interceptor)
+    print("[ModMiscDebug] RegisterMovementInterceptor registered: count="
+        .. tostring(#m_MovementInterceptors))
+    return true
+end
+
+function ShouldInterceptMovement(moverID, ownerID)
+    local result = false
+    for _, interceptor in ipairs(m_MovementInterceptors) do
+        if interceptor(moverID, ownerID) == true then
+            result = true
+            break
+        end
+    end
+    print("[ModMiscDebug] ShouldInterceptMovement mover=" .. tostring(moverID)
+        .. " owner=" .. tostring(ownerID)
+        .. " registered=" .. tostring(#m_MovementInterceptors)
+        .. " result=" .. tostring(result))
+    return result
+end
+
+-- ===========================================================================
 -- EVENTS
 -- ===========================================================================
 
@@ -955,6 +993,8 @@ function Initialize()
     ExposedMembers.ModMiscToolUI.RefreshInfoPanel = RefreshInfoPanel
     ExposedMembers.ModMiscToolUI.RegisterCustomGrid = RegisterCustomGrid
     ExposedMembers.ModMiscToolUI.RegisterCustomRow = RegisterCustomRow
+    ExposedMembers.ModMiscToolUI.RegisterMovementInterceptor = RegisterMovementInterceptor
+    ExposedMembers.ModMiscToolUI.ShouldInterceptMovement = ShouldInterceptMovement
 
     -- 其他 mod 的 UI 可能先于本 UI 初始化并提交了注册；初始化完成后广播一次。
     LuaEvents.ModMiscToolUIReady.Call()
@@ -969,5 +1009,7 @@ end
 ExposedMembers.ModMiscToolUI.RegisterSidebarButton = RegisterSidebarButton
 ExposedMembers.ModMiscToolUI.RegisterCustomGrid = RegisterCustomGrid
 ExposedMembers.ModMiscToolUI.RegisterCustomRow = RegisterCustomRow
+ExposedMembers.ModMiscToolUI.RegisterMovementInterceptor = RegisterMovementInterceptor
+ExposedMembers.ModMiscToolUI.ShouldInterceptMovement = ShouldInterceptMovement
 
 Events.LoadGameViewStateDone.Add(Initialize)

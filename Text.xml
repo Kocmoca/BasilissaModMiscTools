@@ -155,5 +155,130 @@
 		<Row Tag="LOC_ABILITY_DECREASE_BUILD_CHARGE_DESCRIPTION">
 			<Text>Decreases this unit's build charges by 1.</Text>
 		</Row>
-	</BaseGameText>
+
+		<!-- WorldBuilder API test panel -->
+		<Row Tag="LOC_MODMISC_WB_TEST_TITLE">
+			<Text>WorldBuilder API Test</Text>
+		</Row>
+		<Row Tag="LOC_MODMISC_WB_TEST_TOOLTIP">
+			<Text>Open the WorldBuilder API test panel</Text>
+		</Row>
+		<Row Tag="LOC_MODMISC_WB_TEST_PLAYER">
+			<Text>Player</Text>
+		</Row>
+		<Row Tag="LOC_MODMISC_WB_TEST_CIV">
+			<Text>Civilization</Text>
+		</Row>
+		<Row Tag="LOC_MODMISC_WB_TEST_LEADER">
+			<Text>Leader</Text>
+		</Row>
+		<Row Tag="LOC_MODMISC_WB_TEST_REMOVE">
+			<Text>Remove Player</Text>
+		</Row>
+		<Row Tag="LOC_MODMISC_WB_TEST_APPLY">
+			<Text>Set Civilization / Leader</Text>
+		</Row>
+		<Row Tag="LOC_MODMISC_WB_TEST_SET_ERA">
+			<Text>Set Ancient Era</Text>
+		</Row>
+		<Row Tag="LOC_MODMISC_WB_TEST_GOLD">
+			<Text>Set Gold 1000</Text>
+		</Row>
+		<Row Tag="LOC_MODMISC_WB_TEST_FAITH">
+			<Text>Set Faith 1000</Text>
+		</Row>
+		<Row Tag="LOC_MODMISC_WB_TEST_REVEAL">
+			<Text>Reveal All</Text>
+		</Row>
+		<Row Tag="LOC_MODMISC_WB_TEST_CLEAR_START">
+			<Text>Clear Start Position</Text>
+		</Row>
+		<Row Tag="LOC_MODMISC_WB_TEST_READY">
+			<Text>WorldBuilder interfaces are ready.</Text>
+		</Row>
+		<Row Tag="LOC_MODMISC_WB_TEST_PLAYER_INFO">
+			<Text>Player {1_ID}: {2_Info}</Text>
+		</Row>
+		<Row Tag="LOC_MODMISC_WB_TEST_INITIALIZED">
+			<Text>initialized</Text>
+		</Row>
+		<Row Tag="LOC_MODMISC_WB_TEST_NOT_INITIALIZED">
+			<Text>not initialized</Text>
+		</Row>
+		<Row Tag="LOC_MODMISC_WB_TEST_RESULT">
+			<Text>{1_Test}: {2_Result}</Text>
+		</Row>
+		<Row Tag="LOC_MODMISC_WB_TEST_ERROR">
+			<Text>{1_Test} error: {2_Error}</Text>
+		</Row>
+		<Row Tag="LOC_MODMISC_WB_TEST_CREATE_CITY">
+			<Text>Create City (pick plot)</Text>
+		</Row>
+		<Row Tag="LOC_MODMISC_WB_TEST_CREATE_UNIT">
+			<Text>Create Unit (pick plot)</Text>
+		</Row>
+		<Row Tag="LOC_MODMISC_WB_TEST_PLACE_SETTLER">
+			<Text>Place Settler (pick plot)</Text>
+		</Row>
+		<Row Tag="LOC_MODMISC_WB_TEST_PICK_PLOT">
+			<Text>{1_Action}: pick a highlighted plot on the map.</Text>
+		</Row>
+		<Row Tag="LOC_MODMISC_WB_TEST_PLAYER_NOT_READY">
+			<Text>Player is not ready yet; try again in a moment.</Text>
+		</Row>
+		<Row Tag="LOC_MODMISC_WB_TEST_MESSAGES">
+			<Text>Messages</Text>
+		</Row>
+		<Row Tag="LOC_MODMISC_WB_TEST_NO_PLOT">
+			<Text>No valid plot found around the anchor.</Text>
+		</Row>
+		<Row Tag="LOC_MODMISC_WB_TEST_PLAYER_TYPE">
+			<Text>Player Type</Text>
+		</Row>
+		<Row Tag="LOC_MODMISC_WB_TEST_TYPE_MAJOR">
+			<Text>Major Civilization</Text>
+		</Row>
+		<Row Tag="LOC_MODMISC_WB_TEST_TYPE_CITY_STATE">
+			<Text>City-State</Text>
+		</Row>
+		<Row Tag="LOC_MODMISC_WB_TEST_PLACE_RANGE">
+			<Text>Placement Range</Text>
+		</Row>
+		<Row Tag="LOC_MODMISC_WB_TEST_RANGE_VALUE">
+			<Text>{1_Range} tiles</Text>
+		</Row>
+		<Row Tag="LOC_MODMISC_WB_TEST_ACTIVATE_GHOST">
+			<Text>Activate Ghost Player</Text>
+		</Row>
+		<Row Tag="LOC_MODMISC_WB_TEST_RECYCLE_GHOST">
+			<Text>Send Back Off-Map</Text>
+		</Row>
+		<Row Tag="LOC_MODMISC_WB_TEST_GHOST">
+			<Text>ghost</Text>
+		</Row>
+		<Row Tag="LOC_MODMISC_WB_TEST_NO_GHOST">
+			<Text>No ghost player available (start a new game with this mod enabled).</Text>
+		</Row>
+		<Row Tag="LOC_MODMISC_WB_TEST_GHOST_ACTIVATED">
+			<Text>Ghost player {1_PlayerID} activated as {2_Civ}.</Text>
+		</Row>
+		<Row Tag="LOC_MODMISC_WB_TEST_CREATE_GHOST">
+			<Text>Create Ghost Slot</Text>
+		</Row>
+		<Row Tag="LOC_MODMISC_WB_TEST_GHOST_CREATED">
+			<Text>Runtime ghost slot created: player {1_PlayerID}.</Text>
+		</Row>
+		<Row Tag="LOC_MODMISC_WB_TEST_GHOST_CREATE_FAILED">
+			<Text>Could not create a ghost slot: {1_Reason}</Text>
+		</Row>
+		<Row Tag="LOC_MODMISC_WB_TEST_CREATE_MAJOR_GHOST">
+			<Text>Create Ghost Slot (Major Civ)</Text>
+		</Row>
+		<Row Tag="LOC_MODMISC_WB_TEST_PLAYER_STATS">
+			<Text>Player Slots</Text>
+		</Row>
+		<Row Tag="LOC_MODMISC_WB_TEST_PLAYER_STATS_RESULT">
+			<Text>Slots: {1_Summary}</Text>
+		</Row>
+</BaseGameText>
 </GameData>

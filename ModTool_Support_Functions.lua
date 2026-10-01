@@ -423,6 +423,19 @@ function CreateDataForPlots(plots)
 	return plotsData
 end
 
+-- 返回 (iX,iY) 六边形范围内所有地块的索引（供 UI 层选点使用；UI 没有 Map.GetNeighborPlots）
+function GetPlotsInRange(iX, iY, range)
+	local plots = Map.GetNeighborPlots(iX, iY, range)
+	local plotIndexes = {}
+	if plots == nil then return plotIndexes end
+	for _, plot in ipairs(plots) do
+		if plot ~= nil then
+			table.insert(plotIndexes, plot:GetIndex())
+		end
+	end
+	return plotIndexes
+end
+
 function GetNearbyPlotsData(iX, iY, range)
 	local plots = Map.GetNeighborPlots(iX, iY, range)
 	local coordinatedPlotsData = CreateDataForPlots(plots)
