@@ -138,8 +138,9 @@
         <!-- docs -->
         <File>API_Documentation.txt</File>
         <!-- API_Verification_Status.md 只在仓库里做文档，不进 mod 清单：
-             2026-10-01 一次“游戏加载出错”疑似与清单里出现 .md 有关（.txt 一直没问题），
-             文档不参与运行，先从清单移除以排除变量。 -->
+             .txt 文档一直在清单里没问题，.md 属未验证扩展名，而加载失败后来定位到
+             “开局自动城邦化”（见 ModTool_GhostPlayers.lua 顶部注释），
+             文档不参与运行，就不放进分发清单了。 -->
         <File>Introduction.txt</File>
         <File>Introduction_EN.txt</File>
     </Files>

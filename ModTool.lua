@@ -544,6 +544,7 @@ function Initialize()
 	ExposedMembers.ModMiscToolScript.GetGhostPlayerClaims = GetGhostPlayerClaims
 	ExposedMembers.ModMiscToolScript.MovePlayerOffMap = MovePlayerOffMap
 	ExposedMembers.ModMiscToolScript.ConvertGhostPlayerToCityState = ConvertGhostPlayerToCityState
+	ExposedMembers.ModMiscToolScript.ConvertAllGhostMajorPlayersToCityState = ConvertAllGhostMajorPlayersToCityState
 	ExposedMembers.ModMiscToolScript.GetGhostifyBlockReason = GetGhostifyBlockReason
 	ExposedMembers.ModMiscToolScript.PlayerHasOnMapUnit = PlayerHasOnMapUnit
 	ExposedMembers.ModMiscToolScript.allUnitData = allUnitData

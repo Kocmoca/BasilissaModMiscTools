@@ -265,8 +265,11 @@
 		<Replace Tag="LOC_MODMISC_WB_TEST_GHOST_ACTIVATED" Language="zh_Hans_CN">
 			<Text>已将幽灵玩家 {1_PlayerID} 启用为 {2_Civ}。</Text>
 		</Replace>
-		<Replace Tag="LOC_MODMISC_WB_TEST_CREATE_GHOST" Language="zh_Hans_CN">
-			<Text>补建幽灵槽位</Text>
+		<Replace Tag="LOC_MODMISC_WB_TEST_CONVERT_ALL_GHOSTS" Language="zh_Hans_CN">
+			<Text>城邦化全部幽灵</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_WB_TEST_CONVERT_ALL_RESULT" Language="zh_Hans_CN">
+			<Text>已把 {1_Converted}/{2_Total} 个主要文明幽灵改成城邦（详见日志）。</Text>
 		</Replace>
 		<Replace Tag="LOC_MODMISC_WB_TEST_GHOST_CREATED" Language="zh_Hans_CN">
 			<Text>运行时补建成功：玩家 {1_PlayerID}。</Text>

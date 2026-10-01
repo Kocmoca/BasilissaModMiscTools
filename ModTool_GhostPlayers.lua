@@ -13,11 +13,14 @@
 -- ===========================================================================
 
 -- [待验证] 幽灵化的主要文明是否顺手改成城邦（避免它继续参与外交）。
--- 2026-10-01 实机：旧的 SetIsMinorCiv + StartCityState 写法出过一次“开局加载出错”，
--- 现已改成走 SetPlayerLeader（领袖 + 文明 + 城邦级别）这条【已验证可用】的接口。
--- 若再次出现加载异常，把这里改成 false 即可关掉自动城邦化
--- （面板「城邦化选中玩家」按钮仍可单独触发，用于逐个体检）。
-local GHOST_CONVERT_MAJOR_TO_CITY_STATE = true
+-- 【已定位】开局自动城邦化会让“游戏加载出错”（两次都复现，关掉就能进游戏）：
+--   这次用的是 SetPlayerLeader（领袖+文明+级别），上一版用的是 StartCityState，
+--   两版都失败 ⇒ 问题不在“用哪个接口”，而在“时机”：在 LoadGameViewStateDone
+--   这个加载过渡阶段改玩家身份，会把开局搞挂（日志停在 OnLoadGameViewStateDone，
+--   InGame UI 都没开始加载）。因此默认关闭，改成进游戏后用面板按钮手动触发：
+--     * 「城邦化全部幽灵」—— 一键处理池子里所有主要文明幽灵
+--     * 「城邦化选中玩家」—— 单个玩家体检
+local GHOST_CONVERT_MAJOR_TO_CITY_STATE = false
 local GHOST_PLAYER_MAX = 64   -- 兜底上限（正常用不到：所有多余城邦都当幽灵）
 local GHOST_PLAYER_PROPERTY = 'kocmoca_modmisctool_ghost_players'
 local UNIT_TYPE_SETTLER = 'UNIT_SETTLER'
@@ -827,6 +830,24 @@ function InitializeGhostMajorPlayers(originalCount)
 end
 
 -- 面板用：一行统计，直接看引擎到底建了多少玩家、幽灵池还剩多少可用
+-- 池子里所有“仍是主要文明”的幽灵，一次性城邦化（进游戏后由面板按钮触发）
+function ConvertAllGhostMajorPlayersToCityState()
+	local converted = 0
+	local total = 0
+	for _, playerID in ipairs(GetGhostPlayers()) do
+		local player = Players[playerID]
+		if player ~= nil and CallOrNil(function() return player:IsMajor() end) == true then
+			total = total + 1
+			if ConvertGhostPlayerToCityState(playerID) then
+				converted = converted + 1
+			end
+		end
+	end
+	print("[ModMiscTool][Ghost] convert-all: " .. tostring(converted) .. "/" .. tostring(total)
+		.. " ghost major civ(s) converted to city-states")
+	return converted, total
+end
+
 function GetPlayerSlotSummary()
 	local stats = DumpPlayerSlots('panel')
 	return "major=" .. tostring(stats.major)
