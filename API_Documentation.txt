@@ -500,9 +500,15 @@ InitializeGhostMajorPlayers(originalCount)
 ConvertGhostPlayerToCityState(playerID)
   返回：boolean（转换是否生效）
   说明：[待验证] 把幽灵化的“主要文明”改造成城邦，避免它继续参与外交
-        （AI 会来交涉、出现在外交界面）。做法：给已存在的玩家改
-        PlayerConfigurations（SetIsMinorCiv(true) + 城邦文明/领袖/城邦类型）
-        后调用 Players[playerID]:StartCityState()，再照常搬离地图。
+        （AI 会来交涉、出现在外交界面）。
+        做法（授权者指定）：走“设置领袖 + 文明”，即面板「应用」用的同一个接口
+          WorldBuilderAPI.SetPlayerLeader(playerID, <城邦领袖>, <城邦文明>,
+                                          'CIVILIZATION_LEVEL_CITY_STATE')
+        该接口在普通对局里【已验证可用】；若这一步没让 IsMajor() 变 false，
+        再补一个 SetIsMinorCiv(true) 配置标记。**不再调用 StartCityState()**
+        （旧写法 SetIsMinorCiv + StartCityState 已弃用）。
+        选城邦时优先挑地图上没人用的文明，避免凭空多出重复城邦（日志里的 unusedCityStates）。
+        硬保护：已经有城市的玩家直接拒绝（见 MovePlayerOffMap 条目）。
         判定标准：转换后 player:IsMajor() 是否变成 false。
         注意与 CreateGhostPlayerFromEmptySlot 的区别【已验证失败】：那条路是给空槽位造玩家，
         引擎不生成玩家对象；这里换的是已经存在的玩家的身份，才有机会生效。

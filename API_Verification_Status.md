@@ -82,7 +82,8 @@
 
 | # | 接口 / 方法 | 状态 | 备注 |
 |---|---|---|---|
-| 29 | `ConvertGhostPlayerToCityState(playerID)`：给**已存在**的玩家换身份（`SetIsMinorCiv(true)` + 城邦文明类型 + `StartCityState()`） | `[未验证]` | 起因：幽灵化的主要文明仍有外交行为。与第 3 条的区别是这里玩家对象已经存在。判定看 `player:IsMajor()` 是否变 false。开关：`GHOST_CONVERT_MAJOR_TO_CITY_STATE`。 |
+| 29 | `ConvertGhostPlayerToCityState(playerID)`：给**已存在**的玩家换身份 | `[未验证]` | 起因：幽灵化的主要文明仍有外交行为。当前做法（授权者指定）：`WorldBuilderAPI.SetPlayerLeader(id, 城邦领袖, 城邦文明, 'CIVILIZATION_LEVEL_CITY_STATE')` —— 与面板「应用」同一个**[已验证可用]**接口；没生效再补 `SetIsMinorCiv(true)`。判定看 `player:IsMajor()` 是否变 false。开关 `GHOST_CONVERT_MAJOR_TO_CITY_STATE`。 |
+| 31 | 旧写法：`SetIsMinorCiv(true)` + `Players[id]:StartCityState()` 做城邦化 | `[已弃用]` | 与一次“开局加载出错”同时出现（同一版本另有 `.md` 进 mod 清单这个变量，未最终定责），且是否生效无法确认；已整体弃用，改为上一条的 `SetPlayerLeader` 方案。 |
 | 30 | 把**已经建城**的玩家回收成幽灵（拆掉全部城市） | `[已验证失败]` | 授权者实机结论：**建城之后再移除全部城市 = 玩家直接死亡，手里有没有开拓者都一样**。因此回收路径已从代码里删除（原本的 `GhostifyPlayer` 入口撤销），`MovePlayerOffMap` 与 `ConvertGhostPlayerToCityState` 都对“有城市”的玩家直接拒绝（`GetGhostifyBlockReason`）。幽灵化只能作用于开局还没建城的玩家。 |
 
 
