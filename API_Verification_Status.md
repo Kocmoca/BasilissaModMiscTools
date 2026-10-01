@@ -88,9 +88,14 @@
   + 带 `<Criteria>` 的 `UpdateDatabase`），开关关掉时 SQL 完全不加载。
   涉及表（全部在 gameplay 库）：Types / Civilizations / TypeProperties / Leaders /
   CivilizationLeaders / LeaderTraits / CityNames。
-* **不复制配色与图标**：`PlayerColors`（ColorManager 库）与 `Icons`（IconManager 库）
-  都是独立数据库，跟 gameplay 库不互通，SQL 里访问不到；而且相同 RGBA 值同时出场时
-  会让其中一方回退到默认颜色。复制体沿用引擎默认配色即可。
+* **不复制配色**：`PlayerColors`（ColorManager 库）是独立数据库，跟 gameplay 库不互通，
+  SQL 里访问不到；而且相同 RGBA 值同时出场时会让其中一方回退到默认颜色。
+  复制体沿用引擎默认配色即可。
+* **图标要逐个定义**：`Icons` / `IconDefinitions`（IconManager 库）同样是独立库，
+  不能用 SQL 批量 `INSERT ... SELECT`；改为把 35 个原版城邦的图标逐条写死
+  （`GhostPlayers_CityStateIcons.sql`，复制体照抄原城邦的 Atlas/Index，外观一致），
+  挂在 `<UpdateIcons>` 上、同一个选项判据、不设 LoadOrder。
+* **踩坑**：`Index` 是 SQLite 保留字，写列名必须加双引号 `"Index"`，否则整条 SQL 语法错误。
 * 运行时文件已回退到 2026-10-01 那次“可以进游戏”的构建（`9d6c291`），
   再叠加：主要文明上限开关（关）、构建标记（`MODMISC_BUILD_TAG`，版本 1.45）。
 * 主要文明幽灵相关接口（`InitializeGhostMajorPlayers` / 城邦化）保留在代码里，
