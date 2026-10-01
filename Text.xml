@@ -226,6 +226,13 @@
 		<Row Tag="LOC_MODMISC_WB_TEST_PLAYER_NOT_READY">
 			<Text>Player is not ready yet; try again in a moment.</Text>
 		</Row>
+		<!-- 创建游戏界面的选项 -->
+		<Row Tag="LOC_MODMISC_OPTION_DUPLICATE_CITY_STATES_NAME">
+			<Text>Duplicate City-States for More Custom Player Slots</Text>
+		</Row>
+		<Row Tag="LOC_MODMISC_OPTION_DUPLICATE_CITY_STATES_DESC">
+			<Text>Duplicates every city-state in the database once (same name, category and bonuses) so the engine can create many more city-state players. The surplus city-states are kept off the map as spare player slots for mods. Turn this off to leave the database untouched.</Text>
+		</Row>
 		<Row Tag="LOC_MODMISC_WB_TEST_GHOST_RECYCLE_BLOCKED">
 			<Text>Can't recycle player {1_PlayerID} into a ghost: it already owns a city, and removing all cities kills a player (a settler won't save it).</Text>
 		</Row>

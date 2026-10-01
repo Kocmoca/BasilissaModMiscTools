@@ -226,6 +226,13 @@
 		<Replace Tag="LOC_MODMISC_WB_TEST_PLAYER_NOT_READY" Language="zh_Hans_CN">
 			<Text>玩家尚未就绪，请稍后再试。</Text>
 		</Replace>
+		<!-- 创建游戏界面的选项 -->
+		<Replace Tag="LOC_MODMISC_OPTION_DUPLICATE_CITY_STATES_NAME" Language="zh_Hans_CN">
+			<Text>复制城邦以提供更多自定义玩家槽位</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_OPTION_DUPLICATE_CITY_STATES_DESC" Language="zh_Hans_CN">
+			<Text>把数据库里的每个城邦各复制一份（名称、类别、加成完全相同），让引擎能创建多得多的城邦玩家；多出来的城邦会留在地图外，作为可供其它 mod 使用的玩家槽位。关闭后数据库保持原版状态。</Text>
+		</Replace>
 		<Replace Tag="LOC_MODMISC_WB_TEST_GHOST_RECYCLE_BLOCKED" Language="zh_Hans_CN">
 			<Text>无法把玩家 {1_PlayerID} 回收成幽灵：它已经有城市，而移除全部城市会让玩家死亡（开拓者也救不回来）。</Text>
 		</Replace>

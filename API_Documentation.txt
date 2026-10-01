@@ -598,6 +598,26 @@ CreateGhostPlayerFromEmptySlot(civType)
 通过 ExposedMembers.ModMiscToolUI.{name} 访问。
 
 ------------------------------------------------------------------------------
+### 2.7b 复制城邦（数据库扩容，可在创建游戏界面开关）
+
+引擎能创建的城邦玩家数量 = **数据库里的城邦文明条数**（实测请求 62 只出 36）。
+`GhostPlayers_CityStates.sql` 把每个城邦文明复制一份（类型名加 `_GHOST1`，
+名称/类别/领袖/特质/城市名/配色全部照抄），可用城邦数量翻倍。
+
+开关方式（参考 Atelier 的做法：**选项控制数据库加载**）：
+
+* `GhostPlayers_Options.xml`（FrontEndActions）往 `Parameters` 表写一行 →
+  创建游戏界面的“高级选项”里出现开关
+  **「复制城邦以提供更多自定义玩家槽位」**（`ConfigurationId = MODMISC_DUPLICATE_CITY_STATES`，
+  `DefaultValue="1"` 默认开启）；
+* modinfo 的 `<ActionCriteria>` 用 `ConfigurationValueMatches` 读这个值；
+* `GhostPlayers_CityStates.sql` 挂在 InGameActions 的 `<UpdateDatabase>` 上并带该判据 ——
+  开关关闭时这个文件**完全不加载**，数据库保持原版状态；不设 LoadOrder，按默认顺序加载。
+
+复制只针对 `StartingCivilizationLevelType = 'CIVILIZATION_LEVEL_CITY_STATE'` 的文明，
+全部用 `INSERT ... SELECT` 从当前数据库取材，因此只影响原版的城邦，
+场景/DLC 的城邦碰不到。
+
 ### 2.8 跨存档数据自检（WriteCustomData / ReadCustomData）
 
 > 每条接口“测过没有、结论是什么”，统一记在仓库根目录的

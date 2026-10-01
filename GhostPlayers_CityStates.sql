@@ -1,110 +1,108 @@
--- ⚠️【未验证、已停用】本文件没有登记在 modinfo 里，从未在设备上跑过（仅做过 SQLite 静态校验）。
---
---    当初的两条备选路线现状：
---      * 运行时“补建幽灵槽位”（CreateGhostPlayerFromEmptySlot）—— 【已验证失败】，
---        引擎不会为运行时改过配置的槽位生成玩家对象（Players[slot] 恒为 nil）；
---      * 本文件（复制数据库城邦文明）—— 未验证，但它对应的是“引擎城邦数量上限 = 城邦文明条数”
---        这个已验证的硬限制，是唯一能突破 36 个城邦的手段。
---
---    当前采用“抬上限”路线（已验证可用，玩家选 4 + 6 → 幽灵池 52，主要文明 26 + 城邦 36）。
---    将来若确实需要更多城邦，把本文件登记到 InGameActions → UpdateDatabase 再实测即可。
 -- ===========================================================================
--- Mod Misc Tool: 幽灵玩家池 —— 复制城邦文明（让城邦数量能“拉满”）
+-- Mod Misc Tool: 复制城邦文明（幽灵玩家池扩容）
 --
--- 引擎能创建的城邦玩家数量受“数据库里有多少个不同的城邦文明”限制
--- （实测：请求 62 个只创建了 36 个，正好等于当前启用的城邦文明数量）。
--- 这里把每个城邦文明再复制两份（类型名加 _GHOST1 / _GHOST2），把可用城邦数量
--- 扩到约三倍，够填满 MAX_PLAYERS 级别的幽灵池。
+-- 目的：引擎能创建的城邦玩家数量 = 数据库里的城邦文明条数
+--       （实测：请求 62 个只创建了 36 个）。把每个城邦文明复制一份
+--       （类型名加 _GHOST1），可用城邦数量翻倍，就能把 CITY_STATE_COUNT
+--       拉满到槽位预算，幽灵池随之变大。
 --
--- 复制体与原城邦完全同质：同样的文明名/描述/词缀、同样的城邦类别
--- （TypeProperties: CityStateCategory）、同样的领袖复制体与其特质、同样的城市名。
--- 因为复制体的 Type 名带 _GHOST 后缀、ID 也排在原始城邦之后，幽灵池“从候选末尾
--- 往前搬”的逻辑会优先把复制体搬到地图外，原始城邦仍然留在地图上。
+-- 【可选项】本文件由 modinfo 的 ModMisc_DuplicateCityStates_ON 判据控制，
+--   对应创建游戏界面的选项“复制城邦以提供更多自定义玩家槽位”（默认开启）。
+--   关掉该选项时，本文件完全不会加载，数据库保持原版状态。
 --
--- 涉及的表（按外键顺序）：Types → Civilizations → TypeProperties → Leaders
---                          → CivilizationLeaders → LeaderTraits → CityNames
+-- 复制方式：全部用 INSERT ... SELECT，条件就是“当前数据库里所有城邦文明”，
+--   因此只影响原版城邦，不需要也无法碰到场景/DLC 的城邦；
+--   不在 modinfo 里设 LoadOrder，按默认顺序加载。
+--
+-- 涉及的表（按外键顺序）：
+--   Types → Civilizations → TypeProperties → Leaders → CivilizationLeaders
+--         → LeaderTraits → CityNames → PlayerColors
+--   PlayerColors 必须有：引擎给玩家分配颜色时要查这张表，缺了会在开局报错。
+--
+-- 复制体与原城邦同质：同样的名字/描述/词缀、同样的城邦类别（CityStateCategory）、
+-- 同样的领袖继承关系与城邦加成特质、同样的城市名与配色。
+-- 复制体的 Type 排在原城邦之后，幽灵池“从候选末尾往前搬”的逻辑会优先搬复制体。
 -- ===========================================================================
 
--- 1) 类型注册：文明 + 领袖（两份复制一起做）
+-- 1) 类型注册：文明
 INSERT INTO Types (Type, Kind)
-SELECT c.CivilizationType || s.Suffix, 'KIND_CIVILIZATION'
+SELECT c.CivilizationType || '_GHOST1', 'KIND_CIVILIZATION'
 FROM Civilizations c
-CROSS JOIN (SELECT '_GHOST1' AS Suffix UNION ALL SELECT '_GHOST2') s
 WHERE c.StartingCivilizationLevelType = 'CIVILIZATION_LEVEL_CITY_STATE'
-  AND c.CivilizationType NOT LIKE '%_GHOST1'
-  AND c.CivilizationType NOT LIKE '%_GHOST2';
+  AND c.CivilizationType NOT LIKE '%\_GHOST1' ESCAPE '\';
 
+-- 1b) 类型注册：领袖
 INSERT INTO Types (Type, Kind)
-SELECT l.LeaderType || s.Suffix, 'KIND_LEADER'
+SELECT l.LeaderType || '_GHOST1', 'KIND_LEADER'
 FROM Leaders l
 JOIN CivilizationLeaders cl ON cl.LeaderType = l.LeaderType
 JOIN Civilizations c ON c.CivilizationType = cl.CivilizationType
-CROSS JOIN (SELECT '_GHOST1' AS Suffix UNION ALL SELECT '_GHOST2') s
 WHERE c.StartingCivilizationLevelType = 'CIVILIZATION_LEVEL_CITY_STATE'
-  AND c.CivilizationType NOT LIKE '%_GHOST1'
-  AND c.CivilizationType NOT LIKE '%_GHOST2';
+  AND c.CivilizationType NOT LIKE '%\_GHOST1' ESCAPE '\';
 
 -- 2) 文明本体
 INSERT INTO Civilizations (CivilizationType, Name, Description, Adjective,
                            RandomCityNameDepth, StartingCivilizationLevelType, Ethnicity)
-SELECT c.CivilizationType || s.Suffix, c.Name, c.Description, c.Adjective,
+SELECT c.CivilizationType || '_GHOST1', c.Name, c.Description, c.Adjective,
        c.RandomCityNameDepth, c.StartingCivilizationLevelType, c.Ethnicity
 FROM Civilizations c
-CROSS JOIN (SELECT '_GHOST1' AS Suffix UNION ALL SELECT '_GHOST2') s
 WHERE c.StartingCivilizationLevelType = 'CIVILIZATION_LEVEL_CITY_STATE'
-  AND c.CivilizationType NOT LIKE '%_GHOST1'
-  AND c.CivilizationType NOT LIKE '%_GHOST2';
+  AND c.CivilizationType NOT LIKE '%\_GHOST1' ESCAPE '\';
 
--- 3) 城邦类别（CityStateCategory = SCIENTIFIC / TRADE / ...）
+-- 3) 城邦类别（TypeProperties: CityStateCategory = SCIENTIFIC / TRADE / ...）
 INSERT INTO TypeProperties (Type, Name, Value, PropertyType)
-SELECT tp.Type || s.Suffix, tp.Name, tp.Value, tp.PropertyType
+SELECT tp.Type || '_GHOST1', tp.Name, tp.Value, tp.PropertyType
 FROM TypeProperties tp
 JOIN Civilizations c ON c.CivilizationType = tp.Type
-CROSS JOIN (SELECT '_GHOST1' AS Suffix UNION ALL SELECT '_GHOST2') s
 WHERE c.StartingCivilizationLevelType = 'CIVILIZATION_LEVEL_CITY_STATE'
-  AND c.CivilizationType NOT LIKE '%_GHOST1'
-  AND c.CivilizationType NOT LIKE '%_GHOST2';
+  AND c.CivilizationType NOT LIKE '%\_GHOST1' ESCAPE '\';
 
 -- 4) 领袖本体（沿用原城邦领袖的继承关系，复制出同名领袖）
 INSERT INTO Leaders (LeaderType, Name, OperationList, IsBarbarianLeader,
                      InheritFrom, SceneLayers, Sex, SameSexPercentage)
-SELECT l.LeaderType || s.Suffix, l.Name, l.OperationList, l.IsBarbarianLeader,
+SELECT l.LeaderType || '_GHOST1', l.Name, l.OperationList, l.IsBarbarianLeader,
        l.InheritFrom, l.SceneLayers, l.Sex, l.SameSexPercentage
 FROM Leaders l
 JOIN CivilizationLeaders cl ON cl.LeaderType = l.LeaderType
 JOIN Civilizations c ON c.CivilizationType = cl.CivilizationType
-CROSS JOIN (SELECT '_GHOST1' AS Suffix UNION ALL SELECT '_GHOST2') s
 WHERE c.StartingCivilizationLevelType = 'CIVILIZATION_LEVEL_CITY_STATE'
-  AND c.CivilizationType NOT LIKE '%_GHOST1'
-  AND c.CivilizationType NOT LIKE '%_GHOST2';
+  AND c.CivilizationType NOT LIKE '%\_GHOST1' ESCAPE '\';
 
 -- 5) 文明 ↔ 领袖（首都名沿用原城邦的）
 INSERT INTO CivilizationLeaders (LeaderType, CivilizationType, CapitalName)
-SELECT cl.LeaderType || s.Suffix, cl.CivilizationType || s.Suffix, cl.CapitalName
+SELECT cl.LeaderType || '_GHOST1', cl.CivilizationType || '_GHOST1', cl.CapitalName
 FROM CivilizationLeaders cl
 JOIN Civilizations c ON c.CivilizationType = cl.CivilizationType
-CROSS JOIN (SELECT '_GHOST1' AS Suffix UNION ALL SELECT '_GHOST2') s
 WHERE c.StartingCivilizationLevelType = 'CIVILIZATION_LEVEL_CITY_STATE'
-  AND c.CivilizationType NOT LIKE '%_GHOST1'
-  AND c.CivilizationType NOT LIKE '%_GHOST2';
+  AND c.CivilizationType NOT LIKE '%\_GHOST1' ESCAPE '\';
 
--- 6) 领袖特质（城邦加成特质，与原城邦共用）
+-- 6) 领袖特质（城邦加成特质，与原城邦共用同一条 TraitType）
 INSERT INTO LeaderTraits (LeaderType, TraitType)
-SELECT lt.LeaderType || s.Suffix, lt.TraitType
+SELECT lt.LeaderType || '_GHOST1', lt.TraitType
 FROM LeaderTraits lt
 JOIN CivilizationLeaders cl ON cl.LeaderType = lt.LeaderType
 JOIN Civilizations c ON c.CivilizationType = cl.CivilizationType
-CROSS JOIN (SELECT '_GHOST1' AS Suffix UNION ALL SELECT '_GHOST2') s
 WHERE c.StartingCivilizationLevelType = 'CIVILIZATION_LEVEL_CITY_STATE'
-  AND c.CivilizationType NOT LIKE '%_GHOST1'
-  AND c.CivilizationType NOT LIKE '%_GHOST2';
+  AND c.CivilizationType NOT LIKE '%\_GHOST1' ESCAPE '\';
 
--- 7) 城市名（城邦一般只有首都一个名字，一并复制）
+-- 7) 城市名（城邦一般只有首都一个名字）
 INSERT INTO CityNames (CivilizationType, LeaderType, ContinentType, CityName, SortIndex)
-SELECT cn.CivilizationType || s.Suffix, NULL, cn.ContinentType, cn.CityName, cn.SortIndex
+SELECT cn.CivilizationType || '_GHOST1', NULL, cn.ContinentType, cn.CityName, cn.SortIndex
 FROM CityNames cn
 JOIN Civilizations c ON c.CivilizationType = cn.CivilizationType
-CROSS JOIN (SELECT '_GHOST1' AS Suffix UNION ALL SELECT '_GHOST2') s
 WHERE c.StartingCivilizationLevelType = 'CIVILIZATION_LEVEL_CITY_STATE'
-  AND c.CivilizationType NOT LIKE '%_GHOST1'
-  AND c.CivilizationType NOT LIKE '%_GHOST2';
+  AND c.CivilizationType NOT LIKE '%\_GHOST1' ESCAPE '\';
+
+-- 8) 玩家配色：引擎分配玩家颜色要查这张表，复制体缺了会在开局出问题
+INSERT INTO PlayerColors (Type, Usage, PrimaryColor, SecondaryColor,
+                          Alt1PrimaryColor, Alt1SecondaryColor,
+                          Alt2PrimaryColor, Alt2SecondaryColor,
+                          Alt3PrimaryColor, Alt3SecondaryColor)
+SELECT pc.Type || '_GHOST1', pc.Usage, pc.PrimaryColor, pc.SecondaryColor,
+       pc.Alt1PrimaryColor, pc.Alt1SecondaryColor,
+       pc.Alt2PrimaryColor, pc.Alt2SecondaryColor,
+       pc.Alt3PrimaryColor, pc.Alt3SecondaryColor
+FROM PlayerColors pc
+JOIN Civilizations c ON c.CivilizationType = pc.Type
+WHERE c.StartingCivilizationLevelType = 'CIVILIZATION_LEVEL_CITY_STATE'
+  AND c.CivilizationType NOT LIKE '%\_GHOST1' ESCAPE '\';
