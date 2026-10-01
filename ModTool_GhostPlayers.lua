@@ -643,6 +643,43 @@ end
 
 -- originalCount：玩家在创建游戏时原本设置的城邦数量（UI 层从 CustomData 读出后传入）
 -- 比它多出来的城邦会被搬到地图外，作为幽灵玩家池；没传值或不是新开局则不处理。
+-- 城邦玩家的落地清点：引擎可能已经把一部分城邦落到图上（有首都），
+-- 那些动不了（拆城＝玩家死亡，硬规则），所以要单独数出来。
+-- 返回：已落地数量、已落地的描述串（含文明类型，便于看清是不是复制体）
+local function SurveyCityStatesOnMap()
+	local settledCount = 0
+	local totalCount = 0
+	local parts = {}
+	for playerID = 0, MaxPlayerSlots() - 1 do
+		local player = Players[playerID]
+		if player ~= nil
+			and CallOrNil(function() return player:IsMajor() end) == false
+			and CallOrNil(function() return player:IsBarbarian() end) ~= true then
+			local playerConfig = PlayerConfigurations[playerID]
+			local civType = ''
+			if playerConfig ~= nil then
+				civType = tostring(CallOrNil(function() return playerConfig:GetCivilizationTypeName() end))
+			end
+			-- 自由城市/蛮族不是城邦，别数进来
+			if string.find(civType, 'FREE_CITIES') == nil and string.find(civType, 'BARBARIAN') == nil then
+				totalCount = totalCount + 1
+				local cities = CallOrNil(function() return player:GetCities() end)
+				local capital = nil
+				if cities ~= nil then
+					capital = CallOrNil(function() return cities:GetCapitalCity() end)
+				end
+				if capital ~= nil then
+					settledCount = settledCount + 1
+					if #parts < 24 then
+						table.insert(parts, tostring(playerID) .. "(" .. civType .. ")")
+					end
+				end
+			end
+		end
+	end
+	return settledCount, totalCount, table.concat(parts, ' ')
+end
+
 function InitializeGhostPlayers(originalCount)
 	if originalCount == nil then return end
 
@@ -651,12 +688,24 @@ function InitializeGhostPlayers(originalCount)
 	if #candidates == 0 then return end
 
 	local keepOnMap = math.max(0, math.floor(originalCount))
-	local added, poolTotal = AddGhostsFromCandidates(candidates, keepOnMap, 'city states')
 
-	print("[ModMiscTool][Ghost] unsettled city states=" .. tostring(#candidates)
-		.. " player choice=" .. tostring(keepOnMap)
-		.. " newly off-map=" .. tostring(added)
-		.. " pool total=" .. tostring(poolTotal))
+	-- 【溢出修正】地图上已经有城邦落地时，它们已经占了玩家选择的名额，
+	-- 所以留在地图上的“未落地城邦”要扣掉这部分，否则地图上的城邦会超出玩家选择。
+	local settledCount, totalCityStates, settledList = SurveyCityStatesOnMap()
+	local keepUnsettled = math.max(0, keepOnMap - settledCount)
+
+	local added, poolTotal = AddGhostsFromCandidates(candidates, keepUnsettled, 'city states')
+
+	print("[ModMiscTool][Ghost] city states: total=" .. tostring(totalCityStates)
+		.. " settledOnMap=" .. tostring(settledCount)
+		.. " unsettled=" .. tostring(#candidates)
+		.. " playerChoice=" .. tostring(keepOnMap)
+		.. " keepUnsettled=" .. tostring(keepUnsettled)
+		.. " newlyOffMap=" .. tostring(added)
+		.. " poolTotal=" .. tostring(poolTotal))
+	if settledCount > 0 then
+		print("[ModMiscTool][Ghost]   settled on map (cannot be removed): " .. settledList)
+	end
 end
 
 -- ===========================================================================

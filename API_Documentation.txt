@@ -629,8 +629,12 @@ LeaderTraits / CityNames`。
 ### 2.7c 复制城邦的图标（逐个定义）
 
 图标属于独立数据库（IconManager），**没法用 SQL 批量拉取**（里面访问不到 `Civilizations`），
-所以 `GhostPlayers_CityStateIcons.sql` 把 35 个原版城邦（含资料片、不含 DLC/场景）的图标
-逐条写死：复制体沿用原城邦**同一张图集的同一个位置**（Atlas/Index 照抄），外观一致。
+所以把 35 个原版城邦（含资料片、不含 DLC/场景）的图标逐条写死：复制体沿用原城邦
+**同一张图集的同一个位置**（Atlas/Index 照抄），外观一致。
+
+**格式用 XML 而不是 SQL**（`GhostPlayers_CityStateIcons.xml`）：与游戏自己的
+`Icons_Civilizations.xml` 同一种写法，交给 XML 序列化器处理，既不依赖跨库查询，
+也避开 SQL 侧 `Index` 这类保留字/方言坑。
 
 * 由同一个选项判据 `ModMisc_DuplicateCityStates_ON` 控制，挂在 `<UpdateIcons>` 上，不设 LoadOrder；
 * `Icons` 行由 `IconDefinitions` 的触发器自动建，文件里再显式写一遍（`INSERT OR IGNORE`）以防万一，
