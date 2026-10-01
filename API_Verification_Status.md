@@ -134,7 +134,16 @@
   会把跨库引用误判成“通过”（本项目就发生过一次）。
 * 复制文明时不要复制配色：相同 RGBA 同时出场会让一方回退默认颜色。
 
-## 9. 待验证 / 尚未验证
+## 9. 收尾状态（2026-10-01）
+
+* **测试面板已取消注册**：`UI/WorldBuilderTestPanel.*` 不再挂到 `AddUserInterfaces`，
+  不加载、左侧栏无入口；功能全部以 API 形式提供
+  （`ExposedMembers.ModMiscToolScript.*`：幽灵池、WorldBuilder 接口等；
+  `ExposedMembers.ModMiscToolUI.*`：左侧栏按钮注册、城邦判定辅助、账本等）。
+  需要调试时把 modinfo 里注释掉的那段 `AddUserInterfaces` 加回来。
+* 版本文案：`modinfo` 版本 1.53。
+
+## 10. 待验证 / 尚未验证
 
 | # | 接口 / 方法 | 状态 | 备注 |
 |---|---|---|---|

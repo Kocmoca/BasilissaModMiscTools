@@ -1,4 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!-- 开发用的测试面板：默认不注册（modinfo 里的 AddUserInterfaces 已注释掉）。
+     功能已由 API 暴露；需要调试时把那段 AddUserInterfaces 加回来。 -->
 <Context>
     <!-- 注意：控件 ID 不能与上下文/文件名（WorldBuilderTestPanel）同名。
          尺寸/字号是设计基准（900x930），运行时按屏幕尺寸等比缩放。

@@ -702,6 +702,14 @@ payload 形如 `run=3;load=2;turn=0;prev=run=2;...`：`run` 每次进游戏 +1�
 * **跨局**：新建游戏 → 退回主菜单 → 再新建游戏；
 * **跨进程**：新建游戏 → 存档 → 完全退出进程 → 重开 → 读档。
 
+### 3.0 关于 WorldBuilder 测试面板（开发用，默认不注册）
+
+`UI/WorldBuilderTestPanel.xml/.lua` 是开发期的测试面板（选择器 + 建城/建单位/放开拓者/
+幽灵相关按钮）。**收尾后已从 `modinfo` 的 `AddUserInterfaces` 里摘掉**：不加载、
+左侧栏也没有入口，它的能力全部由 API 提供（见 §2.6 / §2.7 / §3.1）。
+要调试时把 modinfo 里注释掉的那段 `AddUserInterfaces` 加回来即可。
+左侧栏入口本身仍是公开接口：`ExposedMembers.ModMiscToolUI.RegisterSidebarButton(...)`。
+
 ### 3.1 左侧工具栏（LeftSideBar）
 ------------------------------------------------------------------------------
 
