@@ -626,7 +626,16 @@ LeaderTraits / CityNames`。
    根本访问不到 `PlayerColors` 表（写了会报 no such table，加载直接失败）；
 2. 就算换个文件复制进去，**相同 RGBA 值同时出场时，其中一方会回退到默认颜色**，反而更糟。
 
-图标（`Icons` / `IconDefinitions`）同理属于独立数据库，本文件也不碰。
+### 2.7c 复制城邦的图标（逐个定义）
+
+图标属于独立数据库（IconManager），**没法用 SQL 批量拉取**（里面访问不到 `Civilizations`），
+所以 `GhostPlayers_CityStateIcons.sql` 把 35 个原版城邦（含资料片、不含 DLC/场景）的图标
+逐条写死：复制体沿用原城邦**同一张图集的同一个位置**（Atlas/Index 照抄），外观一致。
+
+* 由同一个选项判据 `ModMisc_DuplicateCityStates_ON` 控制，挂在 `<UpdateIcons>` 上，不设 LoadOrder；
+* `Icons` 行由 `IconDefinitions` 的触发器自动建，文件里再显式写一遍（`INSERT OR IGNORE`）以防万一，
+  因此**重复执行是幂等的**；
+* 坑：`Index` 是 SQLite 保留字，列名必须写成 `"Index"`（带双引号），否则整条语句语法错误。
 
 ### 2.8 跨存档数据自检（WriteCustomData / ReadCustomData）
 
