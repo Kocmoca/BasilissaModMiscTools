@@ -86,14 +86,33 @@
   因此没有主要文明幽灵、没有外交副作用、也不需要城邦化改造。
 * 复制城邦的机制走 Atelier 同款“选项控制数据库加载”（`Parameters` 行 + `<ActionCriteria>`
   + 带 `<Criteria>` 的 `UpdateDatabase`），开关关掉时 SQL 完全不加载。
-  涉及表：Types / Civilizations / TypeProperties / Leaders / CivilizationLeaders /
-  LeaderTraits / CityNames / **PlayerColors**（配色必须复制，否则引擎分配颜色会出问题）。
+  涉及表（全部在 gameplay 库）：Types / Civilizations / TypeProperties / Leaders /
+  CivilizationLeaders / LeaderTraits / CityNames。
+* **不复制配色与图标**：`PlayerColors`（ColorManager 库）与 `Icons`（IconManager 库）
+  都是独立数据库，跟 gameplay 库不互通，SQL 里访问不到；而且相同 RGBA 值同时出场时
+  会让其中一方回退到默认颜色。复制体沿用引擎默认配色即可。
 * 运行时文件已回退到 2026-10-01 那次“可以进游戏”的构建（`9d6c291`），
   再叠加：主要文明上限开关（关）、构建标记（`MODMISC_BUILD_TAG`，版本 1.45）。
 * 主要文明幽灵相关接口（`InitializeGhostMajorPlayers` / 城邦化）保留在代码里，
   但默认不参与开局流程；需要时再按 `API_Verification_Status.md` 第 29/31 条的结论开启。
 
-## 8. 待验证 / 尚未验证
+## 8. Civ6 的多个数据库（踩过的坑）
+
+| 库 | 典型表 | 说明 |
+|---|---|---|
+| Gameplay | `Types` / `Civilizations` / `Leaders` / `Traits` / `CityNames` … | 大部分 SQL 写这里 |
+| Configuration | `Parameters`（创建游戏界面的选项） | 选项行写这里（FrontEndActions） |
+| ColorManager | `PlayerColors` / `Colors` | 配色独立库，gameplay SQL 里访问不到 |
+| IconManager | `Icons` / `IconDefinitions` | 图标独立库，同上 |
+| Localization | `LocalizedText` | 文案独立库（UpdateText 写入） |
+
+* 一个 SQL 文件**只能碰一个库**的表：混着写会在加载时报 no such table，
+  数据库动作失败，严重时直接让开局挂掉。
+* 校验 SQL 时也要**按库分别校验**：把所有 schema 拼进同一个临时库去跑，
+  会把跨库引用误判成“通过”（本项目就发生过一次）。
+* 复制文明时不要复制配色：相同 RGBA 同时出场会让一方回退默认颜色。
+
+## 9. 待验证 / 尚未验证
 
 | # | 接口 / 方法 | 状态 | 备注 |
 |---|---|---|---|

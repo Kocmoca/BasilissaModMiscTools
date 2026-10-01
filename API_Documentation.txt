@@ -616,7 +616,17 @@ CreateGhostPlayerFromEmptySlot(civType)
 
 复制只针对 `StartingCivilizationLevelType = 'CIVILIZATION_LEVEL_CITY_STATE'` 的文明，
 全部用 `INSERT ... SELECT` 从当前数据库取材，因此只影响原版的城邦，
-场景/DLC 的城邦碰不到。
+场景/DLC 的城邦碰不到。涉及 7 张 gameplay 库的表：
+`Types / Civilizations / TypeProperties / Leaders / CivilizationLeaders /
+LeaderTraits / CityNames`。
+
+**不要复制配色（PlayerColors）**——授权者实测结论，两个原因：
+
+1. 配色属于**另一个数据库**（ColorManager），和 gameplay 库不互通，这个 SQL 文件里
+   根本访问不到 `PlayerColors` 表（写了会报 no such table，加载直接失败）；
+2. 就算换个文件复制进去，**相同 RGBA 值同时出场时，其中一方会回退到默认颜色**，反而更糟。
+
+图标（`Icons` / `IconDefinitions`）同理属于独立数据库，本文件也不碰。
 
 ### 2.8 跨存档数据自检（WriteCustomData / ReadCustomData）
 

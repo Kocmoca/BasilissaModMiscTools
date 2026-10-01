@@ -16,8 +16,14 @@
 --
 -- 涉及的表（按外键顺序）：
 --   Types → Civilizations → TypeProperties → Leaders → CivilizationLeaders
---         → LeaderTraits → CityNames → PlayerColors
---   PlayerColors 必须有：引擎给玩家分配颜色时要查这张表，缺了会在开局报错。
+--         → LeaderTraits → CityNames
+--
+-- 【不要复制 PlayerColors】授权者实测结论：
+--   1) 配色属于**另一个数据库**（ColorManager），和 gameplay 库不互通，
+--      本文件里根本访问不到 PlayerColors 表；
+--   2) 就算复制进去，相同 RGBA 值同时出场时会让其中一方回退到默认颜色，
+--      反而更糟。复制体沿用引擎的默认配色即可。
+--   同理，图标（Icons/IconDefinitions）也是独立数据库，这里不碰。
 --
 -- 复制体与原城邦同质：同样的名字/描述/词缀、同样的城邦类别（CityStateCategory）、
 -- 同样的领袖继承关系与城邦加成特质、同样的城市名与配色。
@@ -90,19 +96,5 @@ INSERT INTO CityNames (CivilizationType, LeaderType, ContinentType, CityName, So
 SELECT cn.CivilizationType || '_GHOST1', NULL, cn.ContinentType, cn.CityName, cn.SortIndex
 FROM CityNames cn
 JOIN Civilizations c ON c.CivilizationType = cn.CivilizationType
-WHERE c.StartingCivilizationLevelType = 'CIVILIZATION_LEVEL_CITY_STATE'
-  AND c.CivilizationType NOT LIKE '%\_GHOST1' ESCAPE '\';
-
--- 8) 玩家配色：引擎分配玩家颜色要查这张表，复制体缺了会在开局出问题
-INSERT INTO PlayerColors (Type, Usage, PrimaryColor, SecondaryColor,
-                          Alt1PrimaryColor, Alt1SecondaryColor,
-                          Alt2PrimaryColor, Alt2SecondaryColor,
-                          Alt3PrimaryColor, Alt3SecondaryColor)
-SELECT pc.Type || '_GHOST1', pc.Usage, pc.PrimaryColor, pc.SecondaryColor,
-       pc.Alt1PrimaryColor, pc.Alt1SecondaryColor,
-       pc.Alt2PrimaryColor, pc.Alt2SecondaryColor,
-       pc.Alt3PrimaryColor, pc.Alt3SecondaryColor
-FROM PlayerColors pc
-JOIN Civilizations c ON c.CivilizationType = pc.Type
 WHERE c.StartingCivilizationLevelType = 'CIVILIZATION_LEVEL_CITY_STATE'
   AND c.CivilizationType NOT LIKE '%\_GHOST1' ESCAPE '\';
