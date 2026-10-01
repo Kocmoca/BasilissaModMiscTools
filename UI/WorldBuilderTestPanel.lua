@@ -1,6 +1,11 @@
 -- ===========================================================================
 -- Mod Misc Tool: WorldBuilder（地图编辑器）接口测试面板
 --
+-- 【开发用，默认不注册】本面板已从 modinfo 的 AddUserInterfaces 里摘掉：
+-- 不加载、左侧栏没有入口。它的功能都通过 API 暴露给其它 mod 调用
+-- （ExposedMembers.ModMiscToolScript.* / ExposedMembers.ModMiscToolUI.*）。
+-- 需要调试时把 modinfo 里注释掉的那段 AddUserInterfaces 加回来即可。
+--
 -- 通过左侧栏入口打开；在普通对局里直接测试 Gameplay 后端
 -- （ModTool_WorldBuilderAPI.lua）提供的 WorldBuilder 接口。
 --
