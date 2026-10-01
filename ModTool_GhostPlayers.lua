@@ -13,8 +13,10 @@
 -- ===========================================================================
 
 -- [待验证] 幽灵化的主要文明是否顺手改成城邦（避免它继续参与外交）。
--- 若这一步在实机上引起异常，把这里改成 false 即可关掉（面板「回收成幽灵」仍可单独触发）。
-local GHOST_CONVERT_MAJOR_TO_CITY_STATE = true
+-- 2026-10-01 实机：打开时那一次开局“游戏加载出错”（日志停在 LoadScreen: OnLoadGameViewStateDone，
+-- InGame UI 根本没开始加载），因此先默认关闭，改用面板「城邦化选中玩家」按钮
+-- 在**一局之内、针对单个玩家**单独验证；证实可用后再把这里改回 true。
+local GHOST_CONVERT_MAJOR_TO_CITY_STATE = false
 local GHOST_PLAYER_MAX = 64   -- 兜底上限（正常用不到：所有多余城邦都当幽灵）
 local GHOST_PLAYER_PROPERTY = 'kocmoca_modmisctool_ghost_players'
 local UNIT_TYPE_SETTLER = 'UNIT_SETTLER'

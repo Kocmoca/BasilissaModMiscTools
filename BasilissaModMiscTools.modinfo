@@ -137,7 +137,9 @@
         <File>Text_CN.xml</File>
         <!-- docs -->
         <File>API_Documentation.txt</File>
-        <File>API_Verification_Status.md</File>
+        <!-- API_Verification_Status.md 只在仓库里做文档，不进 mod 清单：
+             2026-10-01 一次“游戏加载出错”疑似与清单里出现 .md 有关（.txt 一直没问题），
+             文档不参与运行，先从清单移除以排除变量。 -->
         <File>Introduction.txt</File>
         <File>Introduction_EN.txt</File>
     </Files>

@@ -86,8 +86,8 @@
             <!-- ============ 运行时补建幽灵槽位（测试 EXera 路径） ============ -->
             <GridButton ID="WorldBuilderTestCreateGhost" Anchor="L,T" Offset="20,736" Size="280,60"
                         Style="ButtonControl" FontSize="26" String="LOC_MODMISC_WB_TEST_CREATE_GHOST" />
-            <GridButton ID="WorldBuilderTestCreateMajorGhost" Anchor="L,T" Offset="310,736" Size="280,60"
-                        Style="ButtonControl" FontSize="26" String="LOC_MODMISC_WB_TEST_CREATE_MAJOR_GHOST" />
+            <GridButton ID="WorldBuilderTestConvertCityState" Anchor="L,T" Offset="310,736" Size="280,60"
+                        Style="ButtonControl" FontSize="26" String="LOC_MODMISC_WB_TEST_CONVERT_CITY_STATE" />
             <GridButton ID="WorldBuilderTestPlayerStats" Anchor="L,T" Offset="600,736" Size="280,60"
                         Style="ButtonControl" FontSize="26" String="LOC_MODMISC_WB_TEST_PLAYER_STATS" />
 

@@ -765,11 +765,32 @@ local function CreateGhostPlayerSlot()
         ExposedMembers.ModMiscToolScript.CreateGhostPlayerFromEmptySlot())
 end
 
--- 同一路径换主要文明再试一次（验证“不能重复文明/玩家数上限”是否只在 UI 层）
-local function CreateMajorGhostPlayerSlot()
-    print("[ModMiscTool][WorldBuilderTest] CreateGhost: 走主要文明路径 CreateGhostPlayerFromMajorCiv")
-    ReportGhostCreateResult("CreateGhost(major)",
-        ExposedMembers.ModMiscToolScript.CreateGhostPlayerFromMajorCiv())
+-- 把选中的主要文明就地城邦化（验证“给已存在的玩家换身份”这条路）
+-- 一次只处理一个玩家，方便一旦出问题能定位到具体是哪一步。
+local function ConvertSelectedToCityState()
+    local playerID = GetSelectedPlayerID()
+    if playerID == nil then
+        SetOutput(Locale.Lookup("LOC_MODMISC_WB_TEST_PLAYER_NOT_READY"))
+        return
+    end
+    local blockReason = nil
+    if ExposedMembers.ModMiscToolScript.GetGhostifyBlockReason ~= nil then
+        blockReason = ExposedMembers.ModMiscToolScript.GetGhostifyBlockReason(playerID)
+    end
+    print("[ModMiscTool][WorldBuilderTest] ConvertToCityState: player=" .. tostring(playerID)
+        .. " block=" .. tostring(blockReason))
+    if blockReason ~= nil then
+        SetOutput(Locale.Lookup("LOC_MODMISC_WB_TEST_GHOST_RECYCLE_BLOCKED", playerID))
+        return
+    end
+    local converted = ExposedMembers.ModMiscToolScript.ConvertGhostPlayerToCityState(playerID)
+    RefreshSelectorButtons()
+    print("[ModMiscTool][WorldBuilderTest] ConvertToCityState result=" .. tostring(converted))
+    if converted then
+        SetResult("ConvertToCityState(ok)", playerID)
+    else
+        SetResult("ConvertToCityState(failed)", playerID)
+    end
 end
 
 -- 统计当前槽位：引擎建了多少主要文明/城邦、还剩多少空槽位、幽灵池里有多少可用
@@ -904,7 +925,7 @@ local GEOMETRY_CONTROLS = {
     "WorldBuilderTestFaith",
     "WorldBuilderTestReveal",
     "WorldBuilderTestCreateGhost",
-    "WorldBuilderTestCreateMajorGhost",
+    "WorldBuilderTestConvertCityState",
     "WorldBuilderTestPlayerStats",
     "WorldBuilderTestMessages",
     "WorldBuilderTestMessageWindow",
@@ -1116,8 +1137,8 @@ function OnInit()
     Controls.WorldBuilderTestRemove:RegisterCallback(Mouse.eLClick, OnAction("RemovePlayer", RemovePlayer))
     Controls.WorldBuilderTestCreateGhost:RegisterCallback(Mouse.eLClick,
         OnAction("CreateGhostPlayer", CreateGhostPlayerSlot))
-    Controls.WorldBuilderTestCreateMajorGhost:RegisterCallback(Mouse.eLClick,
-        OnAction("CreateMajorGhostPlayer", CreateMajorGhostPlayerSlot))
+    Controls.WorldBuilderTestConvertCityState:RegisterCallback(Mouse.eLClick,
+        OnAction("ConvertToCityState", ConvertSelectedToCityState))
     Controls.WorldBuilderTestPlayerStats:RegisterCallback(Mouse.eLClick,
         OnAction("PlayerSlotStats", ShowPlayerSlotStats))
     Controls.WorldBuilderTestApply:RegisterCallback(Mouse.eLClick, OnAction("SetPlayerLeader", ApplyCivLeader))

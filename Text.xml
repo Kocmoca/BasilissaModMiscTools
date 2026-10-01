@@ -274,8 +274,8 @@
 		<Row Tag="LOC_MODMISC_WB_TEST_GHOST_CREATE_FAILED">
 			<Text>Could not create a ghost slot: {1_Reason}</Text>
 		</Row>
-		<Row Tag="LOC_MODMISC_WB_TEST_CREATE_MAJOR_GHOST">
-			<Text>Create Ghost Slot (Major Civ)</Text>
+		<Row Tag="LOC_MODMISC_WB_TEST_CONVERT_CITY_STATE">
+			<Text>Convert to City-State</Text>
 		</Row>
 		<Row Tag="LOC_MODMISC_WB_TEST_PLAYER_STATS">
 			<Text>Player Slots</Text>

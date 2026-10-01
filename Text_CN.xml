@@ -274,8 +274,8 @@
 		<Replace Tag="LOC_MODMISC_WB_TEST_GHOST_CREATE_FAILED" Language="zh_Hans_CN">
 			<Text>补建幽灵槽位失败：{1_Reason}</Text>
 		</Replace>
-		<Replace Tag="LOC_MODMISC_WB_TEST_CREATE_MAJOR_GHOST" Language="zh_Hans_CN">
-			<Text>补建幽灵槽位（主要文明）</Text>
+		<Replace Tag="LOC_MODMISC_WB_TEST_CONVERT_CITY_STATE" Language="zh_Hans_CN">
+			<Text>城邦化选中玩家</Text>
 		</Replace>
 		<Replace Tag="LOC_MODMISC_WB_TEST_PLAYER_STATS" Language="zh_Hans_CN">
 			<Text>玩家槽位统计</Text>
