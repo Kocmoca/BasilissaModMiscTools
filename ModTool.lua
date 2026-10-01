@@ -1,3 +1,8 @@
+-- 构建标记：用来在 Lua.log 里确认“游戏里跑的到底是哪一版”，排查加载类问题必备。
+-- 三个阶段各打一次（gameplay 脚本 / InGame UI / 前端 hook），日志停在哪一步一目了然。
+MODMISC_BUILD_TAG = "2026-10-01-E"
+print("[ModMiscTool] gameplay scripts loading, build=" .. tostring(MODMISC_BUILD_TAG))
+
 include('ModTool_Support_Functions.lua')
 include('ModTool_WorldBuilderAPI.lua')
 include('ModTool_GhostPlayers.lua')

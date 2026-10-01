@@ -19,6 +19,7 @@
 -- ===========================================================================
 
 include("InstanceManager")
+print("[ModMiscTool][WorldBuilderTest] panel loading build=" .. tostring(MODMISC_BUILD_TAG))
 
 -- ===========================================================================
 -- 常量与状态

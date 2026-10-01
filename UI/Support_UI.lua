@@ -1,6 +1,7 @@
 include("ModTool_Support_Functions.lua")
 include("ModTool_Support_UI.lua")
 include("Civ6Common")   -- ReadCustomData：读取创建游戏时保存的城邦数量
+print("[ModMiscTool] Support_UI loaded build=" .. tostring(MODMISC_BUILD_TAG))
 
 local allUnitPromotions = {}
 

@@ -22,6 +22,9 @@
 --     * 「城邦化选中玩家」—— 单个玩家体检
 local GHOST_CONVERT_MAJOR_TO_CITY_STATE = false
 local GHOST_PLAYER_MAX = 64   -- 兜底上限（正常用不到：所有多余城邦都当幽灵）
+print("[ModMiscTool][Ghost] ghost module loaded build=" .. tostring(MODMISC_BUILD_TAG)
+	.. " autoCityStateConvert=" .. tostring(GHOST_CONVERT_MAJOR_TO_CITY_STATE))
+
 local GHOST_PLAYER_PROPERTY = 'kocmoca_modmisctool_ghost_players'
 local UNIT_TYPE_SETTLER = 'UNIT_SETTLER'
 

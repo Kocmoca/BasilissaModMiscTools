@@ -865,6 +865,8 @@ end
 --   所以只能当传递通道，不能当持久化存储。
 -- ===========================================================================
 
+-- 构建标记：前端与 gameplay 是不同 context，各自带一份字面量
+local MODMISC_HOOK_BUILD_TAG = "2026-10-01-E"
 local GHOST_CITY_STATE_CUSTOM_DATA_KEY = "ModMiscToolCityStateCount"
 local GHOST_MAJOR_PLAYER_CUSTOM_DATA_KEY = "ModMiscToolMajorPlayerCount"
 
@@ -948,5 +950,6 @@ end
 if ModMiscToolIsGameSetupContext() then
 	ContextPtr:SetRefreshHandler(ModMiscToolGhostRefresh)
 	ContextPtr:RequestRefresh()
-	print("[ModMiscTool][Ghost] setup hook installed (refresh handler)")
+	print("[ModMiscTool][Ghost] setup hook installed (refresh handler) build="
+		.. tostring(MODMISC_HOOK_BUILD_TAG))
 end
