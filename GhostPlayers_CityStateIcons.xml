@@ -1,28 +1,24 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!-- ===========================================================================
-     Mod Misc Tool: 复制城邦的图标（逐个定义）
+     Mod Misc Tool: 复制城邦的图标（逐个定义，只做原版 base 城邦）
 
-     为什么不用 SQL：图标属于独立数据库（IconManager），跟 gameplay 库不互通，
-     里面访问不到 Civilizations，没法 INSERT ... SELECT 批量拉取；而且 SQL 里
-     Index 是保留字，容易踩语法坑。改用 XML（和游戏自己的 Icons_Civilizations.xml
-     同一种格式），由 <UpdateIcons> 加载，交给 XML 序列化器处理，最稳。
+     为什么用 XML：图标属于独立数据库（IconManager），跟 gameplay 库不互通，
+     没法用 SQL 批量拉取；SQL 里 Index 又是保留字，容易踩语法坑。
+     这里用 XML（与游戏自己的 Icons_Civilizations.xml 同格式），交给 XML 序列化器。
 
-     数据来源：原版（含资料片、不含 DLC/场景）城邦的 ICON_CIVILIZATION_<文明>，
-     复制体沿用**同一张图集的同一个位置**（Atlas/Index 照抄），外观与原城邦一致。
+     【只做 base 城邦，不碰 XP1/XP2/DLC】：
+       * 复制本身也只复制 base 的 24 个城邦（见 GhostPlayers_CityStates.sql），
+         XP1/XP2 的城邦不会被复制，自然也不需要它们的图标；
+       * XP1/XP2 的图标图集（ICON_ATLAS_EXPANSION_*）由资料片自己的图标动作加载，
+         本 mod 的图标动作不设 LoadOrder、加载更早，引用它们会因图集还不存在而报数据库错。
+     复制体沿用原城邦**同一张图集的同一个位置**（Atlas/Index 照抄），外观一致。
      =========================================================================== -->
 <GameInfo>
 	<IconDefinitions>
-		<Row Name="ICON_CIVILIZATION_AKKAD_GHOST1" Atlas="ICON_ATLAS_EXPANSION_2_CITY_STATES" Index="0"/>
 		<Row Name="ICON_CIVILIZATION_AMSTERDAM_GHOST1" Atlas="ICON_ATLAS_CIVILIZATIONS" Index="20"/>
-		<Row Name="ICON_CIVILIZATION_ANTIOCH_GHOST1" Atlas="ICON_ATLAS_EXPANSION_1_CITY_STATES" Index="0"/>
-		<Row Name="ICON_CIVILIZATION_BABYLON_GHOST1" Atlas="ICON_ATLAS_EXPANSION_1_CITY_STATES" Index="1"/>
-		<Row Name="ICON_CIVILIZATION_BOLOGNA_GHOST1" Atlas="ICON_ATLAS_EXPANSION_2_CITY_STATES" Index="1"/>
 		<Row Name="ICON_CIVILIZATION_BRUSSELS_GHOST1" Atlas="ICON_ATLAS_CIVILIZATIONS" Index="21"/>
 		<Row Name="ICON_CIVILIZATION_BUENOS_AIRES_GHOST1" Atlas="ICON_ATLAS_CIVILIZATIONS" Index="22"/>
-		<Row Name="ICON_CIVILIZATION_CAHOKIA_GHOST1" Atlas="ICON_ATLAS_EXPANSION_2_CITY_STATES" Index="2"/>
-		<Row Name="ICON_CIVILIZATION_CARDIFF_GHOST1" Atlas="ICON_ATLAS_EXPANSION_2_CITY_STATES" Index="3"/>
 		<Row Name="ICON_CIVILIZATION_CARTHAGE_GHOST1" Atlas="ICON_ATLAS_CIVILIZATIONS" Index="23"/>
-		<Row Name="ICON_CIVILIZATION_FEZ_GHOST1" Atlas="ICON_ATLAS_EXPANSION_2_CITY_STATES" Index="4"/>
 		<Row Name="ICON_CIVILIZATION_GENEVA_GHOST1" Atlas="ICON_ATLAS_CIVILIZATIONS" Index="24"/>
 		<Row Name="ICON_CIVILIZATION_HATTUSA_GHOST1" Atlas="ICON_ATLAS_CIVILIZATIONS" Index="25"/>
 		<Row Name="ICON_CIVILIZATION_HONG_KONG_GHOST1" Atlas="ICON_ATLAS_CIVILIZATIONS" Index="26"/>
@@ -33,13 +29,9 @@
 		<Row Name="ICON_CIVILIZATION_KUMASI_GHOST1" Atlas="ICON_ATLAS_CIVILIZATIONS" Index="31"/>
 		<Row Name="ICON_CIVILIZATION_LA_VENTA_GHOST1" Atlas="ICON_ATLAS_CIVILIZATIONS" Index="32"/>
 		<Row Name="ICON_CIVILIZATION_LISBON_GHOST1" Atlas="ICON_ATLAS_CIVILIZATIONS" Index="34"/>
-		<Row Name="ICON_CIVILIZATION_MEXICO_CITY_GHOST1" Atlas="ICON_ATLAS_EXPANSION_2_CITY_STATES" Index="5"/>
 		<Row Name="ICON_CIVILIZATION_MOHENJO_DARO_GHOST1" Atlas="ICON_ATLAS_CIVILIZATIONS" Index="35"/>
 		<Row Name="ICON_CIVILIZATION_NAN_MADOL_GHOST1" Atlas="ICON_ATLAS_CIVILIZATIONS" Index="36"/>
-		<Row Name="ICON_CIVILIZATION_NAZCA_GHOST1" Atlas="ICON_ATLAS_EXPANSION_2_CITY_STATES" Index="6"/>
-		<Row Name="ICON_CIVILIZATION_NGAZARGAMU_GHOST1" Atlas="ICON_ATLAS_EXPANSION_2_CITY_STATES" Index="7"/>
 		<Row Name="ICON_CIVILIZATION_PRESLAV_GHOST1" Atlas="ICON_ATLAS_CIVILIZATIONS" Index="37"/>
-		<Row Name="ICON_CIVILIZATION_RAPA_NUI_GHOST1" Atlas="ICON_ATLAS_EXPANSION_2_CITY_STATES" Index="8"/>
 		<Row Name="ICON_CIVILIZATION_SEOUL_GHOST1" Atlas="ICON_ATLAS_CIVILIZATIONS" Index="38"/>
 		<Row Name="ICON_CIVILIZATION_STOCKHOLM_GHOST1" Atlas="ICON_ATLAS_CIVILIZATIONS" Index="39"/>
 		<Row Name="ICON_CIVILIZATION_TORONTO_GHOST1" Atlas="ICON_ATLAS_CIVILIZATIONS" Index="40"/>
