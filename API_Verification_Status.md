@@ -82,8 +82,12 @@
 
 * **扩容只扩城邦**：抬 `CITY_STATE_COUNT`（上限 62）+ **复制城邦文明**（每个城邦复制一份
   `_GHOST1`，可在创建游戏界面用选项关闭，默认开启）→ 引擎可创建的城邦数量翻倍，
-  幽灵池随之变大；**不抬主要文明数量**（`GHOST_RAISE_MAJOR_CAP = false`），
-  因此没有主要文明幽灵、没有外交副作用、也不需要城邦化改造。
+  幽灵池随之变大；**不抬主要文明数量**（`GHOST_RAISE_MAJOR_CAP = false`，但会记下玩家
+  设定的人数用于算边界），因此没有主要文明幽灵、没有外交副作用、也不需要城邦化改造。
+* **幽灵判定 = 按 playerID 划范围**（授权者定，简单确定，不再做多回合扫描）：
+  主要文明占 `0..majorCount-1`，玩家设定的城邦占 `majorCount..majorCount+cityCount-1`，
+  边界之后（跳过 62/63 自由城市与蛮族）的城邦槽位**全部变幽灵**，开局跑一次即可。
+  开局时所有玩家都还没建城，所以不用考虑城市的影响。
 * 复制城邦的机制走 Atelier 同款“选项控制数据库加载”（`Parameters` 行 + `<ActionCriteria>`
   + 带 `<Criteria>` 的 `UpdateDatabase`），开关关掉时 SQL 完全不加载。
   涉及表（全部在 gameplay 库）：Types / Civilizations / TypeProperties / Leaders /

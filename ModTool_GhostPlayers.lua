@@ -681,161 +681,80 @@ local function LogCityStateCivTypes()
 	print("[ModMiscTool][Ghost]   duplicates: " .. table.concat(duplicates, ','))
 end
 
--- 城邦玩家的落地清点：引擎可能已经把一部分城邦落到图上（有首都），
--- 那些动不了（拆城＝玩家死亡，硬规则），所以要单独数出来。
--- 返回：已落地数量、已落地的描述串（含文明类型，便于看清是不是复制体）
-local function SurveyCityStatesOnMap()
-	local settledCount = 0
-	local totalCount = 0
-	local parts = {}
-	for playerID = 0, MaxPlayerSlots() - 1 do
-		local player = Players[playerID]
-		if player ~= nil
-			and CallOrNil(function() return player:IsMajor() end) == false
-			and CallOrNil(function() return player:IsBarbarian() end) ~= true then
-			local playerConfig = PlayerConfigurations[playerID]
-			local civType = ''
-			if playerConfig ~= nil then
-				civType = tostring(CallOrNil(function() return playerConfig:GetCivilizationTypeName() end))
-			end
-			-- 自由城市/蛮族不是城邦，别数进来
-			if string.find(civType, 'FREE_CITIES') == nil and string.find(civType, 'BARBARIAN') == nil then
-				totalCount = totalCount + 1
-				local cities = CallOrNil(function() return player:GetCities() end)
-				local capital = nil
-				if cities ~= nil then
-					capital = CallOrNil(function() return cities:GetCapitalCity() end)
+-- ===========================================================================
+-- 开局把“多出来的城邦槽位”一次性变成幽灵
+--
+-- 判定规则（授权者定，简单确定）：按 playerID 划范围。
+--   引擎开局排槽位的顺序：主要文明 0..majorCount-1，紧接着是玩家设定的城邦
+--   majorCount..majorCount+cityStateCount-1；再往后就是多出来的城邦槽位（我们要的幽灵），
+--   最后 62/63 是自由城市与蛮族，必须跳过。
+--   所以 边界 = majorPlayerCount + cityStateCount - 1，
+--   **id 大于边界、且不是 62/63 的城邦玩家，全部变成幽灵态**。
+--
+-- 开局时所有玩家都还没建城，所以不用考虑城市的影响（授权者确认）；
+-- 城邦玩家一旦落地就有首都，MovePlayerOffMap 的“有城市就拒绝”保护也不会误伤。
+-- ===========================================================================
+function InitializeGhostPlayers(cityStateCount, majorPlayerCount)
+	if cityStateCount == nil then return end
+
+	LogCityStateCivTypes()
+
+	local keepCityStates = math.max(0, math.floor(cityStateCount))
+	local keepMajors = math.max(1, math.floor(majorPlayerCount or 1))
+	local boundary = keepMajors + keepCityStates - 1
+	local maxSlot = MaxPlayerSlots() - 1
+
+	print("[ModMiscTool][Ghost] city state ghost pass: keepMajors=" .. tostring(keepMajors)
+		.. " keepCityStates=" .. tostring(keepCityStates)
+		.. " -> on-map ids 0.." .. tostring(boundary)
+		.. " | ghost ids " .. tostring(boundary + 1) .. ".." .. tostring(maxSlot)
+		.. " (skip 62/63)")
+
+	local ghosts = GetGhostPlayers()
+	local knownGhosts = {}
+	for _, ghostID in ipairs(ghosts) do
+		knownGhosts[ghostID] = true
+	end
+
+	local added = 0
+	local skipped = {}
+	for playerID = boundary + 1, maxSlot do
+		if playerID ~= 62 and playerID ~= 63 and not knownGhosts[playerID] then
+			local player = Players[playerID]
+			if player ~= nil then
+				local isMajor = CallOrNil(function() return player:IsMajor() end)
+				local isBarbarian = CallOrNil(function() return player:IsBarbarian() end)
+				local playerConfig = PlayerConfigurations[playerID]
+				local civType = ''
+				if playerConfig ~= nil then
+					civType = tostring(CallOrNil(function()
+						return playerConfig:GetCivilizationTypeName()
+					end))
 				end
-				if capital ~= nil then
-					settledCount = settledCount + 1
-					if #parts < 24 then
-						table.insert(parts, tostring(playerID) .. "(" .. civType .. ")")
+				local isSpecial = (string.find(civType, 'BARBARIAN') ~= nil)
+					or (string.find(civType, 'FREE_CITIES') ~= nil)
+				if isMajor == false and isBarbarian ~= true and not isSpecial then
+					if MovePlayerOffMap(playerID) then
+						table.insert(ghosts, playerID)
+						knownGhosts[playerID] = true
+						added = added + 1
+					else
+						table.insert(skipped, tostring(playerID) .. "(" .. civType .. ")")
 					end
+				elseif civType ~= '' then
+					-- 边界之后不是城邦的槽位：不该出现，记下来便于排查
+					table.insert(skipped, tostring(playerID) .. "!" .. civType)
 				end
 			end
 		end
 	end
-	return settledCount, totalCount, table.concat(parts, ' ')
-end
 
-function InitializeGhostPlayers(originalCount)
-	if originalCount == nil then return end
-
-	LogCityStateCivTypes()
-
-	-- 只搬“还没建城”的城邦：读老档时城邦都已建城 → 候选为空 → 什么都不会动
-	local candidates = GetUnsettledCityStatePlayerIDs()
-	if #candidates == 0 then return end
-
-	local keepOnMap = math.max(0, math.floor(originalCount))
-
-	-- 【溢出修正】地图上已经有城邦落地时，它们已经占了玩家选择的名额，
-	-- 所以留在地图上的“未落地城邦”要扣掉这部分，否则地图上的城邦会超出玩家选择。
-	local settledCount, totalCityStates, settledList = SurveyCityStatesOnMap()
-	local keepUnsettled = math.max(0, keepOnMap - settledCount)
-
-	local added, poolTotal = AddGhostsFromCandidates(candidates, keepUnsettled, 'city states')
-
-	print("[ModMiscTool][Ghost] city states: total=" .. tostring(totalCityStates)
-		.. " settledOnMap=" .. tostring(settledCount)
-		.. " unsettled=" .. tostring(#candidates)
-		.. " playerChoice=" .. tostring(keepOnMap)
-		.. " keepUnsettled=" .. tostring(keepUnsettled)
-		.. " newlyOffMap=" .. tostring(added)
-		.. " poolTotal=" .. tostring(poolTotal))
-	if settledCount > 0 then
-		print("[ModMiscTool][Ghost]   settled on map (cannot be removed): " .. settledList)
+	Game:SetProperty(GHOST_PLAYER_PROPERTY, ghosts)
+	print("[ModMiscTool][Ghost] ghost pass done: newlyOffMap=" .. tostring(added)
+		.. " poolTotal=" .. tostring(#ghosts))
+	if #skipped > 0 then
+		print("[ModMiscTool][Ghost]   skipped slots: " .. table.concat(skipped, ' '))
 	end
-end
-
--- ===========================================================================
--- [待验证] 把幽灵化的“主要文明”改造成城邦
---
--- 问题：主要文明即使被搬离地图，仍然是 IsMajor()==true 的完整文明，会参与外交
---       （AI 来交涉、出现在外交界面）。
--- 思路：搬离地图之前，先把它按城邦重新初始化，让它以城邦身份存在。
---
--- 与 CreateGhostPlayerFromEmptySlot 的关键区别【已验证失败】：那条路是给**空槽位**造玩家，
--- 引擎根本不会生成玩家对象（Players[slot] 恒为 nil）；而这里是给**已经存在的玩家**
--- 换身份，Players[playerID] 是有效对象，所以 StartCityState() 有机会真正生效。
---
--- 判定标准：转换后 player:IsMajor() 是否变成 false（gameplay 层可用，可直接验）。
--- 注意 player:IsMinor() 在 gameplay 层不可用【已验证失败】，不要用它做判定。
--- ===========================================================================
-function ConvertGhostPlayerToCityState(playerID)
-	local player = Players[playerID]
-	local playerConfig = PlayerConfigurations[playerID]
-	if player == nil or playerConfig == nil then
-		print("[ModMiscTool][Ghost] convert-to-city-state: player " .. tostring(playerID)
-			.. " has no engine player/config")
-		return false
-	end
-
-	local isMajorBefore = CallOrNil(function() return player:IsMajor() end)
-	if isMajorBefore == false then
-		-- 本来就是城邦，不需要转换
-		return false
-	end
-
-	-- 【硬保护】已经有城市的玩家绝不能动：引擎里“移除全部城市”会直接判玩家死亡，
-	-- 手里有开拓者也救不回来（授权者实机验证）。所以这里连城邦化都不做。
-	local cities = CallOrNil(function() return player:GetCities() end)
-	local capital = nil
-	if cities ~= nil then
-		capital = CallOrNil(function() return cities:GetCapitalCity() end)
-	end
-	if capital ~= nil then
-		print("[ModMiscTool][Ghost] convert-to-city-state: player " .. tostring(playerID)
-			.. " 已有城市 —— 拒绝处理（移除全部城市会让玩家死亡，开拓者也救不回来）")
-		return false
-	end
-
-	local cityStateCivTypes = GetCityStateCivTypes()
-	if #cityStateCivTypes == 0 then
-		print("[ModMiscTool][Ghost] convert-to-city-state: no city state civ in database")
-		return false
-	end
-	local civType = cityStateCivTypes[(playerID % #cityStateCivTypes) + 1]
-	local leaderType = GetDefaultLeaderType(civType)
-	local cityStateType = GetCityStateTypeFor(civType)
-
-	print("[ModMiscTool][Ghost] convert-to-city-state: player " .. tostring(playerID)
-		.. " civ=" .. tostring(civType) .. " leader=" .. tostring(leaderType)
-		.. " csType=" .. tostring(cityStateType))
-	print("[ModMiscTool][Ghost]   before: " .. DescribeSlot(playerID))
-
-	SetConfigEx(playerConfig, 'isMinorCiv=true',
-		function() playerConfig:SetIsMinorCiv(true) end,
-		function() return playerConfig:IsMinorCiv() end)
-	SetConfigEx(playerConfig, 'civType=' .. tostring(civType),
-		function() playerConfig:SetCivilizationTypeName(civType) end,
-		function() return playerConfig:GetCivilizationTypeName() end)
-	if cityStateType ~= nil then
-		SetConfigEx(playerConfig, 'cityStateType=' .. tostring(cityStateType),
-			function() playerConfig:SetCityStateType(cityStateType) end,
-			function() return playerConfig:GetCityStateType() end)
-	end
-	if leaderType ~= nil then
-		SetConfigEx(playerConfig, 'leaderType=' .. tostring(leaderType),
-			function() playerConfig:SetLeaderTypeName(leaderType) end,
-			function() return playerConfig:GetLeaderTypeName() end)
-	end
-
-	local started, startErr = pcall(function() player:StartCityState() end)
-	local isMajorAfter = CallOrNil(function() return player:IsMajor() end)
-	print("[ModMiscTool][Ghost]   StartCityState ok=" .. tostring(started)
-		.. (started and '' or (' err=' .. tostring(startErr)))
-		.. " -> IsMajor " .. tostring(isMajorBefore) .. " => " .. tostring(isMajorAfter))
-	print("[ModMiscTool][Ghost]   after: " .. DescribeSlot(playerID))
-
-	if isMajorAfter == false then
-		print("[ModMiscTool][Ghost] 城邦化成功：player " .. tostring(playerID)
-			.. " 已不再是主要文明（不会再参与主要文明外交）")
-		return true
-	end
-	print("[ModMiscTool][Ghost] 城邦化未生效：player " .. tostring(playerID)
-		.. " 仍是主要文明（配置能改、回读也对，但引擎的玩家身份没变）")
-	return false
 end
 
 -- 主要文明候选：还没建城的主要文明，排除本机玩家（不能把自己搬到地图外）

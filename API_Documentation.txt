@@ -484,14 +484,27 @@ GetGhostifyBlockReason(playerID)
 PlayerHasOnMapUnit(playerID)
   返回：boolean
 
-InitializeGhostPlayers(originalCount)
+InitializeGhostPlayers(cityStateCount, majorPlayerCount)
   返回：无
-  说明：按“玩家原本设置的城邦数量”建立/补齐幽灵池（只处理还没有首都的城邦）。
-        通常由 UI 层在 LoadGameViewStateDone 时调用；其他 mod 一般不需要直接调用。
+  说明：开局**一次性**把多余的城邦槽位变成幽灵，判定规则就一条 —— **按 playerID 划范围**：
 
-InitializeGhostMajorPlayers(originalCount)
+        * 引擎开局排槽位：主要文明 0..majorCount-1，紧接着玩家设定的城邦
+          majorCount..majorCount+cityStateCount-1（这两个数就是参数）；
+        * 边界 = majorPlayerCount + cityStateCount - 1；
+        * **id 大于边界、且不是 62/63 的城邦玩家，全部搬成幽灵态**；
+          62/63 是自由城市与蛮族，必须跳过。
+        * 开局时所有玩家都还没建城，所以不必考虑城市的影响；
+          城邦一旦落地就有首都，MovePlayerOffMap 的“有城市就拒绝”保护也不会误伤。
+
+        由 UI 层在 LoadGameViewStateDone 时调用一次（有多回合扫描已按要求移除）；
+        其他 mod 一般不需要直接调用。
+
+InitializeGhostMajorPlayers(originalCount)   【已停用】
   返回：无
-  说明：主要文明版的建池：把“超出玩家原本设置的主要文明数量”的主要文明搬到地图外。
+  说明：主要文明版的建池（把多余的主要文明搬离地图）。**当前策略不再抬主要文明上限**
+        （前端 hook 的 GHOST_RAISE_MAJOR_CAP = false），所以没有多余的主要文明，
+        UI 层也不再调用本函数；接口保留供参考/需要时启用。
+        原说明：
         originalCount 含本机玩家，因此图上保留 originalCount-1 个 AI；
         本机玩家与已经建城的对手一律不动（不会拆城）。
         引擎只在开局按“参与玩家数”创建主要文明，所以前端 hook 会先把这个数抬到

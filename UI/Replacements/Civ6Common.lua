@@ -916,19 +916,25 @@ end
 
 -- 主要文明同理：把参与玩家数抬到“预算内允许的上限”，并记下玩家原本选择的数量。
 -- 引擎只在开局按这个数量创建玩家，所以这是唯一能让主要文明多出来的途径。
--- CustomData 里那把“主要文明数量”的键只需要清一次（轮询里别反复写）
-local m_GhostMajorCapCleared = false
+-- 上一次写进 CustomData 的主要文明数量（只在变化时写）
+local m_GhostLastSavedMajorCount = nil
 
 local function ModMiscToolApplyGhostMajorPlayers()
 	if not ModMiscToolIsGameSetupContext() then return end
 
-	-- 策略关闭：把“玩家原本的主要文明数量”清成 0，
-	-- 免得对局内读到上一局（同进程）留下的旧值又去搬主要文明。
+	-- 策略关闭（当前）：**不抬上限**，但要把玩家设定的人数记下来 ——
+	-- 进游戏后要用“主要文明数 + 城邦数”算出槽位边界，边界之后的城邦槽位全部变幽灵。
 	if not GHOST_RAISE_MAJOR_CAP then
-		if not m_GhostMajorCapCleared then
-			m_GhostMajorCapCleared = true
-			WriteCustomData(GHOST_MAJOR_PLAYER_CUSTOM_DATA_KEY, 0)
-			print("[ModMiscTool][Ghost] major cap raising is OFF -> saved major count cleared")
+		local configured = GameConfiguration.GetParticipatingPlayerCount()
+		local hidden = GameConfiguration.GetHiddenPlayerCount()
+		if configured == nil or hidden == nil then return end
+		configured = configured - hidden          -- 参与人数含隐藏槽位，减掉才是玩家设定的人数
+		if configured <= 0 then return end
+		if configured ~= m_GhostLastSavedMajorCount then
+			m_GhostLastSavedMajorCount = configured
+			WriteCustomData(GHOST_MAJOR_PLAYER_CUSTOM_DATA_KEY, configured)
+			print("[ModMiscTool][Ghost] major players (configured, not raised) = "
+				.. tostring(configured))
 		end
 		return
 	end

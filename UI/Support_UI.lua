@@ -153,6 +153,8 @@ local GHOST_CITY_STATE_CUSTOM_DATA_KEY = "ModMiscToolCityStateCount"
 local GHOST_MAJOR_PLAYER_CUSTOM_DATA_KEY = "ModMiscToolMajorPlayerCount"
 -- 前端 hook 没记下数量时的兜底：按标准图默认的城邦数量保留在图上，多出来的当幽灵
 local GHOST_FALLBACK_KEEP_CITY_STATES = 12
+-- 前端 hook 没记下人数时的兜底：按“1 个玩家”算边界
+local GHOST_FALLBACK_KEEP_MAJOR_PLAYERS = 1
 local m_GhostInitDone = false
 
 local function HandOffGhostCityStateCount()
@@ -169,24 +171,24 @@ local function HandOffGhostCityStateCount()
     else
         print("[ModMiscTool][Ghost] handing off saved city state count=" .. tostring(savedCount))
     end
-
-    script.InitializeGhostPlayers(savedCount)
-
-    -- 主要文明同理：只有前端 hook 真的抬过上限（说明玩家选的比上限少）才有记录，
-    -- 没有记录就说明本来就没有富余，什么都不做
+    -- 玩家设定的主要文明人数：用来算槽位边界（边界之后的城邦槽位全部变幽灵）
     local savedMajors = tonumber(ReadCustomData(GHOST_MAJOR_PLAYER_CUSTOM_DATA_KEY))
-    if savedMajors ~= nil and savedMajors > 0 and script.InitializeGhostMajorPlayers ~= nil then
-        print("[ModMiscTool][Ghost] handing off saved major player count=" .. tostring(savedMajors))
-        script.InitializeGhostMajorPlayers(savedMajors)
+    if savedMajors == nil or savedMajors <= 0 then
+        savedMajors = GHOST_FALLBACK_KEEP_MAJOR_PLAYERS
+        print("[ModMiscTool][Ghost] no saved major player count, fallback majors="
+            .. tostring(savedMajors))
     else
-        print("[ModMiscTool][Ghost] no saved major player count, skip major ghosts")
+        print("[ModMiscTool][Ghost] handing off configured major players=" .. tostring(savedMajors))
     end
+
+    -- 一次判定搞定：id 大于 (主要文明数 + 城邦数 - 1) 的城邦槽位全部搬成幽灵
+    script.InitializeGhostPlayers(savedCount, savedMajors)
 
     m_GhostInitDone = true
 end
 
+-- 只在开局跑一次（授权者要求：无需多回合扫描）
 Events.LoadGameViewStateDone.Add(HandOffGhostCityStateCount)
-Events.LocalPlayerTurnBegin.Add(HandOffGhostCityStateCount)
 
 -- ===========================================================================
 -- WriteCustomData / ReadCustomData 跨存档探针
