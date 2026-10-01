@@ -470,9 +470,16 @@ GetGhostPlayerClaims()
   返回：table of playerID（当前被预约的幽灵）
 
 MovePlayerOffMap(playerID)
-  返回：boolean
+  返回：boolean（true = 已搬离；false = 被拒绝或玩家不存在）
   说明：把玩家搬回地图外（清掉地图上的单位、只留地图外的开拓者），
         等价于“回收到幽灵池”；调用前会先放好地图外单位，因此不会把玩家变成零单位而灭亡。
+        【硬规则】**已经有城市的玩家会被直接拒绝**（返回 false 并把原因打到日志）：
+        引擎在“全部城市被移除”时会判定玩家死亡，手里有开拓者也救不回来，
+        所以这条路径既不拆城也不清单位，只回报原因。判断见 GetGhostifyBlockReason。
+
+GetGhostifyBlockReason(playerID)
+  返回：nil（可以回收）或原因字符串（不可以，例如 "player has 1 city/cities"）
+  说明：回收前的检查接口；面板「回收成幽灵」用它给出提示文案。
 
 PlayerHasOnMapUnit(playerID)
   返回：boolean
@@ -490,6 +497,17 @@ InitializeGhostMajorPlayers(originalCount)
         引擎只在开局按“参与玩家数”创建主要文明，所以前端 hook 会先把这个数抬到
         槽位预算允许的上限（见下），这里再把富余的收进幽灵池。
 
+ConvertGhostPlayerToCityState(playerID)
+  返回：boolean（转换是否生效）
+  说明：[待验证] 把幽灵化的“主要文明”改造成城邦，避免它继续参与外交
+        （AI 会来交涉、出现在外交界面）。做法：给已存在的玩家改
+        PlayerConfigurations（SetIsMinorCiv(true) + 城邦文明/领袖/城邦类型）
+        后调用 Players[playerID]:StartCityState()，再照常搬离地图。
+        判定标准：转换后 player:IsMajor() 是否变成 false。
+        注意与 CreateGhostPlayerFromEmptySlot 的区别【已验证失败】：那条路是给空槽位造玩家，
+        引擎不生成玩家对象；这里换的是已经存在的玩家的身份，才有机会生效。
+        player:IsMinor() 在 gameplay 层不可用，不要用它做判定。
+
 GetPlayerSlotSummary()
   返回：一行统计字符串，如 "major=26 minor=36 engine=62 empty=0 pool=32 free=30"
   说明：面板「玩家槽位统计」按钮用的诊断接口，可用来确认引擎实际建了多少玩家。
@@ -505,6 +523,9 @@ GetPlayerSlotSummary()
     引擎给出 26 主要文明（0..25，含本机玩家）+ 36 城邦（26..61）= 62，正好吃满槽位预算，
     城邦没有被主要文明挤掉；幽灵池 52（改造前只有 30）；
     留在图上的正是玩家自己选的那批：主要文明 0..3、城邦 26..31。
+  * [待验证] 幽灵化的主要文明会先被城邦化（GHOST_CONVERT_MAJOR_TO_CITY_STATE 开关，
+    ModTool_GhostPlayers.lua 顶部）；日志里看 `converted-to-city-state=N` 与
+    `IsMajor true => false`。
   * 槽位 id 规律：引擎先排主要文明（从 0 起）再排城邦，所以“从末尾往前搬”=
     先搬走城邦里最靠后的、再搬主要文明里的 —— 玩家原本的对手永远留在图上。
   * 地图脚本会给放不下的城邦打 `-- START FAILED MINOR --`（Minor TotalPlots: 0），

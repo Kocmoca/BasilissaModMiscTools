@@ -226,6 +226,9 @@
 		<Row Tag="LOC_MODMISC_WB_TEST_PLAYER_NOT_READY">
 			<Text>Player is not ready yet; try again in a moment.</Text>
 		</Row>
+		<Row Tag="LOC_MODMISC_WB_TEST_GHOST_RECYCLE_BLOCKED">
+			<Text>Can't recycle player {1_PlayerID} into a ghost: it already owns a city, and removing all cities kills a player (a settler won't save it).</Text>
+		</Row>
 		<Row Tag="LOC_MODMISC_WB_TEST_MESSAGES">
 			<Text>Messages</Text>
 		</Row>

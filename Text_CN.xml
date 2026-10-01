@@ -226,6 +226,9 @@
 		<Replace Tag="LOC_MODMISC_WB_TEST_PLAYER_NOT_READY" Language="zh_Hans_CN">
 			<Text>玩家尚未就绪，请稍后再试。</Text>
 		</Replace>
+		<Replace Tag="LOC_MODMISC_WB_TEST_GHOST_RECYCLE_BLOCKED" Language="zh_Hans_CN">
+			<Text>无法把玩家 {1_PlayerID} 回收成幽灵：它已经有城市，而移除全部城市会让玩家死亡（开拓者也救不回来）。</Text>
+		</Replace>
 		<Replace Tag="LOC_MODMISC_WB_TEST_MESSAGES" Language="zh_Hans_CN">
 			<Text>提示信息</Text>
 		</Replace>

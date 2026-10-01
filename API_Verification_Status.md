@@ -78,10 +78,17 @@
 * **WorldBuilder 测试面板**：文明/领袖/玩家类型/放置范围四个下拉选择器 + 建城、建单位、
   放开拓者、清首都、设置时代、金币/信仰/显示地图等操作，全部走 gameplay 层接口。
 
-## 7. 尚未验证
+## 7. 待验证 / 尚未验证
+
+| # | 接口 / 方法 | 状态 | 备注 |
+|---|---|---|---|
+| 29 | `ConvertGhostPlayerToCityState(playerID)`：给**已存在**的玩家换身份（`SetIsMinorCiv(true)` + 城邦文明类型 + `StartCityState()`） | `[未验证]` | 起因：幽灵化的主要文明仍有外交行为。与第 3 条的区别是这里玩家对象已经存在。判定看 `player:IsMajor()` 是否变 false。开关：`GHOST_CONVERT_MAJOR_TO_CITY_STATE`。 |
+| 30 | 把**已经建城**的玩家回收成幽灵（拆掉全部城市） | `[已验证失败]` | 授权者实机结论：**建城之后再移除全部城市 = 玩家直接死亡，手里有没有开拓者都一样**。因此回收路径已从代码里删除（原本的 `GhostifyPlayer` 入口撤销），`MovePlayerOffMap` 与 `ConvertGhostPlayerToCityState` 都对“有城市”的玩家直接拒绝（`GetGhostifyBlockReason`）。幽灵化只能作用于开局还没建城的玩家。 |
+
 
 * 运行时补建玩家是否存在**其它**入口（目前只否证了 `PlayerManager():AddPlayer()` 与
-  “改 `PlayerConfigurations` + `StartCityState()`”两条）。
+  “给空槽位改 `PlayerConfigurations` + `StartCityState()`”两条；给**已存在玩家**换身份是
+  另一条独立路径，见上表第 29 条）。
 * `WriteCustomData` 在“存档 → 退出进程 → 读档”这条路径下是否随存档回来（探针已就位，
   读档日志里 `turn > 1` 时看 `VERDICT=` 即可判定）。
 * `GhostPlayers_CityStates.sql`（数据库复制城邦）—— 脚本已写好并通过静态校验，但**未启用、未实测**。

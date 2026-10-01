@@ -716,7 +716,13 @@ local function RecycleGhostPlayer()
         SetOutput(Locale.Lookup("LOC_MODMISC_WB_TEST_PLAYER_NOT_READY"))
         return
     end
-    ExposedMembers.ModMiscToolScript.MovePlayerOffMap(playerID)
+    -- 已经建城的玩家不能回收成幽灵：移除全部城市会让玩家直接死亡（开拓者也救不回来），
+    -- 所以 gameplay 侧会直接拒绝，这里把拒绝原因显示出来。
+    local moved = ExposedMembers.ModMiscToolScript.MovePlayerOffMap(playerID)
+    if moved == false then
+        SetOutput(Locale.Lookup("LOC_MODMISC_WB_TEST_GHOST_RECYCLE_BLOCKED", playerID))
+        return
+    end
     RefreshSelectorButtons()
     SetResult("MovePlayerOffMap", playerID)
 end
