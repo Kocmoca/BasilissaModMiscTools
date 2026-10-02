@@ -46,7 +46,7 @@
 | # | 接口 / 方法 | 状态 | 证据与备注 |
 |---|---|---|---|
 | 19 | `Events.SystemUpdateUI` 在“创建游戏”界面监听 | `[已验证失败]` | 该事件在设置界面**根本不触发**（只有分辨率变化/恢复 UI/触摸输入），hook 完全静默。改用 `ContextPtr:SetRefreshHandler` + `RequestRefresh()` 轮询。 |
-| 20 | `MapSize_ValueChanged ~= nil` 判定“创建游戏”上下文 | `[已验证可用]` | 该上下文 include 过 `GameSetupLogic`；对局内没有这个全局函数，因此不会误改对局内设置。 |
+| 20 | `MapSize_ValueChanged ~= nil` 判定“创建游戏”上下文 | `[部分可用]` | 安卓实测可用：该上下文 include 过 `GameSetupLogic`；对局内没有这个全局函数，因此不会误改对局内设置。<br>**PC 上这个判据不够**：PC 的城邦选择器 / 领袖选择器子上下文同样 include 了 `PlayerSetupLogic`，判据在那边也成立 → 见 §11。 |
 | 21 | `WriteCustomData` / `ReadCustomData` | `[部分可用]` | **同进程有效**：设置界面写 → 对局内读得到（幽灵流程即依赖此）。**跨启动无效**：完全退出进程后重开新局读不到（两次启动探针都是 `VERDICT=first-write`）。可当“设置界面 → 对局内”的传递通道，**不能当持久化存储**。 |
 | 22 | `AddUserInterfaces` 创建的上下文默认隐藏 | `[已验证可用]` | 必须 `ChangeParent(ContextPtr:LookUpControl("/InGame"))` + `ReprocessAnchoring()`，不要用 `ContextPtr:SetHide`。 |
 | 23 | 面板上下文直接访问另一个 context 的全局 | `[已验证失败]` | 报 `attempt to index a nil value`；每个 context 有独立脚本全局，跨 context 只能走 `ExposedMembers` / `LuaEvents`。 |
@@ -158,3 +158,116 @@
 * `WriteCustomData` 在“存档 → 退出进程 → 读档”这条路径下是否随存档回来（探针已就位，
   读档日志里 `turn > 1` 时看 `VERDICT=` 即可判定）。
 * `GhostPlayers_CityStates.sql`（数据库复制城邦）—— 脚本已写好并通过静态校验，但**未启用、未实测**。
+
+---
+
+## 11. 跨平台核对：Civ6 PC（2026-10-02，**静态核对，PC 端未实机**）
+
+起因：`UI/Replacements/Civ6Common.lua` 里的「开局前拉满城邦上限」hook 是在安卓版上做出来的，
+需要确认它对 **PC（Steam/Win64）** 是否同样有效。
+
+核对方式：把两版游戏文件逐项对比 ——
+PC = `Civ6PC/Base/Assets/…`，安卓 = `Civ6Data/Base/Assets/…`。
+**没有在 PC 上实机跑过**，所以下面区分「静态可证」与「需实机确认」。
+
+### 11.1 结论
+
+**机制本身在 PC 上成立** —— 下面 9 条前提逐条对上，PC 与安卓在这些点上**逐字一致**。
+但 PC 有两处安卓没有的界面结构，会在表现上露出差异（11.3 / 11.4）。
+
+### 11.2 前提逐条核对
+
+| # | 前提 | 安卓证据 | PC 证据 | 结论 |
+|---|---|---|---|---|
+| P1 | 前端会加载 `Civ6Common`（替换才生效） | `FrontEnd/PlayerSetupLogic.lua:5` 的 include 链 | 同一行、同一顺序 | 一致 |
+| P2 | `GameSetupLogic` 先于 `Civ6Common` 被 include（否则 hook 判据为假） | `PlayerSetupLogic` 的 include 顺序：`InstanceManager → GameSetupLogic → SupportFunctions → Civ6Common` | 逐字一致 | 一致 |
+| P3 | `MapSize_ValueChanged` 存在 | `GameSetupLogic.lua:670` | `GameSetupLogic.lua:786` | 存在 |
+| P4 | `WriteCustomData` 定义在 `Civ6Common` | `Civ6Common.lua:722` | `Civ6Common.lua:722` | 同位置 |
+| P5 | 参数 `CityStateCount` 绑定 `CITY_STATE_COUNT` | `SetupParameters.xml:18` | `SetupParameters.xml:18` | 定义完全相同（`ConfigurationGroup="Game" ConfigurationId="CITY_STATE_COUNT"`） |
+| P6 | `MapConfiguration.GetMaxMinorPlayers()` | `GameSetupLogic.lua:662` | `GameSetupLogic.lua:778` | 存在 |
+| P7 | `GameConfiguration.SetValue("CITY_STATE_COUNT", …)` | `GameSetupLogic.lua:699` | `GameSetupLogic.lua:815` | 存在 |
+| P8 | 改地图尺寸会重置 `CITY_STATE_COUNT`（所以必须轮询、不能只写一次） | 同上 | 同上 | 一致 |
+| P9 | `AdvancedSetup` 上下文没有自带刷新回调（hook 可以安全占用） | `SetRefreshHandler` 出现 0 次 | 0 次 | 安全 |
+
+> P5 的含义值得单独说：参数与 `GameConfiguration` 是**同一个值的两个视图**
+> （参数表里 `ConfigurationId` 直接指向 `CITY_STATE_COUNT`）。
+> 所以安卓上 hook 直接写 `GameConfiguration`、PC 上玩家拖参数滑块，
+> 改的是同一处 —— 两边不会各写各的。
+
+### 11.3 PC 差异 A：城邦选择器子上下文也会装 hook（**表现差异，功能不坏**）
+
+- PC 的 `AdvancedSetup.xml:333` 声明了安卓没有的子上下文：
+  `<LuaContext ID="CityStatePicker" …/>` 与 `<LuaContext ID="LeaderPicker" …/>`；
+- `CityStatePicker.lua` 的 include 链是 `InstanceManager → PlayerSetupLogic → Civ6Common`，
+  所以 **`MapSize_ValueChanged ~= nil` 在它里面同样成立**，hook 会在该子上下文再装一份轮询；
+- 该界面有 `CityStateCountSlider`（`CityStatePicker.lua:254~269`），拖动即写参数值；
+  而 hook 的轮询条件是 `not ContextPtr:IsHidden()`，选择器一打开就每帧把
+  `CITY_STATE_COUNT` 改回上限。
+
+**表现**：PC 上打开城邦选择器拖动数量滑块，数值会被立刻弹回上限。
+**影响**：功能不坏（hook 本来就要拉满），但滑块看起来“拖不动”。
+安卓看不到这个现象 —— 安卓没有这个界面，也没有任何 UI 引用 `CityStateCount`。
+**副作用可控**：hook 写 `CustomData` 是在拉满**之前**，所以玩家在滑块上选的数量
+仍会被记下来交给幽灵模块，玩家实际得到的城邦数不变。
+
+### 11.4 PC 差异 B：开局前多一道城邦数量校验（**可能每次开局弹警告**）
+
+- PC：`AdvancedSetup.lua:1437 OnStartButton()` → `:1451 ShouldShowCityStatesWarning()`；
+- 判据：`(CityStates 域成员数 − 玩家排除数) < CityStateCount` → 弹
+  `LOC_CITY_STATE_PICKER_TOO_FEW_WARNING`；
+- 安卓：`AdvancedSetup.lua:979 OnStartButton()` 直接 `Network.HostGame`（`:989/:994`），
+  **没有这道校验**，安卓文件里也**没有** `LOC_CITY_STATE_PICKER_TOO_FEW_WARNING` 这条文案。
+
+hook 把 `CityStateCount` 拉到 `MapSizes.MaxCityStates`（本 mod 抬到 62），
+所以是否触发取决于「可用城邦文明数」：
+
+| 复制城邦选项 | 域成员数（推断） | 是否触发 |
+|---|---|---|
+| 开（默认） | ~41 × 2 = 82 ≥ 62 | 不触发 |
+| 关 | ~41 < 62 | **每次开局弹一次** |
+
+⚠️ 41 / 82 是**推断值**（来自本 mod 注释里“Base 24 + 资料片 11 + DLC 6 = 41”与
+`Civ6PC` 数据里的城邦文明行数），**必须实机确认**。
+
+**不是阻断**：`ShowCityStateWarning` 走的是 `ShowOkCancelDialog(…, HostGame)`，
+点 OK 照样开局 —— 但每次开局都弹一下很显眼。
+
+### 11.5 建议改法：把上下文判据收紧一行
+
+现在只靠 `MapSize_ValueChanged`，PC 上分不出主界面与选择器子上下文。
+**不能**用 `SupportFunctions` 之类的存在性来分辨 —— `PlayerSetupLogic` 也 include 了它，
+四个上下文里都有。
+
+可用 `StartButton`：主设置界面（创建游戏 / 创建场景）有，选择器子上下文没有，
+而且 **PC 与安卓都有**：
+
+| 上下文 | `ID="StartButton"` |
+|---|---|
+| `AdvancedSetup.xml` | PC 1 / 安卓 1 |
+| `ScenarioSetup.xml` | PC 1 / 安卓 1 |
+| `CityStatePicker.xml`（PC 独有） | 0 |
+| `LeaderPicker.xml`（PC 独有） | 0 |
+
+```lua
+local function ModMiscToolIsGameSetupContext()
+	-- 主设置界面（创建游戏 / 创建场景）才有 StartButton。
+	-- PC 的城邦/领袖选择器子上下文也会 include 本文件，且同样满足
+	-- MapSize_ValueChanged ~= nil，只靠那一条分辨不出来。
+	return MapSize_ValueChanged ~= nil and Controls.StartButton ~= nil
+end
+```
+
+`Controls.StartButton` 在两版的 `AdvancedSetup.lua` 里都被直接使用
+（PC 1261 行 / 安卓 803 行），说明该控件在 Lua 侧确实可用；
+但**在 include 阶段（本 hook 执行时）`Controls` 是否已经绑定好，需要实机确认** ——
+若拿不到，退路是改成“第一次轮询时再判定并安装”。
+
+### 11.6 PC 端待实机确认清单
+
+1. 进「创建游戏」后看 `Lua.log`：是否出现
+   `[ModMiscTool][Ghost] setup hook installed (refresh handler)`（出现 = hook 装上了）；
+2. 接着看有没有 `city states -> max 62 (player choice N saved)`；
+3. 开局前是否弹出「城邦数量不足」警告对话框（对应 11.4，注意复制城邦选项的开/关）；
+4. 打开城邦选择器拖数量滑块，数值是否被弹回（对应 11.3）；
+5. 进游戏后城邦数量是否确实**多于**玩家选择的数量（安卓实测是 36，PC 待测）。
+
