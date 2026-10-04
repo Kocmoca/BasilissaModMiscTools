@@ -4,5 +4,12 @@
 1. Vassal System（附庸国系统）：使单位能在附庸领土上建造改良，并在左侧边栏中显示附庸系统的按钮。
 2. Another Strategic Fort（战略性堡垒）：在左侧边栏增加切换显示/隐藏堡垒图标的按键，并在信息栏显示已驻防/未驻防堡垒的数量。
 
+3. 跨存档存储（本 mod 自带能力，非扩展 mod 添加）：把数据编进配置档的文件名，
+   下一轮启动从存档列表读回 —— 已实机验证「写入 → 杀进程 → 读回」逐字一致，
+   前端与对局内 UI 都能读写。原版没有可用的跨存档存储（CustomData 不落盘、
+   配置档不带它、io 库不存在、Options 拒绝未注册键），这条路是唯一走得通的。
+   接口：ExposedMembers.ModMiscToolUI.{SaveData, GetData, GetAllData, RemoveData,
+   RemoveAllData, RefreshData, IsDataReady, OnDataReady}；详见 API_Verification_Status.md。
+
 补充说明：
 当前接口仍在持续整理，并尽量保持向后兼容。其他mod可以通过 ExposedMembers 与 API_Documentation.txt 接入这些能力；未启用相关扩展mod时，本mod不会主动改变原版行为。遇到UI兼容问题时，优先在独立UI层内处理，不替换原版UI文件。

@@ -910,6 +910,54 @@ CanUnitTypeGetExp(unitIndex)
   返回：boolean
   说明：判断该单位类型是否可获得经验值（仅在UI环境可用）
 
+------------------------------------------------------------------------------
+### 3.9 跨存档存储（ModMiscStore）
+------------------------------------------------------------------------------
+
+原版**没有**可用的跨存档存储 —— 已逐条实测排除：CustomData 不落盘、配置档也不带它、
+对局内读配置档直接卡死、io 库不存在（`io=n io.open=n`）、`Options.SetUserOption`
+拒绝未注册的键、存档元数据字段全由引擎填。
+
+本 mod 的做法：把数据**编进配置档的文件名**，下一轮启动从存档列表读回。
+两端都是原版接口 —— 写 `Network.SaveGame{Name=…, FileType=GAME_CONFIGURATION}`、
+读 `UI.QuerySaveGameList` 的 `Name`（都不需要读档）。
+实机验证：写一轮 → 杀进程 → 下一轮读回，payload **逐字一致**；前端与对局内 UI 都能读写。
+
+规范：
+* 文件命名 `ModMiscStore~<hex(key)>~<hex(value)>.Civ6Cfg`，一个 key 一个档；
+  值 ≤ 120 字节。hex 是为了绕开文件名禁用字符（`% " < > | / \ * ? :` 与控制字符）。
+* 写：先写新档，收到 `Events.SaveComplete` 后再删同一个 key 的旧档（写失败不丢数据）。
+* 读：扫一遍配置档列表，按 key 去重（同名档留修改时间最新的那份，其余清理）。
+* 只能存**字符串**；表/数字请自行序列化。
+
+接口（`ExposedMembers.ModMiscToolUI.*`，前端与对局内 UI 两个 context 各挂一份）：
+
+    RefreshData()                 扫存档列表（异步）
+    IsDataReady()                 首次扫描是否已完成
+    OnDataReady(fn)               扫描完成时回调（已就绪则立刻调用）
+    SaveData(key, value)          写；返回是否已发出请求（落盘是异步的）
+    GetData(key)                  读（没存过 → nil）
+    GetAllData()                  整张表（副本）
+    RemoveData(key)               删一个键及其档
+    RemoveAllData()               清空整张存储（返回删掉的键数）
+
+典型用法：
+
+    local api = ExposedMembers.ModMiscToolUI
+    api.OnDataReady(function()
+        local settings = api.GetData("my_mod_settings")
+        -- ... 用完之后
+        api.SaveData("my_mod_settings", "version=2;volume=7")
+    end)
+    api.RefreshData()
+
+注意：
+* 数据存在 **UI 层**（`Network.SaveGame` / `UI.QuerySaveGameList` 都是 UI 接口），
+  gameplay 侧拿不到；需要在 gameplay 用，就经 `ExposedMembers` 转一手。
+* 每次写入都会在玩家的**载入配置**列表里留下一个档（一个 key 一个），
+  这是这条通道的固有代价；`RemoveData` / `RemoveAllData` 可随时清理。
+* 存储档的名字是编码过的 hex，玩家在列表里看到的是乱码 —— 建议只存少量键值。
+
 ==============================================================================
 ## 四、数据库表（供其他 mod 插入数据）
 ==============================================================================
