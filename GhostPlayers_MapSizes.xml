@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- ===========================================================================
+     Mod Misc Tool: 拉满六个标准地图尺寸的城邦/玩家上限
+
+     【为什么用 XML 而不是 SQL】实测 FrontEndActions 里那个 .sql（同样内容的
+     UPDATE MapSizes SET …）**一个字都没写进去** —— 诊断探针打出来的 MapSizes
+     全是原版值。而同一份 modinfo、同一种动作类型里的 GhostPlayers_Options.xml
+     （往 Parameters 插行）是有效的 ⇒ 差别在“XML 的 Replace” vs “SQL 的 UPDATE”。
+     所以这里改用与它同族的写法：<Replace> = INSERT OR REPLACE，幂等。
+
+     只列 StandardMapSizes 这六个（随机图走的就是它）。Earth/Balance/自定义地图脚本
+     各有自己的 Domain，列不全，交给 SQL 那份兜底（两条一起上，谁也不挡谁）。
+
+     数值口径：授权者要求“SQL 直接拉满，判断交给 Lua”——这里就是拉满到硬上限 62，
+     具体每个尺寸请求多少由 UI/Replacements/Civ6Common.lua 的
+     GHOST_CITY_STATE_BY_MAP_SIZE 决定。
+     =========================================================================== -->
+<GameInfo>
+	<MapSizes>
+		<Replace Domain="StandardMapSizes" MapSizeType="MAPSIZE_DUEL"     Name="LOC_MAPSIZE_DUEL_NAME"     Description="LOC_MAPSIZE_DUEL_DESCRIPTION"     MinPlayers="2" MaxPlayers="62" DefaultPlayers="2"  MinCityStates="0" MaxCityStates="62" DefaultCityStates="3"  SortIndex="10"/>
+		<Replace Domain="StandardMapSizes" MapSizeType="MAPSIZE_TINY"     Name="LOC_MAPSIZE_TINY_NAME"     Description="LOC_MAPSIZE_TINY_DESCRIPTION"     MinPlayers="2" MaxPlayers="62" DefaultPlayers="4"  MinCityStates="0" MaxCityStates="62" DefaultCityStates="6"  SortIndex="20"/>
+		<Replace Domain="StandardMapSizes" MapSizeType="MAPSIZE_SMALL"    Name="LOC_MAPSIZE_SMALL_NAME"    Description="LOC_MAPSIZE_SMALL_DESCRIPTION"    MinPlayers="2" MaxPlayers="62" DefaultPlayers="6"  MinCityStates="0" MaxCityStates="62" DefaultCityStates="9"  SortIndex="30"/>
+		<Replace Domain="StandardMapSizes" MapSizeType="MAPSIZE_STANDARD" Name="LOC_MAPSIZE_STANDARD_NAME" Description="LOC_MAPSIZE_STANDARD_DESCRIPTION" MinPlayers="2" MaxPlayers="62" DefaultPlayers="8"  MinCityStates="0" MaxCityStates="62" DefaultCityStates="12" SortIndex="40"/>
+		<Replace Domain="StandardMapSizes" MapSizeType="MAPSIZE_LARGE"    Name="LOC_MAPSIZE_LARGE_NAME"    Description="LOC_MAPSIZE_LARGE_DESCRIPTION"    MinPlayers="2" MaxPlayers="62" DefaultPlayers="10" MinCityStates="0" MaxCityStates="62" DefaultCityStates="15" SortIndex="50"/>
+		<Replace Domain="StandardMapSizes" MapSizeType="MAPSIZE_HUGE"     Name="LOC_MAPSIZE_HUGE_NAME"     Description="LOC_MAPSIZE_HUGE_DESCRIPTION"     MinPlayers="2" MaxPlayers="62" DefaultPlayers="12" MinCityStates="0" MaxCityStates="62" DefaultCityStates="18" SortIndex="60"/>
+	</MapSizes>
+</GameInfo>
