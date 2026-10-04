@@ -27,7 +27,7 @@
 -- ===========================================================================
 
 local MODMISC_STORE_PREFIX = "ModMiscStore~"
-local MODMISC_STORE_BUILD_TAG = "2026-10-04-B"
+local MODMISC_STORE_BUILD_TAG = "2026-10-04-C"
 -- 自检：每轮写一份 ms=… payload 并读回上一轮的（验证通道还活着）。测试期开着。
 local MODMISC_STORE_SELFTEST = true
 -- 值长度上限（hex 后翻倍，文件名总长别顶到系统上限）
@@ -139,6 +139,14 @@ local function NotifyReady()
     m_ReadyCallbacks = {}
 end
 
+-- 档的修改时间（同一个 key 有多份时用来挑最新的一份）
+local function GetEntryTimestamp(entry)
+    if UI == nil or UI.GetSaveGameModificationTimeRaw == nil then return nil end
+    local ok, value = pcall(UI.GetSaveGameModificationTimeRaw, entry)
+    if ok then return value end
+    return nil
+end
+
 local function OnStoreQueryResults(fileList, requestId)
     if requestId ~= nil and m_RefreshRequestId ~= nil and requestId ~= m_RefreshRequestId then
         return
@@ -147,7 +155,9 @@ local function OnStoreQueryResults(fileList, requestId)
 
     m_Data = {}
     m_Entries = {}
-    local decodedCount = 0
+    local m_EntryTime = {}
+    local decodedFileCount = 0
+    local duplicateEntries = {}
     local otherNames = {}
     local legacyEntries = {}
     if fileList ~= nil then
@@ -155,9 +165,30 @@ local function OnStoreQueryResults(fileList, requestId)
             if entry ~= nil and entry.Name ~= nil then
                 local key, value = ParseFileName(entry.Name)
                 if key ~= nil then
-                    m_Data[key] = value
-                    m_Entries[key] = entry
-                    decodedCount = decodedCount + 1
+                    decodedFileCount = decodedFileCount + 1
+                    -- 同一个 key 可能有多份档（多次扫描各写一份、删旧档偶尔没跟上）：
+                    -- 比修改时间，留最新的一份，其余排进删除队列
+                    local timestamp = GetEntryTimestamp(entry)
+                    if m_Entries[key] == nil then
+                        m_Data[key] = value
+                        m_Entries[key] = entry
+                        m_EntryTime[key] = timestamp
+                    else
+                        local keepNew = false
+                        if timestamp ~= nil and m_EntryTime[key] ~= nil then
+                            keepNew = timestamp > m_EntryTime[key]
+                        elseif timestamp ~= nil then
+                            keepNew = true
+                        end
+                        if keepNew then
+                            table.insert(duplicateEntries, { name = StripExtension(entry.Name), entry = m_Entries[key] })
+                            m_Data[key] = value
+                            m_Entries[key] = entry
+                            m_EntryTime[key] = timestamp
+                        else
+                            table.insert(duplicateEntries, { name = StripExtension(entry.Name), entry = entry })
+                        end
+                    end
                 else
                     table.insert(otherNames, tostring(entry.Name))
                     -- 本模块前缀但解不出来 = 老格式或坏档；外加已知的旧探针档，一并清理
@@ -174,8 +205,11 @@ local function OnStoreQueryResults(fileList, requestId)
 
     local listing = "(只有存储档)"
     if #otherNames > 0 then listing = table.concat(otherNames, ",") end
+    local keyCount = 0
+    for _ in pairs(m_Data) do keyCount = keyCount + 1 end
     Log("扫描完成 build=" .. MODMISC_STORE_BUILD_TAG
-        .. "：解出 " .. tostring(decodedCount) .. " 个键"
+        .. "：存储档 " .. tostring(decodedFileCount) .. " 份"
+        .. " → 去重后 " .. tostring(keyCount) .. " 个键"
         .. "；非存储档=[" .. listing .. "]")
 
     -- 把解出来的键值全打出来：一轮日志就能看清存储里到底有什么
@@ -186,12 +220,19 @@ local function OnStoreQueryResults(fileList, requestId)
     table.sort(pairs_text)
     Log("  键值：" .. (#pairs_text > 0 and table.concat(pairs_text, " | ") or "(空)"))
 
-    -- 清理遗留档
+    -- 清理遗留档与重复档
     if UI ~= nil and UI.DeleteSavedGame ~= nil then
         for _, item in ipairs(legacyEntries) do
             local ok = pcall(UI.DeleteSavedGame, item.entry)
             Log(ok and ("已清理遗留档 [" .. item.name .. "]")
                 or ("清理遗留档 [" .. item.name .. "] 失败"))
+        end
+        if #duplicateEntries > 0 then
+            local removed = 0
+            for _, item in ipairs(duplicateEntries) do
+                if pcall(UI.DeleteSavedGame, item.entry) then removed = removed + 1 end
+            end
+            Log("已清理重复档 " .. tostring(removed) .. "/" .. tostring(#duplicateEntries) .. " 份")
         end
     end
 
