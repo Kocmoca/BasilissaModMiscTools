@@ -126,8 +126,3 @@ Events.LoadGameViewStateDone.Add(RunDataStoreProbe)
 -- 模块加载横幅：gameplay 上下文一加载就打，用来确认这个文件到底有没有上机
 -- （比等开局探针更早，部署核对时看这一行最省事）
 print("[ModMiscTool][DataStore] module loaded build=" .. MODMISC_DATASTORE_BUILD_TAG)
-
--- [能力探针] gameplay 侧有没有 io/os（跨存档只剩“mod 自己写文件”这条路没查）
-print("[ModMiscTool][IOProbe] gameplay: io=" .. ((io ~= nil) and "y" or "n")
-    .. " io.open=" .. ((io ~= nil and io.open ~= nil) and "y" or "n")
-    .. " os=" .. ((os ~= nil) and "y" or "n"))

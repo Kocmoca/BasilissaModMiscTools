@@ -430,51 +430,6 @@ function Initialize()
 		end
 	end
 
-	-- ===========================================================================
-	-- [跨存档探针·对局内] Options 那套存储，对局内 UI 能不能读、能不能写
-	--
-	-- 基座里 ActionPanel / CameraManager / DiplomacyRibbon 这些**对局内 UI** 都在用
-	-- Options.GetUserOption / SetUserOption，所以这里应当也能用。
-	-- 协议：读一次（前端主界面已经写过一份）→ 再写一份自己的 payload；
-	--       下一轮启动，前端读到的若是**这份对局内写的**，就说明对局内写入也持久化。
-	-- ===========================================================================
-	local function LogUserOptionProbe(message)
-		print("[ModMiscTool][UserOptionProbe] in-game: " .. message)
-	end
-
-	local function RunUserOptionProbeInGame()
-		if Options == nil or Options.GetUserOption == nil then
-			LogUserOptionProbe("Options.GetUserOption 不可用（对局内 UI 也拿不到）")
-			return
-		end
-
-		local readOk, value = pcall(function()
-			return Options.GetUserOption("ModMiscTool", "CrossSaveProbe")
-		end)
-		if not readOk then
-			LogUserOptionProbe("读取失败 -> " .. tostring(value))
-			return
-		end
-		LogUserOptionProbe("读到 [" .. tostring(value) .. "]（前端主界面写的那份）")
-
-		if Options.SetUserOption == nil then
-			LogUserOptionProbe("Options.SetUserOption 不可用")
-			return
-		end
-		local payload = "in=1;t=" .. tostring(os.time())
-			.. ";r=" .. tostring(math.random(100000, 999999))
-		local writeOk, err = pcall(function()
-			Options.SetUserOption("ModMiscTool", "CrossSaveProbe", payload)
-		end)
-		if not writeOk then
-			LogUserOptionProbe("写入失败 -> " .. tostring(err))
-			return
-		end
-		LogUserOptionProbe("已写入 [" .. payload
-			.. "]；下一轮启动前端若读到这份 ⇒ 对局内写入也持久化")
-	end
-
-	RunUserOptionProbeInGame()
 
 	-- 跨存档探针：启动流程只跑这一次，结论看 Lua.log 里的 [ModMiscTool][Probe] 行
 	m_ProbeLoadIndex = m_ProbeLoadIndex + 1
