@@ -161,6 +161,7 @@ local m_GhostInitDone = false
 
 local function HandOffGhostCityStateCount()
     if m_GhostInitDone then return end
+    m_GhostInitDone = true
 
     local script = ExposedMembers.ModMiscToolScript
     if script == nil or script.InitializeGhostPlayers == nil then return end
@@ -184,13 +185,32 @@ local function HandOffGhostCityStateCount()
     end
 
     -- 一次判定搞定：id 大于 (主要文明数 + 城邦数 - 1) 的城邦槽位全部搬成幽灵
+    print("[ModMiscTool][Ghost] pass start trigger=LocalPlayerTurnBegin keepMajors="
+        .. tostring(savedMajors) .. " keepCityStates=" .. tostring(savedCount))
     script.InitializeGhostPlayers(savedCount, savedMajors)
-
-    m_GhostInitDone = true
 end
 
--- 只在开局跑一次（授权者要求：无需多回合扫描）
-Events.LoadGameViewStateDone.Add(HandOffGhostCityStateCount)
+-- ===========================================================================
+-- 【时机】挂在 LocalPlayerTurnBegin，**不是** LoadGameViewStateDone
+--
+-- 授权者实机确认：加载失败是在加入幽灵机制之后才出现的 ⇒ 问题就出在这套机制。
+-- 两个可疑点，先掐掉确定的那个 —— **时机**：
+--   LoadGameViewStateDone 是**加载过渡阶段**，本项目此前就在这里踩过坑
+--   （在同一个事件里循环给 20+ 个玩家换领袖/文明，开局直接挂，日志停在
+--    `LoadScreen: OnLoadGameViewStateDone`，InGame UI 一点没加载）。
+--   而幽灵 pass 要在这一个事件里对 ~50 个玩家各做一次 InitUnit + Kill(×3) ——
+--   同一量级的引擎操作压在同一个时刻，小概率挂掉完全说得通（也解释了为什么是“小概率”）。
+--
+--   LocalPlayerTurnBegin（第 1 回合、本地玩家回合开始）是安全时机：
+--   开局已经完成、AI 还没行动，城邦手里还是开拓者、尚未落地建城 ——
+--   搬家逻辑与原来完全等价，但不再压在加载过渡上。
+--   另一个可疑点（场上玩家过多、出生位置重叠）已经用 GhostPlayers_MapSizes.sql
+--   按地图尺寸分档压过一轮；两条一起上，再看加载失败还出不出现。
+--
+-- 依赖：其他 mod 若在 LoadGameViewStateDone 就要用幽灵池，会拿到空池 —— 需要就
+-- 改在 LocalPlayerTurnBegin 之后取，或先调 ModMiscToolScript.InitializeGhostPlayers。
+-- ===========================================================================
+Events.LocalPlayerTurnBegin.Add(HandOffGhostCityStateCount)
 
 -- ===========================================================================
 -- WriteCustomData / ReadCustomData 跨存档探针
