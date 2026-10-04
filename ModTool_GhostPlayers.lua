@@ -176,9 +176,49 @@ function GetGhostifyBlockReason(playerID)
 	return nil
 end
 
+-- 这个槽位到底有没有“真玩家”？
+--
+-- 【为什么必须有这个函数】空槽位的 Players[id] **不是 nil**：它是个内部对象为空的桩，
+-- IsMajor() 返回 false、没有城市也没有单位 —— 于是幽灵 pass 那套筛选条件会全部通过，
+-- 接着对它调 UnitManager.InitUnit 就会**原生闪退**：
+--     signal 11 (SIGSEGV) … IUnitManager::lInitUnit(lua_State*)+24 ，fault addr 0x…e0，x0=0
+-- （2026-10-04 实机 100% 复现；此前把上限抬到 62 时坑被占满的槽位盖住，只是偶尔踩到。）
+--
+-- 判定用**正向信号**：有单位或城市 ⇒ 一定是真玩家。开局时每个城邦都有 3 个单位
+-- （日志里的 onMapUnits=3），所以这个门槛不会误伤真城邦；真被跳过也只是它留在地图上，
+-- 与幽灵机制无关，无害。
+-- 注意：本函数在文件前段，CallOrNil 还没声明（它是后段的 local function），
+-- 用了会在运行时被解析成全局 nil —— 所以这里直接 pcall。
+local function PlayerSlotHasPlayer(playerID)
+	local player = Players[playerID]
+	if player == nil then return false end
+
+	local ok, units = pcall(function() return player:GetUnits() end)
+	if ok and units ~= nil then
+		for _ in units:Members() do
+			return true
+		end
+	end
+
+	local cityOk, cities = pcall(function() return player:GetCities() end)
+	if cityOk and cities ~= nil then
+		for _ in cities:Members() do
+			return true
+		end
+	end
+	return false
+end
+
 function MovePlayerOffMap(playerID)
 	local player = Players[playerID]
 	if player == nil then return false end
+
+	-- 空槽位一律不碰：对它 InitUnit 会原生闪退（见 PlayerSlotHasPlayer 的注释）
+	if not PlayerSlotHasPlayer(playerID) then
+		print("[ModMiscTool][Ghost] player " .. tostring(playerID)
+			.. " 是空槽位（无单位无城市）→ 跳过，避免 InitUnit 闪退")
+		return false
+	end
 
 	-- 有城市的玩家不动：移除全部城市 = 玩家死亡（开拓者也救不回来）
 	local blockReason = GetGhostifyBlockReason(playerID)
@@ -718,9 +758,16 @@ function InitializeGhostPlayers(cityStateCount, majorPlayerCount)
 
 	local added = 0
 	local skipped = {}
+	local emptySlotCount = 0
 	for playerID = boundary + 1, maxSlot do
 		if playerID ~= 62 and playerID ~= 63 and not knownGhosts[playerID] then
 			local player = Players[playerID]
+			-- 空槽位先剔掉：Players[id] 不是 nil 但内部是空的，
+			-- 对它 InitUnit 会原生闪退（2026-10-04 实机 100% 复现，见 PlayerSlotHasPlayer）
+			if player ~= nil and not PlayerSlotHasPlayer(playerID) then
+				emptySlotCount = emptySlotCount + 1
+				player = nil
+			end
 			if player ~= nil then
 				local isMajor = CallOrNil(function() return player:IsMajor() end)
 				local isBarbarian = CallOrNil(function() return player:IsBarbarian() end)
@@ -751,7 +798,8 @@ function InitializeGhostPlayers(cityStateCount, majorPlayerCount)
 
 	Game:SetProperty(GHOST_PLAYER_PROPERTY, ghosts)
 	print("[ModMiscTool][Ghost] ghost pass done: newlyOffMap=" .. tostring(added)
-		.. " poolTotal=" .. tostring(#ghosts))
+		.. " poolTotal=" .. tostring(#ghosts)
+		.. " emptySlots=" .. tostring(emptySlotCount))
 	if #skipped > 0 then
 		print("[ModMiscTool][Ghost]   skipped slots: " .. table.concat(skipped, ' '))
 	end
