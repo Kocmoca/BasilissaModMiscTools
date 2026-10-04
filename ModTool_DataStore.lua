@@ -28,6 +28,7 @@
 --   [ModMiscTool][DataStore] startup: 没读到 → 已写入 [...]  ← 本局第一次写
 -- ===========================================================================
 
+local MODMISC_DATASTORE_BUILD_TAG = "2026-10-04-A"
 local MODMISC_DATA_KEY_PREFIX = "kocmoca_modmisctool_"
 local MODMISC_DATA_PROBE_KEY = "datastore_probe"
 
@@ -121,3 +122,7 @@ local function RunDataStoreProbe()
 end
 
 Events.LoadGameViewStateDone.Add(RunDataStoreProbe)
+
+-- 模块加载横幅：gameplay 上下文一加载就打，用来确认这个文件到底有没有上机
+-- （比等开局探针更早，部署核对时看这一行最省事）
+print("[ModMiscTool][DataStore] module loaded build=" .. MODMISC_DATASTORE_BUILD_TAG)

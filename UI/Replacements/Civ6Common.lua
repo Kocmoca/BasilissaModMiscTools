@@ -866,9 +866,9 @@ end
 -- ===========================================================================
 
 -- 构建标记：前端与 gameplay 是不同 context，各自带一份字面量
--- 2026-10-04-A：加入前端存读档探针的调用；B：探针默认关闭（开关见下方）
+-- 2026-10-04-A：加入前端存读档探针的调用；B：探针默认关闭；C：测试期临时打开
 -- （ModTool.lua 那份 gameplay 的标记未动）
-local MODMISC_HOOK_BUILD_TAG = "2026-10-04-B"
+local MODMISC_HOOK_BUILD_TAG = "2026-10-04-C"
 local GHOST_CITY_STATE_CUSTOM_DATA_KEY = "ModMiscToolCityStateCount"
 local GHOST_MAJOR_PLAYER_CUSTOM_DATA_KEY = "ModMiscToolMajorPlayerCount"
 
@@ -964,14 +964,18 @@ local function ModMiscToolApplyGhostMajorPlayers()
 end
 
 -- ===========================================================================
--- 前端存档/读档探针（UI/FrontEnd_SaveProbe.lua）—— **默认关闭**
+-- 前端存档/读档探针（UI/FrontEnd_SaveProbe.lua）—— **测试期临时打开**
+--
+-- 【当前状态：ON】为了跑「配置档能否把 CustomData 跨存档带回来」那组实验，
+-- 由仓库侧直接改成 true（免得授权者再去改代码）。实验跑完就改回 false。
 --
 -- 探针做三件事：写 CustomData → 查存档列表 → 档在就强制读、不在就创建，
 -- 读档后补跑游戏菜单那套收尾（SetToPreGame + RegenerateSeeds + 清领袖/文明选择）。
 -- 前端这条路是通的，但副作用是**每次开机都会动一遍配置**（尤其清领袖选择），
 -- 所以结论入库后默认关掉（授权者 2026-10-04 决定）。
 --
--- 【打开方式】把下面的 false 改成 true，重新打包即可（一个开关，不用改别处）。
+-- 【开关】就是下面这一个布尔值，不用改别处。默认 false（关）；
+-- 关掉的原因：每次开机都会动一遍配置（读档后按游戏菜单语义清空领袖/文明选择）。
 -- 结论与踩过的坑见 API_Verification_Status.md 第 32-37 条。
 --
 -- 探针认“主界面 / 创建游戏 / 创建场景”三个界面，只打日志、不带 UI，
@@ -981,7 +985,7 @@ end
 -- 界面自己再 include 一次，日志里“setup hook installed”打两行就是这个原因），
 -- 所以探针用全局函数名做一次幂等，免得同一个 context 里塞进两份探针状态。
 -- ===========================================================================
-local MODMISC_FRONT_END_PROBE_ENABLED = false
+local MODMISC_FRONT_END_PROBE_ENABLED = true
 
 if MODMISC_FRONT_END_PROBE_ENABLED
 	and ModMiscFrontEndProbeRefresh == nil
