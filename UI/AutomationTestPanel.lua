@@ -800,30 +800,41 @@ end
 -- 前端配置档：对局内能不能读它
 --
 -- 与“后台读档”唯一的区别是存档表里带 FileType = GAME_CONFIGURATION ——
--- 也就是 ScenarioSetup 探针（UI/FrontEnd_SaveProbe.lua）在前端产出的那种档。
+-- 也就是前端探针（UI/FrontEnd_SaveProbe.lua）在“创建场景/创建游戏”里产出的那种档。
 -- 照抄 LoadGameMenu.OnLoadYes 对配置档的处理：**不** LeaveGame。
+--
+-- 【先自检再读】档不存在时 Network.LoadGame 是**静默无操作**（不报错、不返回 false、
+-- 也不打断当前局），盲测什么信息都拿不到。所以先用 UI.QuerySaveGameList 把
+-- GAME_CONFIGURATION 档列出来，确认档真的在，再发读档请求。
 -- ===========================================================================
-local function LoadFrontEndConfigInGame()
-    if Network == nil or Network.LoadGame == nil then
-        SetError("LoadConfig", "Network.LoadGame is nil")
-        return
-    end
 
+local m_ConfigQueryRequestId = nil
+local m_ConfigQueryPending = false
+
+local function BuildConfigLoadFile()
     local saveType = SaveTypes.SINGLE_PLAYER
-    if Network.GetGameConfigurationSaveType ~= nil then
+    if Network ~= nil and Network.GetGameConfigurationSaveType ~= nil then
         local typeOk, configuredType = pcall(function()
             return Network.GetGameConfigurationSaveType()
         end)
         if typeOk and configuredType ~= nil then saveType = configuredType end
     end
 
-    local loadFile = {
+    return {
         Name = FE_CONFIG_SAVE_NAME,
         Location = SaveLocations.LOCAL_STORAGE,
         Type = saveType,
         FileType = SaveFileTypes.GAME_CONFIGURATION,
         Directory = SaveDirectories.DEFAULT,
     }
+end
+
+-- 真正发读档请求
+local function RequestConfigLoad(loadFile)
+    if Network == nil or Network.LoadGame == nil then
+        SetError("LoadConfig", "Network.LoadGame is nil")
+        return
+    end
 
     local ok, result = pcall(function()
         return Network.LoadGame(loadFile, ServerType.SERVER_TYPE_NONE)
@@ -837,6 +848,71 @@ local function LoadFrontEndConfigInGame()
     else
         SetOutput(Locale.Lookup("LOC_MODMISC_AUTOMATION_TEST_LOAD_CONFIG_REQUESTED", FE_CONFIG_SAVE_NAME))
     end
+end
+
+-- 存档列表查询回调：引擎通过 LuaEvents 回传 (fileList, 请求号)
+local function OnConfigQueryResults(fileList, requestId)
+    if not m_ConfigQueryPending then return end
+    if requestId ~= nil and m_ConfigQueryRequestId ~= nil and requestId ~= m_ConfigQueryRequestId then
+        return
+    end
+    m_ConfigQueryPending = false
+
+    local names = {}
+    local found = false
+    if fileList ~= nil then
+        for _, entry in ipairs(fileList) do
+            if entry ~= nil and entry.Name ~= nil then
+                local entryName = tostring(entry.Name)
+                table.insert(names, entryName)
+                if entryName == FE_CONFIG_SAVE_NAME then found = true end
+            end
+        end
+    end
+
+    if UI ~= nil and UI.CloseFileListQuery ~= nil and m_ConfigQueryRequestId ~= nil then
+        pcall(function() UI.CloseFileListQuery(m_ConfigQueryRequestId) end)
+    end
+    m_ConfigQueryRequestId = nil
+
+    local listing = "(空)"
+    if #names > 0 then listing = table.concat(names, ",") end
+
+    if not found then
+        SetOutput(Locale.Lookup("LOC_MODMISC_AUTOMATION_TEST_CONFIG_MISSING", FE_CONFIG_SAVE_NAME, listing))
+        return
+    end
+
+    SetOutput(Locale.Lookup("LOC_MODMISC_AUTOMATION_TEST_CONFIG_FOUND", FE_CONFIG_SAVE_NAME, listing))
+    RequestConfigLoad(BuildConfigLoadFile())
+end
+
+-- 按钮入口：先查列表，确认档在，再读
+local function QueryThenLoadConfigInGame()
+    if UI == nil or UI.QuerySaveGameList == nil or LuaEvents == nil
+        or LuaEvents.FileListQueryResults == nil or SaveLocationOptions == nil then
+        -- 查不了就退回盲读，并把原因打出来，免得看起来“什么都没发生”
+        SetError("LoadConfig", "QuerySaveGameList/SaveLocationOptions 不可用，退回盲读")
+        RequestConfigLoad(BuildConfigLoadFile())
+        return
+    end
+
+    if m_ConfigQueryPending then
+        SetError("LoadConfig", "上一次列表查询没回结果（LuaEvents.FileListQueryResults 局内可能不触发），退回盲读")
+        m_ConfigQueryPending = false
+        RequestConfigLoad(BuildConfigLoadFile())
+        return
+    end
+
+    local loadFile = BuildConfigLoadFile()
+    local options = SaveLocationOptions.NORMAL + SaveLocationOptions.QUICKSAVE
+        + SaveLocationOptions.LOAD_METADATA
+
+    LuaEvents.FileListQueryResults.Add(OnConfigQueryResults)
+    m_ConfigQueryPending = true
+    m_ConfigQueryRequestId = UI.QuerySaveGameList(loadFile.Location, loadFile.Type, options,
+        loadFile.FileType, nil)
+    SetOutput(Locale.Lookup("LOC_MODMISC_AUTOMATION_TEST_CONFIG_QUERYING", FE_CONFIG_SAVE_NAME))
 end
 
 local function BuildProbePayload()
@@ -1110,7 +1186,7 @@ function OnInit()
     Controls.AutomationTestLoadGame:RegisterCallback(Mouse.eLClick,
         function() SafeCall("LoadGame", LoadGameFromFixedSlot) end)
     Controls.AutomationTestLoadConfig:RegisterCallback(Mouse.eLClick,
-        function() SafeCall("LoadConfig", LoadFrontEndConfigInGame) end)
+        function() SafeCall("LoadConfig", QueryThenLoadConfigInGame) end)
     Controls.AutomationTestProbeWrite:RegisterCallback(Mouse.eLClick,
         function() SafeCall("ProbeWrite", WriteProbe, "ProbeWrite") end)
     Controls.AutomationTestProbeRead:RegisterCallback(Mouse.eLClick,
