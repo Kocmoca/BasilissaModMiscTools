@@ -56,7 +56,8 @@
 | 33 | 前端 `Network.LoadGame{FileType=GAME_CONFIGURATION}`（绕过菜单直调） | `[部分可用]` | 调用返回 `true`、前端不被顶掉。**但必须自己补跑收尾**：走菜单时由 `LoadGameMenu.OnLoadComplete` 执行 `SetToPreGame()` + `RegenerateSeeds()` + 清玩家领袖/文明选择（源码注释：*Reset the seeds and leader selection when loading a config so that configs are more usable*），而那段外面套着 `if ContextPtr:IsVisible()` —— 绕过菜单就拿不到。后果：配置档把**地图/游戏种子**一起存进来且**不回滚**，表现是“同一领袖 + 不改设置 → 每次开局都是同一张地图”。本 mod 的探针自己挂 `Events.LoadComplete` 补跑这套收尾。 |
 | 34 | `UI.QuerySaveGameList` + `LuaEvents.FileListQueryResults` 查存档列表 | `[已验证可用]` | 前端与**对局内**都可用（回传 `(fileList, 请求号)`）。⚠️ 列表里的 `Name` **带扩展名**（配置档是 `xxx.Civ6Cfg`），拿它跟不带扩展名的目标做等值比较会**永远判“不在”** —— 必须先剥扩展名再比。这个假阴性害得探针连跑两次“创建”分支。 |
 | 35 | `UI.GetLastSaveName()` 当“已落盘”证据 | `[已验证失败]` | 配置档保存后回读是**空串**，判断不了文件是否写成功；改用 `UI.QuerySaveGameList` 复查列表。 |
-| 36 | 对局内 `Network.LoadGame{FileType=GAME_CONFIGURATION}` | `[已验证失败]` | 授权者实机：**直接卡死**。配置档是给前端设置态用的类型，对局内喂它会把引擎挂住（对照：档不存在时反而是静默无操作，已实测两次）。**此路不通** —— 对局内别碰配置档。<br>证据状态：授权者实机结论，对应 `Lua.log` 待补（2026-10-04 18:04 那份日志里只有多次开局测试，面板只被加载、未按按钮）。 |
+| 36 | 对局内 `Network.LoadGame{FileType=GAME_CONFIGURATION}` | `[已验证失败]` | **直接卡死**。日志证据（2026-10-04 18:16 那份）：面板自检通过（`Config save found: ModMiscFrontEndProbe; listed=ModMiscFrontEndProbe.Civ6Cfg`）→ 发出 `Requested load of front-end configuration save: … (FileType=GAME_CONFIGURATION)` → **Lua.log 到此为止，之后一行都没有**（无 Runtime Error、无任何后续 UI 日志），进程挂死。<br>对照：**档不存在时**同一个调用是静默无操作（不报错、不返回 false、不打断当前局，已实测两次）⇒ 卡死发生在“真的去读这个档”的那一下。配置档是给前端设置态用的类型，对局内喂它会把引擎挂住。**此路不通，对局内别碰配置档。** |
+| 37 | `Events.LoadComplete`（前端，回传 `(eResult, eType, eOptions, eFileType)`） | `[部分可用]` | 可用来补跑配置档读入后的收尾：配置档 `eFileType = SaveFileTypes.GAME_CONFIGURATION`，成功时 `eResult = 0`。⚠️ 它**广播给每个前端上下文** —— 每个上下文各挂一次就会各跑一遍收尾（实测 Options / HostGame / StagingRoom / MainMenu / AdvancedSetup 五个都打了日志）。只让“真正发起这次读档的那个上下文”处理（本 mod 用 `m_LoadIssued` 标记）。 |
 
 ## 4. WorldBuilder（地图编辑器）接口
 

@@ -75,8 +75,10 @@
             <GridButton ID="AutomationTestAssetIndexButton" Anchor="L,T" Offset="200,518" Size="660,56"
                         Style="ButtonControl" FontSize="26" String="" />
 
-            <!-- 前端（ScenarioSetup）配置档：对局内能否读它 -->
-            <GridButton ID="AutomationTestLoadConfig" Anchor="L,T" Offset="20,718" Size="280,48"
+            <!-- [已验证失败] 对局内读配置档会直接卡死（见 API_Verification_Status.md 第 36 条），
+                 按钮停用；要复现时把 Hidden="1" 去掉，并在 AutomationTestPanel.lua 里放开
+                 AutomationTestLoadConfig 的回调注册。 -->
+            <GridButton ID="AutomationTestLoadConfig" Anchor="L,T" Offset="20,718" Size="280,48" Hidden="1"
                         Style="ButtonControl" FontSize="24" String="LOC_MODMISC_AUTOMATION_TEST_LOAD_CONFIG" />
 
             <GridButton ID="AutomationTestPlaceAsset" Anchor="L,T" Offset="20,586" Size="280,60"

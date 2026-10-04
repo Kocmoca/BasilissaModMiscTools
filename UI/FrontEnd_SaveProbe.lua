@@ -51,7 +51,7 @@
 --   LoadScreen: true / gameplay scripts loading / 探针再打一行 —— 三样都没有就是没读进去。
 -- ===========================================================================
 
-local MODMISC_FE_PROBE_BUILD_TAG = "2026-10-04-E"
+local MODMISC_FE_PROBE_BUILD_TAG = "2026-10-04-F"
 
 -- 与对局内探针（UI/Support_UI.lua 的 CROSS_SAVE_PROBE_KEY）共用同一个 key：
 -- 前端写进去的这份 payload，会被对局内启动探针原样读出来打印。
@@ -70,6 +70,7 @@ local FE_QUERY_TIMEOUT_FRAMES = 300
 local m_Step = nil              -- nil = 本轮还没开跑
 local m_ContextKind = nil       -- MainMenu / AdvancedSetup / ScenarioSetup
 local m_ContextInstance = nil   -- tostring(ContextPtr)：用来识别“上下文被重建了”
+local m_LoadIssued = false      -- 本次读档是不是这个上下文发起的（见 LoadComplete 收尾）
 local m_RunIndex = 0            -- 本次进程里第几次进入界面
 local m_LastHidden = true       -- 用来识别“隐藏 → 显示”这一刻
 local m_LoggedWait = false
@@ -225,6 +226,11 @@ end
 
 local function OnConfigLoadComplete(eResult, eType, eOptions, eFileType)
     if SaveFileTypes == nil or eFileType ~= SaveFileTypes.GAME_CONFIGURATION then return end
+    -- LoadComplete 是**广播**给每个前端上下文的：五个上下文各挂一次就会各跑一遍收尾。
+    -- 只让“这次真的发了读档请求”的那个上下文做（实测日志里 Options/HostGame/
+    -- StagingRoom/MainMenu/AdvancedSetup 全打了一遍收尾）。
+    if not m_LoadIssued then return end
+    m_LoadIssued = false
     Log("LoadComplete: 配置档读完(result=" .. tostring(eResult) .. ") → 补跑游戏菜单里的收尾")
 
     if GameConfiguration == nil then
@@ -455,6 +461,7 @@ StepLoad = function()
         return
     end
 
+    m_LoadIssued = true
     Log("step3 load requested result=" .. tostring(result)
         .. "; VERDICT=fe-load-requested"
         .. "（若前端没被顶掉：下一次进入本界面的 step1，prev 就是这次写的 payload）")

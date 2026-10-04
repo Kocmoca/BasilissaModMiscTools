@@ -1197,8 +1197,12 @@ function OnInit()
         function() SafeCall("SaveGame", SaveGameToFixedSlot, "SaveGame") end)
     Controls.AutomationTestLoadGame:RegisterCallback(Mouse.eLClick,
         function() SafeCall("LoadGame", LoadGameFromFixedSlot) end)
-    Controls.AutomationTestLoadConfig:RegisterCallback(Mouse.eLClick,
-        function() SafeCall("LoadConfig", QueryThenLoadConfigInGame) end)
+    -- [已验证失败] 对局内读配置档会**直接卡死**（2026-10-04 实机：发出
+    -- Requested load ... 之后 Lua.log 一行都没有，进程挂死；档不存在时倒是静默无操作）。
+    -- 按钮已经 Hidden="1" 停用，这里也不再注册回调 —— 需要复现那个卡死时，
+    -- 把下面两行放开、并把 XML 里 AutomationTestLoadConfig 的 Hidden 去掉。
+    -- Controls.AutomationTestLoadConfig:RegisterCallback(Mouse.eLClick,
+    --     function() SafeCall("LoadConfig", QueryThenLoadConfigInGame) end)
     Controls.AutomationTestProbeWrite:RegisterCallback(Mouse.eLClick,
         function() SafeCall("ProbeWrite", WriteProbe, "ProbeWrite") end)
     Controls.AutomationTestProbeRead:RegisterCallback(Mouse.eLClick,
