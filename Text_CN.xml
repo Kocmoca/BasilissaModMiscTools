@@ -497,7 +497,70 @@
 		<Replace Tag="LOC_MODMISC_AUTOMATION_TEST_TAB_TIMELINE" Language="zh_Hans_CN">
 			<Text>重开与时间线</Text>
 		</Replace>
+		<!-- 存档与换图（成品面板） -->
+		<Replace Tag="LOC_MODMISC_SAVEPANEL_TITLE" Language="zh_Hans_CN">
+			<Text>存档与换图</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_SAVEPANEL_TOOLTIP" Language="zh_Hans_CN">
+			<Text>打开存档关系 / 换图面板</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_SAVEPANEL_SAVE" Language="zh_Hans_CN">
+			<Text>存档</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_SAVEPANEL_SWITCH" Language="zh_Hans_CN">
+			<Text>换图（先存原档）</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_SAVEPANEL_REFRESH" Language="zh_Hans_CN">
+			<Text>刷新列表</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_SAVEPANEL_INFO" Language="zh_Hans_CN">
+			<Text>本局：{1_Current}　｜　主线头：{2_Head}　｜　待接分支：{3_Pending}</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_SAVEPANEL_NONE" Language="zh_Hans_CN">
+			<Text>无</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_SAVEPANEL_CURRENT" Language="zh_Hans_CN">
+			<Text>本局</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_SAVEPANEL_ORPHAN" Language="zh_Hans_CN">
+			<Text>父档不在列表</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_SAVEPANEL_EMPTY" Language="zh_Hans_CN">
+			<Text>（还没有本 mod 的关系档）</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_SAVEPANEL_SCANNED" Language="zh_Hans_CN">
+			<Text>关系档：{1_Count} 档</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_SAVEPANEL_READY" Language="zh_Hans_CN">
+			<Text>存档面板已就绪。</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_SAVEPANEL_SAVING" Language="zh_Hans_CN">
+			<Text>正在存档：{1_Name}</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_SAVEPANEL_SAVED" Language="zh_Hans_CN">
+			<Text>已存节点 {1_Id}（{2_State}）</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_SAVEPANEL_SAVED_ON_DISK" Language="zh_Hans_CN">
+			<Text>确认落盘</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_SAVEPANEL_SAVED_UNCONFIRMED" Language="zh_Hans_CN">
+			<Text>列表里还没看到</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_SAVEPANEL_SWITCHING" Language="zh_Hans_CN">
+			<Text>换图中——先存原档：{1_Name}</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_SAVEPANEL_SWITCHING_DETAIL" Language="zh_Hans_CN">
+			<Text>原档确认落盘后会自动重开。新图算这条记录的分支：本局之后存的档都挂在它下面。</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_SAVEPANEL_NODE_DETAIL" Language="zh_Hans_CN">
+			<Text>节点 {1_Id}｜父 {2_Parent}｜类型 {3_Kind}｜回合 {4_Turn}｜地图 {5_Map}｜时间 {6_Stamp}
+{7_Raw}</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_SAVEPANEL_ERROR" Language="zh_Hans_CN">
+			<Text>{1_Action} 失败：{2_Detail}</Text>
+		</Replace>
 </LocalizedText>
+
 
 
 </GameData>

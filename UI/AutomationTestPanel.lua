@@ -1145,6 +1145,8 @@ local function ApplySelectedMapScript()
         Locale.Lookup(shortKey), true)
 end
 
+-- 注意：这是**调试用**的裸存档（固定档名、不带关系）。成品路径是左侧栏「存档与换图」面板
+-- 的「存档」按钮（MMT 格式 + 主线/分支关系，见 UI/ModMiscSaveGraph.lua）。
 local function SaveBeforeSwitch()
     if not RequireCreateGameModule("SaveBeforeSwitch") then return end
     local ok, saved, detail = pcall(ModMiscCreateGame.SaveBeforeSwitch)

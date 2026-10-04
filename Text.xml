@@ -497,7 +497,70 @@
 		<Row Tag="LOC_MODMISC_AUTOMATION_TEST_TAB_TIMELINE">
 			<Text>Restart &amp; Timeline</Text>
 		</Row>
+		<!-- 存档与换图（成品面板） -->
+		<Row Tag="LOC_MODMISC_SAVEPANEL_TITLE">
+			<Text>Saves &amp; Map Switch</Text>
+		</Row>
+		<Row Tag="LOC_MODMISC_SAVEPANEL_TOOLTIP">
+			<Text>Open the save-tree / map-switch panel</Text>
+		</Row>
+		<Row Tag="LOC_MODMISC_SAVEPANEL_SAVE">
+			<Text>Save</Text>
+		</Row>
+		<Row Tag="LOC_MODMISC_SAVEPANEL_SWITCH">
+			<Text>Switch map</Text>
+		</Row>
+		<Row Tag="LOC_MODMISC_SAVEPANEL_REFRESH">
+			<Text>Refresh list</Text>
+		</Row>
+		<Row Tag="LOC_MODMISC_SAVEPANEL_INFO">
+			<Text>This game: {1_Current}   |   Mainline head: {2_Head}   |   Incoming branch: {3_Pending}</Text>
+		</Row>
+		<Row Tag="LOC_MODMISC_SAVEPANEL_NONE">
+			<Text>none</Text>
+		</Row>
+		<Row Tag="LOC_MODMISC_SAVEPANEL_CURRENT">
+			<Text>this game</Text>
+		</Row>
+		<Row Tag="LOC_MODMISC_SAVEPANEL_ORPHAN">
+			<Text>parent not in list</Text>
+		</Row>
+		<Row Tag="LOC_MODMISC_SAVEPANEL_EMPTY">
+			<Text>(no managed saves yet)</Text>
+		</Row>
+		<Row Tag="LOC_MODMISC_SAVEPANEL_SCANNED">
+			<Text>Managed saves found: {1_Count}</Text>
+		</Row>
+		<Row Tag="LOC_MODMISC_SAVEPANEL_READY">
+			<Text>Save panel ready.</Text>
+		</Row>
+		<Row Tag="LOC_MODMISC_SAVEPANEL_SAVING">
+			<Text>Saving: {1_Name}</Text>
+		</Row>
+		<Row Tag="LOC_MODMISC_SAVEPANEL_SAVED">
+			<Text>Saved node {1_Id} ({2_State})</Text>
+		</Row>
+		<Row Tag="LOC_MODMISC_SAVEPANEL_SAVED_ON_DISK">
+			<Text>confirmed on disk</Text>
+		</Row>
+		<Row Tag="LOC_MODMISC_SAVEPANEL_SAVED_UNCONFIRMED">
+			<Text>not seen in the list yet</Text>
+		</Row>
+		<Row Tag="LOC_MODMISC_SAVEPANEL_SWITCHING">
+			<Text>Switching map - saving the original first: {1_Name}</Text>
+		</Row>
+		<Row Tag="LOC_MODMISC_SAVEPANEL_SWITCHING_DETAIL">
+			<Text>The game restarts automatically once the original save is on disk. The new map is a BRANCH of that save, so the next save here hangs under it.</Text>
+		</Row>
+		<Row Tag="LOC_MODMISC_SAVEPANEL_NODE_DETAIL">
+			<Text>node {1_Id} | parent {2_Parent} | kind {3_Kind} | turn {4_Turn} | map {5_Map} | stamp {6_Stamp}
+{7_Raw}</Text>
+		</Row>
+		<Row Tag="LOC_MODMISC_SAVEPANEL_ERROR">
+			<Text>{1_Action} failed: {2_Detail}</Text>
+		</Row>
 </BaseGameText>
+
 
 
 </GameData>

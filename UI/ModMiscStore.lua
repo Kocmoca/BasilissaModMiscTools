@@ -300,6 +300,12 @@ function ModMiscStore.IsReady()
     return m_Ready
 end
 
+-- 是否有扫描正在进行。调用方（如 UI/ModMiscSaveGraph 的换图流程）用它区分
+-- Refresh 返回 false 的两种含义：① 已有扫描在跑（回调会被调用）/ ② 依赖缺失（回调永远不来）。
+function ModMiscStore.IsRefreshing()
+    return m_Refreshing
+end
+
 function ModMiscStore.OnReady(callback)
     if callback == nil then return end
     if m_Ready then

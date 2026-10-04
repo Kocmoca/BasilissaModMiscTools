@@ -1147,6 +1147,85 @@ gameplay 侧要换图，走 `ExposedMembers.ModMiscToolScript.WorldBuilderAPI.Se
     ModMiscTurnEra.AdjustTurn(10)                 -- 试写回合
     ModMiscTurnEra.SetStartEra("ERA_MEDIEVAL")    -- 试写下一局开始年代
 
+------------------------------------------------------------------------------
+### 3.13 存档关系与换图（ModMiscSaveGraph / ModMiscSavePanel，**成品功能**）
+------------------------------------------------------------------------------
+
+**做什么**：给“换地图”这个功能配一套存档机制 —— 换图前先存原档，并把存档之间的
+**主线 / 分支**关系记下来，让玩家看得见“哪一档是本线的最新进度、哪一档是从哪儿分出来的”。
+
+**为什么这么设计**（前置结论都来自实机，见 `API_Verification_Status.md` 第 12 节）：
+
+* 对局内**换地图脚本没有任何办法**：写 `MAP_SCRIPT` 既不进重开，也活不到前端；
+* 唯一能换的是**同一地图脚本重新生成（换种子）**，靠 `Network.RestartGame()`；
+* 重开 = 丢掉当前世界 ⇒ **必须先存档**，而且这份原档要能找回来；
+* 跨存档唯一可用通道是**存档文件名**（通道 C）⇒ 关系信息写在档名里；
+* CustomData 随档保存但**不跨新局** ⇒ 节点身份用 CustomData 带，换图后的父子关系用存储通道带。
+
+#### 3.13.1 档名格式（**不可随意改**，解析全靠它）
+
+    MMT~<id>~<parent>~<kind>~T<turn>~<map>~<stamp>
+    例：MMT~m4k2x1az~0~M~T042~Pangaea~20261005-1432
+
+| 字段 | 含义 |
+|---|---|
+| `id` | 本档编号：base36 时间戳 + 2 位随机（唯一、可排序） |
+| `parent` | 父档 id；`0` = 树根（第一档，或接手没有记录的局） |
+| `kind` | `M` 主线（延续当前主线头）／`B` 分支（从非主线头分叉：SL 试验、换图后的新局） |
+| `turn` / `map` / `stamp` | 存这一档时的回合 / 地图脚本名 / 时间，给人看 |
+
+文件名禁用字符（`% " < > | / \ * ? :`）与分隔符 `~` 一律替换成 `_`。
+**游戏自带存档菜单存的档不带这个格式，不会进这棵树** —— 玩家为 SL 随便存多少档都不会污染关系树。
+
+#### 3.13.2 主线 / 分支怎么自动判（只给一个存档按钮）
+
+* 当前节点 == **主线头**（存储键 `sg_head`）→ `M`：这是本线的最新进度；
+* 当前节点不是主线头（例如读了一档旧档继续玩 = SL）→ `B`：它从主线分叉出去；
+* 没有当前节点（新局第一次存档）→ 有“待接分支”就接它（换图后的新局），否则当树根。
+
+每次写出 `M` 档就把主线头推进到它；`B` 档不动主线头。**当前节点**来自随档保存的 CustomData
+（`ModMiscSaveGraph_NodeId` 等）⇒ 读档进游戏就知道自己在哪个节点。
+
+#### 3.13.3 换图流程（面板上一个按钮）
+
+    「换图（先存原档）」：
+      ① 先算好新节点并**先写“待接分支”**（存储键 sg_pending = `<原档id>|B|<stamp>`）
+         —— 重开后只有存储通道能把关系带过去，先写就给了它落盘时间；
+      ② 存原档（按 3.13.2 自动判 M/B，主线上就是 M）；
+      ③ 等 SaveComplete → 复查存档列表确认原档落盘 → Refresh 存储确认 pending 落盘；
+      ④ Network.RestartGame()；
+      ⑤ 新局进游戏 → 开局探针读到待接分支：本局第一次存档自动挂到原档下、算**分支**，
+         pending 随即消费掉；之后在本局继续存 = 这条分支的延续。
+
+失败兜底：`pending` 两次都没确认也照样重开（原档已保存，丢的只是一条边，不损坏任何档），
+日志里会写清楚。
+
+#### 3.13.4 本 mod 内直接调（`UI/ModMiscSaveGraph.lua`，UI 层）
+
+    ModMiscSaveGraph.DescribeContext()                  只读：格式 + 当前节点/主线头/待接分支 + 扫描状态
+    ModMiscSaveGraph.BuildSaveName(node) / ParseSaveName(rawName)   档名 ↔ 节点
+    ModMiscSaveGraph.Refresh(onDone)                    扫存档列表（只收 MMT~ 前缀）
+    ModMiscSaveGraph.GetNodes() / BuildTreeLines() / DescribeTree()
+    ModMiscSaveGraph.GetCurrentNodeId() / GetMainlineHeadId() / GetPendingBranch()
+    ModMiscSaveGraph.SaveCurrentGame({ Reason=…, OnSaved=…) })      存一档（自动判主/分）
+    ModMiscSaveGraph.SwitchMap()                        换图：存原档 → 记关系 → 重开
+    ModMiscSaveGraph.ReportAfterLoad()                  开局探针（Support_UI 调一次）
+
+#### 3.13.5 其它 mod 可用（`ExposedMembers.ModMiscToolUI.*`）
+
+    DescribeSaveGraph()                 只读现状
+    GetSaveGraphTree()                  关系树（深度优先的 { { Node, Depth }, … }）
+    SaveGameWithRelation(options)       按本格式存一档并记关系
+    SwitchMap()                         换图（存原档 → 重开）
+    BuildRelationSaveName(node) / ParseRelationSaveName(rawName)   档名编解码
+    SaveGraph                           整个模块表
+
+#### 3.13.6 面板入口
+
+左侧栏「存档与换图」：信息行（本局 / 主线头 / 待接分支）+ 关系树列表（点条目看详情）+
+「存档」/「换图（先存原档）」/「刷新列表」。日志前缀 `[ModMiscTool][SaveGraph]` 与
+`[ModMiscTool][SavePanel]`。
+
 ==============================================================================
 ## 四、数据库表（供其他 mod 插入数据）
 ==============================================================================

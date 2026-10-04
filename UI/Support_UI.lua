@@ -5,6 +5,7 @@ include("ModMiscStore") -- 跨存档存储（存档名编码通道）
 include("ModMiscAssetStore") -- 永久资产放置（读档自动重放）
 include("ModMiscCreateGame") -- 对局内「创建新局 / 换地图」验证（开局探针 + 面板入口）
 include("ModMiscTurnEra") -- 回合数 / 年代 探查与试写（开局探针 + 面板入口）
+include("ModMiscSaveGraph") -- 存档关系树（主线/分支）+ 换图存档（成品功能）
 print("[ModMiscTool] Support_UI loaded build=" .. tostring(MODMISC_BUILD_TAG))
 
 local allUnitPromotions = {}
@@ -442,6 +443,15 @@ function Initialize()
 		end
 	end
 
+	-- 存档关系 + 换图：开局探针 —— 报“本局是哪个节点 / 主线头 / 有没有待接分支”，
+	-- 并把关系树打进日志。换图后进新局时，这一行就是“关系带过去了没有”的直接证据。
+	if ModMiscSaveGraph ~= nil then
+		local ok, err = pcall(ModMiscSaveGraph.ReportAfterLoad)
+		if not ok then
+			print("[ModMiscTool][SaveGraph] 开局探针失败 -> " .. tostring(err))
+		end
+	end
+
 	-- 回合 / 年代：开局探针（一行现状）。重启换图前后一对比就知道回合与年代有没有被复位。
 	if ModMiscTurnEra ~= nil then
 		local ok, err = pcall(ModMiscTurnEra.ReportAfterLoad)
@@ -510,6 +520,17 @@ ExposedMembers.ModMiscToolUI.RunCrossSaveProbeUI = RunCrossSaveProbeUI
 		ExposedMembers.ModMiscToolUI.RestorePersistentAssets = ModMiscAssetStore.RestoreAll
 		ExposedMembers.ModMiscToolUI.GetPersistentAssetCount = ModMiscAssetStore.GetCount
 		ExposedMembers.ModMiscToolUI.GetPersistentAssets = ModMiscAssetStore.GetAll
+	end
+
+	-- 存档关系树 + 换图（成品功能）：接口与格式说明见 UI/ModMiscSaveGraph.lua
+	if ModMiscSaveGraph ~= nil then
+		ExposedMembers.ModMiscToolUI.SaveGraph = ModMiscSaveGraph
+		ExposedMembers.ModMiscToolUI.DescribeSaveGraph = ModMiscSaveGraph.DescribeContext
+		ExposedMembers.ModMiscToolUI.GetSaveGraphTree = ModMiscSaveGraph.BuildTreeLines
+		ExposedMembers.ModMiscToolUI.SaveGameWithRelation = ModMiscSaveGraph.SaveCurrentGame
+		ExposedMembers.ModMiscToolUI.SwitchMap = ModMiscSaveGraph.SwitchMap
+		ExposedMembers.ModMiscToolUI.BuildRelationSaveName = ModMiscSaveGraph.BuildSaveName
+		ExposedMembers.ModMiscToolUI.ParseRelationSaveName = ModMiscSaveGraph.ParseSaveName
 	end
 
 	-- 跨存档存储（存档名编码通道，已实机验证）：给别的 mod 直接用的接口。

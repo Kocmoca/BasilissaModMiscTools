@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<Mod id="a1b2c3d4-5e6f-7a8b-9c0d-1e2f3a4b5c6d" version="1.57">
+<Mod id="a1b2c3d4-5e6f-7a8b-9c0d-1e2f3a4b5c6d" version="1.58">
     <Properties>
         <Name>Basilissa Mod Misc Tools</Name>
         <Description>LOC_MODMISC_MOD_DESCRIPTION</Description>
@@ -105,6 +105,7 @@
             <File>UI/ModMiscAssetStore.lua</File>
             <File>UI/ModMiscCreateGame.lua</File>
             <File>UI/ModMiscTurnEra.lua</File>
+            <File>UI/ModMiscSaveGraph.lua</File>
             <File>ModTool_TurnEraAPI.lua</File>
             <File>ModTool_Support_Functions.lua</File>
             <File>ModTool_Support_UI.lua</File>
@@ -160,6 +161,15 @@
             <File>UI/WorldBuilderTestPanel.xml</File>
         </AddUserInterfaces>
         -->
+        <!-- 存档与换图（成品面板）：默认注册 —— 这是给玩家用的功能入口，
+             不是调试面板。存档关系与换图流程见 UI/ModMiscSaveGraph.lua。 -->
+        <AddUserInterfaces id="ModMiscSavePanel">
+            <Properties>
+                <Context>InGame</Context>
+                <LoadOrder>-1</LoadOrder>
+            </Properties>
+            <File>UI/ModMiscSavePanel.xml</File>
+        </AddUserInterfaces>
         <AddUserInterfaces id="ModMiscDebugUI">
             <Properties>
                 <Context>InGame</Context>
@@ -220,6 +230,9 @@
         <File>UI/ModMiscAssetStore.lua</File>
         <File>UI/ModMiscCreateGame.lua</File>
         <File>UI/ModMiscTurnEra.lua</File>
+        <File>UI/ModMiscSaveGraph.lua</File>
+        <File>UI/ModMiscSavePanel.xml</File>
+        <File>UI/ModMiscSavePanel.lua</File>
         <File>ModTool_TurnEraAPI.lua</File>
         <!-- texts -->
         <File>Text.xml</File>
