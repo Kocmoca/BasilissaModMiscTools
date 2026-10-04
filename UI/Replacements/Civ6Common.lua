@@ -1065,6 +1065,16 @@ local function ModMiscToolDumpMapSizeDiagnostics()
 	Describe("MapConfiguration.GetMaxMinorPlayers()", function()
 		return MapConfiguration.GetMaxMinorPlayers()
 	end)
+
+	-- GetMapSize() 返回的是哈希，这里把六个尺寸名的哈希一并算出来，便于事后比对
+	if DB ~= nil and DB.MakeHash ~= nil then
+		local hashes = {}
+		for key, text in pairs(GHOST_MAP_SIZE_TEXT_BY_KEY) do
+			local ok, hash = pcall(function() return DB.MakeHash(text) end)
+			if ok then table.insert(hashes, key .. "=" .. tostring(hash)) end
+		end
+		print("[ModMiscTool][MapSizeDiag] DB.MakeHash 六个尺寸：" .. table.concat(hashes, " "))
+	end
 	Describe("MapConfiguration.GetMaxMajorPlayers()", function()
 		return MapConfiguration.GetMaxMajorPlayers()
 	end)
@@ -1091,11 +1101,40 @@ local function ModMiscToolDumpMapSizeDiagnostics()
 end
 
 -- 当前地图尺寸的标识（"MAPSIZE_HUGE" 之类）。
--- 依次试三种来源（实测 MapConfiguration.GetValue("MapSize") 返回 nil、
--- 用法可能因版本而异，所以多试几个并把结果打进诊断日志）：
---   ① MapConfiguration.GetValue("MapSize")  ② GameConfiguration.GetValue("MapSize")
---   ③ MapConfiguration.GetMapSize()
+--
+-- 实测（2026-10-04 诊断探针）：
+--   MapConfiguration.GetValue("MapSize")  -> nil
+--   GameConfiguration.GetValue("MapSize") -> nil
+--   MapConfiguration.GetMapSize()         -> **数字**（-601637951），是尺寸名的哈希
+-- 所以先用字符串来源试；拿不到就用 GetMapSize() 的哈希去和六个尺寸名的哈希比对 ——
+-- `DB.MakeHash` 用的是引擎自己的哈希，能对上就没问题。
+local GHOST_MAP_SIZE_TEXT_BY_KEY = {
+	MAPSIZE_DUEL     = "MAPSIZE_DUEL",
+	MAPSIZE_TINY     = "MAPSIZE_TINY",
+	MAPSIZE_SMALL    = "MAPSIZE_SMALL",
+	MAPSIZE_STANDARD = "MAPSIZE_STANDARD",
+	MAPSIZE_LARGE    = "MAPSIZE_LARGE",
+	MAPSIZE_HUGE     = "MAPSIZE_HUGE",
+}
+
+-- 把各种形态的“地图尺寸”值规范成 MAPSIZE_XXX：
+--   * 字符串且含 "MAPSIZE_" → 直接用
+--   * 表（GameSetupLogic 里是 p.Value.Domain / p.Value.Value）→ 取 .Value / .MapSizeType
+--   * 其它 → 认不出，返回 nil
+local function ModMiscToolNormalizeMapSizeKey(value)
+	if value == nil then return nil end
+	if type(value) == "table" then
+		value = value.Value or value.MapSizeType or value.MapSize
+	end
+	if value == nil then return nil end
+	local text = tostring(value)
+	if string.find(text, "MAPSIZE_") ~= nil then return text end
+	return nil
+end
+
+-- 返回：key, 诊断信息（认不出时给出原始哈希与六个候选哈希，便于事后比对）
 local function ModMiscToolGetMapSizeKey()
+	-- ① 字符串来源
 	local candidates = {
 		function()
 			if MapConfiguration == nil or MapConfiguration.GetValue == nil then return nil end
@@ -1105,19 +1144,40 @@ local function ModMiscToolGetMapSizeKey()
 			if GameConfiguration == nil or GameConfiguration.GetValue == nil then return nil end
 			return GameConfiguration.GetValue("MapSize")
 		end,
-		function()
-			if MapConfiguration == nil or MapConfiguration.GetMapSize == nil then return nil end
-			return MapConfiguration.GetMapSize()
-		end,
 	}
 	for _, getter in ipairs(candidates) do
 		local ok, value = pcall(getter)
 		if ok then
 			local key = ModMiscToolNormalizeMapSizeKey(value)
-			if key ~= nil then return key end
+			if key ~= nil then return key, "string" end
 		end
 	end
-	return nil
+
+	-- ② 哈希来源：MapConfiguration.GetMapSize()
+	if MapConfiguration == nil or MapConfiguration.GetMapSize == nil then
+		return nil, "no GetMapSize"
+	end
+	local ok, raw = pcall(function() return MapConfiguration.GetMapSize() end)
+	if not ok or raw == nil then
+		return nil, "GetMapSize 取不到"
+	end
+
+	if DB == nil or DB.MakeHash == nil then
+		return nil, "raw=" .. tostring(raw) .. "（DB.MakeHash 不可用，无法比对）"
+	end
+	local hashes = {}
+	for key, text in pairs(GHOST_MAP_SIZE_TEXT_BY_KEY) do
+		local hashOk, hash = pcall(function() return DB.MakeHash(text) end)
+		if hashOk then
+			hashes[key] = hash
+			if hash == raw then return key, "hash" end
+		end
+	end
+	local parts = {}
+	for key, hash in pairs(hashes) do
+		table.insert(parts, key .. "=" .. tostring(hash))
+	end
+	return nil, "raw=" .. tostring(raw) .. " 不等于任何候选（" .. table.concat(parts, " ") .. "）"
 end
 
 local function ModMiscToolApplyGhostCityStates()
@@ -1141,10 +1201,12 @@ local function ModMiscToolApplyGhostCityStates()
 	if current <= 0 or maxCityStates <= 0 or current >= maxCityStates then return end
 
 	-- 请求值 = 按地图尺寸查表（唯一策略来源），再受数据库天花板与硬上限夹取
-	local mapSizeKey = ModMiscToolGetMapSizeKey()
+	local mapSizeKey, mapSizeDiag = ModMiscToolGetMapSizeKey()
 	local target = GHOST_CITY_STATE_BY_MAP_SIZE[mapSizeKey]
 	if target == nil then
 		target = GHOST_CITY_STATE_DEFAULT
+		print("[ModMiscTool][Ghost] 地图尺寸认不出（" .. tostring(mapSizeDiag)
+			.. "）→ 用兜底 " .. tostring(GHOST_CITY_STATE_DEFAULT))
 	end
 	if target > maxCityStates then target = maxCityStates end
 	if target > GHOST_CITY_STATE_HARD_LIMIT then target = GHOST_CITY_STATE_HARD_LIMIT end
