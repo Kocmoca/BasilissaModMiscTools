@@ -1071,9 +1071,11 @@ gameplay 侧要换图，走 `ExposedMembers.ModMiscToolScript.WorldBuilderAPI.Se
 * `Events.SetGameEntryMethod` + `Network.HostGame(SERVER_TYPE_NONE)` —— **对局内不可用**：
   调用返回、进程不崩，但**不建新局**（静默空操作）。面板按钮与 `HostGameInGame` 已移除。
   想换**地图脚本**只能退主菜单、在创建游戏界面重新开局。
-* 新增前端探针 `[ModMiscTool][MapConfigProbe]`（在 `UI/Replacements/Civ6Common.lua`）：
-  在创建游戏界面打一行当前配置（`MAP_SCRIPT` / `MAP_SIZE` / `SEED` / `START_ERA` / `START_TURN`），
-  用来回答“对局内写的配置能不能活到前端”——能活，那条路就成立。
+* 前端探针 `[ModMiscTool][MapConfigProbe]`（在 `UI/Replacements/Civ6Common.lua`）：
+  在创建游戏界面打一行当前配置（`MAP_SCRIPT` / `MAP_SIZE` / `SEED` / `START_ERA` / `START_TURN`）。
+  **实机结论（2026-10-05）：退回主菜单后打出来的还是原来那张图** ⇒ 配置在离开对局时就被重置，
+  「退主菜单再创建」也带不走对局内写的 `MAP_SCRIPT`；**换地图脚本彻底没有就地办法**。
+  探针保留（只在值变化时打一行），以后再遇到“配置到底有没有传过去”的问题可直接看它。
 
 #### 3.11.5 注意
 
@@ -1087,11 +1089,16 @@ gameplay 侧要换图，走 `ExposedMembers.ModMiscToolScript.WorldBuilderAPI.Se
 * 每次进游戏（新局 / 读档）都会打一行开局探针结论，属正常日志，不是报错。
 
 ------------------------------------------------------------------------------
-### 3.12 回合数 / 年代显示（ModMiscTurnEra，探查中）
+### 3.12 回合数 / 年代显示（ModMiscTurnEra：**写接口实测无效**，只留读 + 留档）
 ------------------------------------------------------------------------------
 
 **用途**：重启换图（3.11）之后把新局“拨回”原来的回合与年代 —— 数据由跨存档通道带过来。
-本模块只做**探查与试写**，结论见 `API_Verification_Status.md` 第 13 节。
+
+⚠️ **2026-10-05 实机结论：写回合 / 写年代 / 写下一局开始年代，三个方向全部无效**
+（`applied=false`，回读值不变，顶栏回合数/年份/年代都不动）。模块**保留**是为了：
+① 读现状（`GetTurnInfo` / `GetDateString` / `GetPlayerEraType` 都正常）；
+② 把“试过哪些路径、结论是什么”钉在代码里。**不要把 `Set*` 当可用接口用。**
+完整结论与静态依据见 `API_Verification_Status.md` 第 13 节。
 
 #### 3.12.1 本 mod 内直接调（`UI/ModMiscTurnEra.lua`，UI 层）
 
@@ -1102,20 +1109,20 @@ gameplay 侧要换图，走 `ExposedMembers.ModMiscToolScript.WorldBuilderAPI.Se
     ModMiscTurnEra.GetEraEntries()                   时代清单（GameInfo.Eras，按 Index 排序）
     ModMiscTurnEra.GetPlayerEraType(playerID)        该玩家当前时代类型
     ModMiscTurnEra.GetEraTypeByOffset(playerID, n)   该玩家 ±n 个时代之后是哪个时代
-    ModMiscTurnEra.SetTurn(turn)                     写回合（UI 直调 → gameplay 兜底，返回 ok, 明细）
-    ModMiscTurnEra.AdjustTurn(delta)                 回合 ±N（夹到 >= 1）
-    ModMiscTurnEra.SetPlayerEra(playerID, eraType)   写年代（gameplay WorldBuilder 通道）
-    ModMiscTurnEra.AdjustPlayerEra(playerID, delta)  年代 ±N
-    ModMiscTurnEra.SetStartEra(eraType)              写**下一局**的开始年代（配置键 GAME_START_ERA）
+    ModMiscTurnEra.SetTurn(turn)                     [已验证失败] 写回合（UI 直调 → gameplay 兜底）
+    ModMiscTurnEra.AdjustTurn(delta)                 [已验证失败] 回合 ±N（夹到 >= 1）
+    ModMiscTurnEra.SetPlayerEra(playerID, eraType)   [已验证失败] 写年代（gameplay WorldBuilder 通道）
+    ModMiscTurnEra.AdjustPlayerEra(playerID, delta)  [已验证失败] 年代 ±N
+    ModMiscTurnEra.SetStartEra(eraType)              [已验证失败] 写**下一局**开始年代（GAME_START_ERA）
     ModMiscTurnEra.ReportAfterLoad()                 开局探针：一行现状（Support_UI 调一次）
 
 #### 3.12.2 Gameplay 后端（`ModTool_TurnEraAPI.lua` → `ExposedMembers.ModMiscToolScript.TurnEraAPI`）
 
-    GetTurnInfo()                         回合 / 结束回合 / 上限 / 开始回合
-    SetCurrentGameTurn(turn)              试写回合（Game.SetCurrentGameTurn）
-    GetEraInfo(playerID)                  玩家时代序号 + 类型 + 全局当前时代
-    SetPlayerEra(playerID, eraType)       试写年代（WorldBuilder 通道）
-    SetCurrentEra(eraType, playerIDs)     批量写年代（不传玩家 = 全部存活主要文明）
+    GetTurnInfo()                         回合 / 结束回合 / 上限 / 开始回合        （读，可用）
+    GetEraInfo(playerID)                  玩家时代序号 + 类型 + 全局当前时代     （读，可用）
+    SetCurrentGameTurn(turn)              [已验证失败] 试写回合
+    SetPlayerEra(playerID, eraType)       [已验证失败] 试写年代（WorldBuilder 通道）
+    SetCurrentEra(eraType, playerIDs)     [已验证失败] 批量写年代
 
 #### 3.12.3 静态依据（详见第 13.1 节）
 
@@ -1130,8 +1137,15 @@ gameplay 侧要换图，走 `ExposedMembers.ModMiscToolScript.WorldBuilderAPI.Se
 
 #### 3.12.4 面板入口
 
-Automation 面板**头部页签**切到「重开与时间线」：探测回合/年代 → 回合 ±10 → 年代 ±1 →
-开始年代 +1 →（切换前存档 / 重开新局 / 退回主菜单）。判定看 Lua.log 前缀 `[ModMiscTool][TurnEra]`。
+**试写按钮已按授权者要求移除**（2026-10-05，结论出来后）。Automation 面板第 2 页签
+「重开与时间线」现在只保留：目标地图 / 探测创建接口 / 应用地图配置 / 写切换标记 /
+切换前存档 / 重开新局 / 退回主菜单。
+
+要复测回合/年代，不必恢复界面，直接调模块函数即可（会打 `[ModMiscTool][TurnEra]` 日志）：
+
+    ModMiscTurnEra.DescribeFingerprint()          -- 读现状
+    ModMiscTurnEra.AdjustTurn(10)                 -- 试写回合
+    ModMiscTurnEra.SetStartEra("ERA_MEDIEVAL")    -- 试写下一局开始年代
 
 ==============================================================================
 ## 四、数据库表（供其他 mod 插入数据）

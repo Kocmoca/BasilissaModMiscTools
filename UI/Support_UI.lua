@@ -491,16 +491,15 @@ ExposedMembers.ModMiscToolUI.RunCrossSaveProbeUI = RunCrossSaveProbeUI
 		-- 也不建新局（静默空操作），详见 API_Verification_Status.md 第 43 条。
 	end
 
-	-- 回合数 / 年代（UI 层）：探查与试写，接口与静态依据见 UI/ModMiscTurnEra.lua
+	-- 回合数 / 年代（UI 层）：**只暴露读接口** —— 2026-10-05 实机确认写接口全部无效
+	-- （回合、年代、下一局开始年代都改不动，见 API_Verification_Status.md 第 13 节）。
+	-- 模块本身留着：读数可用，写的那几个函数只作留档。
 	if ModMiscTurnEra ~= nil then
 		ExposedMembers.ModMiscToolUI.TurnEra = ModMiscTurnEra
 		ExposedMembers.ModMiscToolUI.DescribeTurnEraContext = ModMiscTurnEra.DescribeContext
 		ExposedMembers.ModMiscToolUI.GetTurnInfo = ModMiscTurnEra.GetTurnInfo
-		ExposedMembers.ModMiscToolUI.SetTurn = ModMiscTurnEra.SetTurn
-		ExposedMembers.ModMiscToolUI.AdjustTurn = ModMiscTurnEra.AdjustTurn
-		ExposedMembers.ModMiscToolUI.SetPlayerEra = ModMiscTurnEra.SetPlayerEra
-		ExposedMembers.ModMiscToolUI.AdjustPlayerEra = ModMiscTurnEra.AdjustPlayerEra
-		ExposedMembers.ModMiscToolUI.SetStartEra = ModMiscTurnEra.SetStartEra
+		ExposedMembers.ModMiscToolUI.GetDateString = ModMiscTurnEra.GetDateString
+		ExposedMembers.ModMiscToolUI.GetPlayerEraType = ModMiscTurnEra.GetPlayerEraType
 	end
 
 	-- 永久资产放置（API_Documentation.txt 3.10.2 里写的对外名字，实现是 ModMiscAssetStore）

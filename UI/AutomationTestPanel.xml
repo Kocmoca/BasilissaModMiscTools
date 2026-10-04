@@ -104,11 +104,10 @@
 
             <!-- ============================================================
                  第 2 页「重开与时间线」（默认隐藏，点页签切换）：
-                   * 创建新局 / 换地图：Network.RestartGame 是**已验证可用**的换图手段；
-                     Network.HostGame 对局内**不可用**（静默空操作，按钮已移除）。
-                   * 回合 / 年代：探查能否把重启后的新局“拨回”原来的回合与年代。
-                 判定与日志协议见 UI/ModMiscCreateGame.lua / UI/ModMiscTurnEra.lua
-                 与 API_Verification_Status.md 第 12、13 节。
+                   * Network.RestartGame 是**已验证可用**的换图手段（同脚本重新生成、换种子）；
+                   * Network.HostGame 对局内**不可用**（静默空操作，按钮已移除）；
+                   * 回合 / 年代 / 地图配置的“就地改写”**实测都不生效**（第 12、13 节），
+                     相关试写按钮已移除，模块与结论留在代码与文档里。
                  ============================================================ -->
             <Label ID="AutomationCreateGameMapLabel" Anchor="L,T" Offset="20,246" Size="170,52"
                    FontSize="26" Color="225,225,225,255" VerticalAlignment="Center" Hidden="1"
@@ -126,34 +125,14 @@
                         Style="ButtonControl" FontSize="26" Hidden="1"
                         String="LOC_MODMISC_CREATEGAME_ARM_MARKER" />
 
-            <!-- 回合 / 年代（探查 + 试写）：接口与依据见 UI/ModMiscTurnEra.lua -->
-            <GridButton ID="AutomationTurnEraProbe" Anchor="L,T" Offset="20,370" Size="280,56"
-                        Style="ButtonControl" FontSize="26" Hidden="1"
-                        String="LOC_MODMISC_TURNERA_PROBE" />
-            <GridButton ID="AutomationTurnPlus" Anchor="L,T" Offset="310,370" Size="280,56"
-                        Style="ButtonControl" FontSize="26" Hidden="1"
-                        String="LOC_MODMISC_TURNERA_TURN_PLUS" />
-            <GridButton ID="AutomationTurnMinus" Anchor="L,T" Offset="600,370" Size="280,56"
-                        Style="ButtonControl" FontSize="26" Hidden="1"
-                        String="LOC_MODMISC_TURNERA_TURN_MINUS" />
 
-            <GridButton ID="AutomationEraPlus" Anchor="L,T" Offset="20,434" Size="280,56"
-                        Style="ButtonControl" FontSize="26" Hidden="1"
-                        String="LOC_MODMISC_TURNERA_ERA_PLUS" />
-            <GridButton ID="AutomationEraMinus" Anchor="L,T" Offset="310,434" Size="280,56"
-                        Style="ButtonControl" FontSize="26" Hidden="1"
-                        String="LOC_MODMISC_TURNERA_ERA_MINUS" />
-            <GridButton ID="AutomationStartEraPlus" Anchor="L,T" Offset="600,434" Size="280,56"
-                        Style="ButtonControl" FontSize="26" Hidden="1"
-                        String="LOC_MODMISC_TURNERA_START_ERA_PLUS" />
-
-            <GridButton ID="AutomationCreateGameSave" Anchor="L,T" Offset="20,498" Size="280,56"
+            <GridButton ID="AutomationCreateGameSave" Anchor="L,T" Offset="20,370" Size="280,56"
                         Style="ButtonControl" FontSize="26" Hidden="1"
                         String="LOC_MODMISC_CREATEGAME_SAVE" />
-            <GridButton ID="AutomationCreateGameRestart" Anchor="L,T" Offset="310,498" Size="280,56"
+            <GridButton ID="AutomationCreateGameRestart" Anchor="L,T" Offset="310,370" Size="280,56"
                         Style="ButtonControl" FontSize="26" Hidden="1"
                         String="LOC_MODMISC_CREATEGAME_RESTART" />
-            <GridButton ID="AutomationCreateGameExit" Anchor="L,T" Offset="600,498" Size="280,56"
+            <GridButton ID="AutomationCreateGameExit" Anchor="L,T" Offset="600,370" Size="280,56"
                         Style="ButtonControl" FontSize="26" Hidden="1"
                         String="LOC_MODMISC_CREATEGAME_EXIT" />
 

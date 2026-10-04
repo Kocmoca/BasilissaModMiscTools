@@ -8,9 +8,9 @@
 --   2. Network.SaveGame / Network.LoadGame：游戏内存档、读档
 --   3. CustomData 探针 + 后台存档：验证 ReadCustomData 是否能随存档回来
 --   4. AssetPreview：选择资产、放到指定地块、清除地块/全部资产
---   5. 重开与时间线（第 2 页签）：RestartGame 换图、切换前存档、回合 / 年代探查与试写
---      （ScenarioSetup 的 HostGame 已实测对局内不可用，按钮已移除；
---        接口与判定协议见 UI/ModMiscCreateGame.lua / UI/ModMiscTurnEra.lua）
+--   5. 重开与时间线（第 2 页签）：RestartGame 换图、切换前存档、退回主菜单
+--      （ScenarioSetup 的 HostGame 已实测对局内不可用；回合 / 年代 / 地图配置的
+--        就地改写也实测不生效 —— 试写按钮都已移除，结论见 API_Verification_Status.md 第 12、13 节）
 --
 -- 所有接口调用都包在 pcall 里；错误显示在“提示信息”小窗，同时 print 到 Lua.log。
 -- ===========================================================================
@@ -20,7 +20,6 @@ include("Civ6Common")  -- ReadCustomData / WriteCustomData（本 mod 的 replace
 include("ModMiscStore")  -- 跨存档存储（存档名编码通道）：本面板的存储读写按钮用它
 include("ModMiscAssetStore")  -- 永久资产放置（记录落 CustomData，读档自动重放）
 include("ModMiscCreateGame")  -- 对局内「创建新局 / 换地图」验证（含开局探针的判定逻辑）
-include("ModMiscTurnEra")  -- 回合数 / 年代 探查与试写
 print("[ModMiscTool][AutomationTest] panel loading build=" .. tostring(MODMISC_BUILD_TAG))
 
 -- ===========================================================================
@@ -1217,8 +1216,6 @@ local PAGE_MAIN_CONTROLS = {
 local PAGE_TIMELINE_CONTROLS = {
     "AutomationCreateGameMapLabel", "AutomationCreateGameMapButton",
     "AutomationCreateGameProbe", "AutomationCreateGameApplyMap", "AutomationCreateGameArmMarker",
-    "AutomationTurnEraProbe", "AutomationTurnPlus", "AutomationTurnMinus",
-    "AutomationEraPlus", "AutomationEraMinus", "AutomationStartEraPlus",
     "AutomationCreateGameSave", "AutomationCreateGameRestart", "AutomationCreateGameExit",
 }
 
@@ -1245,52 +1242,6 @@ function ShowAutomationPage(pageKey)
     Controls.AutomationTestTabTimeline:SetSelected(not showMain)
 end
 
--- ===========================================================================
--- 回合数 / 年代（第 2 页签）
---
--- 目的：重启换图之后把新局“拨回”原来的回合与年代（数据由跨存档通道带过来）。
--- 候选接口、静态依据与两条调用路径（UI 直调 → gameplay 兜底）见 UI/ModMiscTurnEra.lua。
--- ===========================================================================
-
-local function RequireTurnEraModule(actionName)
-    if ModMiscTurnEra == nil then
-        SetError(actionName, "ModMiscTurnEra 模块没加载（ImportFiles 里缺 UI/ModMiscTurnEra.lua？）")
-        return false
-    end
-    return true
-end
-
-local function ProbeTurnEra()
-    if not RequireTurnEraModule("TurnEraProbe") then return end
-    local ok, report = pcall(ModMiscTurnEra.DescribeContext)
-    if not ok then
-        SetError("TurnEraProbe", report)
-        return
-    end
-    SetOutputDetail(Locale.Lookup("LOC_MODMISC_TURNERA_PROBE_HEADER") .. "\n" .. tostring(report),
-        Locale.Lookup("LOC_MODMISC_TURNERA_PROBE_SHORT"), true)
-end
-
--- 写类动作统一走这里：call 返回 (applied, detail)
-local function RunTurnEraWrite(actionName, resultKey, okShortKey, failShortKey, call)
-    if not RequireTurnEraModule(actionName) then return end
-    local ok, applied, detail = pcall(call)
-    if not ok then
-        SetError(actionName, applied)
-        return
-    end
-    SetOutputDetail(Locale.Lookup(resultKey, tostring(detail)),
-        Locale.Lookup(applied and okShortKey or failShortKey), true)
-end
-
--- 年代操作的目标玩家：跟随「玩家」选择器；选的是特殊项（观察者/无）就退到本地玩家
-local function GetTurnEraTargetPlayerID()
-    local playerID = m_SelectedPlayerIndex
-    if playerID == nil or IsPlayerSpecial(playerID) or Players[playerID] == nil then
-        playerID = GetLocalPlayerSafe()
-    end
-    return playerID
-end
 
 -- ===========================================================================
 -- 面板打开 / 关闭 / 侧栏入口
@@ -1407,60 +1358,11 @@ function OnInit()
                 return ModMiscCreateGame.RestartGame()
             end)
         end) end)
-    -- 年代真的变了才会有这个事件 —— 拿它当「写年代生效」的直接证据（第 49 条）。
-    -- 只打日志，不碰控件：事件可能在加载/切换的中间态触发。
-    if Events.PlayerEraChanged ~= nil then
-        Events.PlayerEraChanged.Add(function(playerID, era)
-            print("[ModMiscTool][TurnEra] PlayerEraChanged: player=" .. tostring(playerID)
-                .. " era=" .. tostring(era))
-        end)
-    end
-
     -- HostGame 按钮已移除：2026-10-05 实机结论 —— 对局内调用是静默空操作（第 43 条）
     Controls.AutomationTestTabMain:RegisterCallback(Mouse.eLClick,
         function() SafeCall("TabMain", function() ShowAutomationPage("main") end) end)
     Controls.AutomationTestTabTimeline:RegisterCallback(Mouse.eLClick,
         function() SafeCall("TabTimeline", function() ShowAutomationPage("timeline") end) end)
-    Controls.AutomationTurnEraProbe:RegisterCallback(Mouse.eLClick,
-        function() SafeCall("TurnEraProbe", ProbeTurnEra) end)
-    Controls.AutomationTurnPlus:RegisterCallback(Mouse.eLClick,
-        function() SafeCall("TurnPlus10", function()
-            RunTurnEraWrite("TurnPlus10", "LOC_MODMISC_TURNERA_TURN_RESULT",
-                "LOC_MODMISC_TURNERA_TURN_OK_SHORT", "LOC_MODMISC_TURNERA_TURN_FAIL_SHORT",
-                function() return ModMiscTurnEra.AdjustTurn(10) end)
-        end) end)
-    Controls.AutomationTurnMinus:RegisterCallback(Mouse.eLClick,
-        function() SafeCall("TurnMinus10", function()
-            RunTurnEraWrite("TurnMinus10", "LOC_MODMISC_TURNERA_TURN_RESULT",
-                "LOC_MODMISC_TURNERA_TURN_OK_SHORT", "LOC_MODMISC_TURNERA_TURN_FAIL_SHORT",
-                function() return ModMiscTurnEra.AdjustTurn(-10) end)
-        end) end)
-    Controls.AutomationEraPlus:RegisterCallback(Mouse.eLClick,
-        function() SafeCall("EraPlus1", function()
-            local playerID = GetTurnEraTargetPlayerID()
-            RunTurnEraWrite("EraPlus1", "LOC_MODMISC_TURNERA_ERA_RESULT",
-                "LOC_MODMISC_TURNERA_ERA_OK_SHORT", "LOC_MODMISC_TURNERA_ERA_FAIL_SHORT",
-                function() return ModMiscTurnEra.AdjustPlayerEra(playerID, 1) end)
-        end) end)
-    Controls.AutomationEraMinus:RegisterCallback(Mouse.eLClick,
-        function() SafeCall("EraMinus1", function()
-            local playerID = GetTurnEraTargetPlayerID()
-            RunTurnEraWrite("EraMinus1", "LOC_MODMISC_TURNERA_ERA_RESULT",
-                "LOC_MODMISC_TURNERA_ERA_OK_SHORT", "LOC_MODMISC_TURNERA_ERA_FAIL_SHORT",
-                function() return ModMiscTurnEra.AdjustPlayerEra(playerID, -1) end)
-        end) end)
-    Controls.AutomationStartEraPlus:RegisterCallback(Mouse.eLClick,
-        function() SafeCall("StartEraPlus1", function()
-            local playerID = GetTurnEraTargetPlayerID()
-            RunTurnEraWrite("StartEraPlus1", "LOC_MODMISC_TURNERA_START_ERA_RESULT",
-                "LOC_MODMISC_TURNERA_START_ERA_OK_SHORT", "LOC_MODMISC_TURNERA_START_ERA_FAIL_SHORT",
-                function()
-                    -- 下一局的开始年代：拿“本地玩家当前时代 +1”当目标，够验证写没写进去
-                    local eraType, err = ModMiscTurnEra.GetEraTypeByOffset(playerID, 1)
-                    if eraType == nil then return false, tostring(err) end
-                    return ModMiscTurnEra.SetStartEra(eraType)
-                end)
-        end) end)
     Controls.AutomationCreateGameExit:RegisterCallback(Mouse.eLClick,
         function() SafeCall("ExitToMainMenu", function()
             RunCreateGameAction("ExitToMainMenu", "Events.ExitToMainMenu()", function()

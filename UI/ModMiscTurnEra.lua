@@ -1,6 +1,14 @@
 -- ===========================================================================
 -- Mod Misc Tool: 回合数 / 年代显示 接口探查与试写（UI 层）
 --
+-- 【2026-10-05 实机结论：**写回合 / 写年代 / 写开始年代，全都没生效**】
+--   授权者用面板第 2 页签的试写按钮实测：`applied=false`（回读值不变），顶栏回合数、
+--   年份、年代一个都没动。⇒ 重启换图之后**无法把新局拨回原来的回合与年代**；
+--   这两个模块保留下来只做两件事：
+--     ① 读现状（`GetTurnInfo` / `GetEraInfo` / `DescribeContext`）——读接口是好的；
+--     ② 把“试过哪些写路径、结论是什么”钉在代码里，避免以后重复踩。
+--   面板上的试写按钮已按授权者要求移除；`Set*` 系列函数保留但**不要再当可用接口用**。
+--
 -- 【要回答什么】“有没有接口能改回合数和年代显示”，用来配合「重启换图」：
 -- 重启之后新局回到第 1 回合、远古时代，要假装「只是换了张图」，就得把回合与年代
 -- 写回去（数据由跨存档通道带过来，那条已通）。
@@ -27,6 +35,7 @@
 -- 每次都会把两条路径的结果都写进明细，方便判断“到底哪层能改”。
 --
 -- 【公开 API】本 mod 内直接调 ModMiscTurnEra.*
+--   ⚠️ 带 `Set` / `Adjust` 的写接口**实测无效**（见上），仅留档。
 --   DescribeContext()                 只读探测：回合/年份/年代现状 + 各候选接口可用性
 --   DescribeFingerprint()             一行的现状摘要（开局探针与前后对比用）
 --   GetTurnInfo()                     回合 / 结束回合 / 上限 / 开始回合
@@ -212,6 +221,7 @@ local function ReadBackTurn()
     return TryCall(function() return Game.GetCurrentGameTurn() end)
 end
 
+-- [已验证失败] 2026-10-05：UI 直调与 gameplay 兜底都写不进去（applied=false，回读不变）
 function API.SetTurn(turn)
     local target = tonumber(turn)
     if target == nil then return false, "turn 不是数字：" .. tostring(turn) end
@@ -275,6 +285,7 @@ end
 -- 写入：年代（gameplay WorldBuilder 通道）
 -- ===========================================================================
 
+-- [已验证失败] 2026-10-05：通道本身可用（地图编辑器在用），但普通对局里改年代不生效
 function API.SetPlayerEra(playerID, eraType)
     if playerID == nil or eraType == nil then return false, "参数不全" end
 
@@ -336,6 +347,7 @@ end
 -- 写入：下一局的开始年代（配置键 GAME_START_ERA；重启换图后用来复位年代）
 -- ===========================================================================
 
+-- [已验证失败] 2026-10-05：写入与回读都可能成功，但**下一局并不按它开局**（实测未生效）
 function API.SetStartEra(eraType)
     if eraType == nil or tostring(eraType) == "" then return false, "eraType 为空" end
     if GameConfiguration == nil or GameConfiguration.SetValue == nil then

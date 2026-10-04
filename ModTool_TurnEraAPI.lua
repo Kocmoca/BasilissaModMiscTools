@@ -11,6 +11,11 @@
 -- 在 UI 层不存在）时，经 ExposedMembers 转到这里再试一次。年代那边的写接口
 -- `SetPlayerEra` 本来就在 gameplay（WorldBuilder），一并收在这里。
 --
+-- 【2026-10-05 实机结论：写接口全部无效】
+--   授权者实测：`SetCurrentGameTurn` / `SetPlayerEra` 都写不进去（回读值不变），
+--   `GameConfiguration.SetStartEra` 也不影响下一局。⇒ 本模块的价值只剩**读**
+--   （GetTurnInfo / GetEraInfo）；`Set*` 保留是为了留档，别再当可用接口用。
+--
 -- 【静态事实】（都来自游戏自带代码，不是推断）
 --   * 回合读：`Game.GetCurrentGameTurn()` / `Game.GetGameEndTurn()` / `Game.GetMaxGameTurns()`
 --   * 回合写：全库**只有** `Game.SetCurrentGameTurn`（就是上面那条被注释的）
@@ -93,6 +98,7 @@ end
 -- 写入：回合
 -- ===========================================================================
 
+-- [已验证失败] 2026-10-05：调用不报错，但回合不变（gameplay 层同样无效）
 function API.SetCurrentGameTurn(turn)
     local target = tonumber(turn)
     if target == nil then return false, "turn 不是数字：" .. tostring(turn) end
@@ -131,6 +137,7 @@ local function ResolveWorldBuilder()
     return nil, "WorldBuilder 不可用"
 end
 
+-- [已验证失败] 2026-10-05：普通对局里改玩家年代不生效（地图编辑器里可用）
 function API.SetPlayerEra(playerID, eraType)
     if playerID == nil or eraType == nil then
         return false, "参数不全"

@@ -381,10 +381,10 @@ end
 | # | 接口 / 方法 | 状态 | 备注与判定 |
 |---|---|---|---|
 | 40 | 对局内 `MapConfiguration` 及其 `SetScript` / `SetValue("MAP_SCRIPT")` | `[未验证]` | 探测行 `api: MapConfiguration=y MapConfiguration.SetScript=y …`（`y/y` = 可用）。**这是换图能否成立的关键**：若为 `n`，换图只能退回「改配置走 WorldBuilder 那条（gameplay 侧）」或「退主菜单再建」。 |
-| 41 | 对局内写地图配置并回读生效 | `[部分可用]` | 面板「应用地图配置」会把 4 条路径逐条记进 `routes[...]`：`MapConfiguration.SetScript` / `MapConfiguration.SetValue` / `GameConfiguration.SetValue` / `WorldBuilder.ConfigurationManager():SetMapValue`，并回读 `applied=`。<br>**实机（2026-10-05）**：写进去的配置**没有被接下来的重开采纳**（见第 46 条）；写本身是否回读成功，看面板的 `applied=` / `routes[...]` 行（未回传）。 |
+| 41 | 对局内写地图配置并回读生效 | `[已验证失败]`（就“换图”而言） | 面板「应用地图配置」会把 4 条路径逐条记进 `routes[...]`：`MapConfiguration.SetScript` / `MapConfiguration.SetValue` / `GameConfiguration.SetValue` / `WorldBuilder.ConfigurationManager():SetMapValue`，并回读 `applied=`。<br>**实机（2026-10-05）**：授权者结论 —— **地图配置没有成功**：写进去的配置既不被接下来的重开采纳（第 46 条），也**没能活到前端**（见第 44 条的探针结果）⇒ **换地图脚本这条路彻底关闭**，只剩“重启换种子”。 |
 | 42 | 对局内 `Network.RestartGame()` | `[✅ 已验证可用]` | 授权者实机：**对局内重开可用** —— 这就是「重启换图」的实现基础。日志形态：`即将调用 Network.RestartGame()` → `调用已返回（没卡死）` → 新局里出现 `after-create: VERDICT=new-game`。 |
 | 43 | **对局内 `Events.SetGameEntryMethod` + `Network.HostGame(ServerType.SERVER_TYPE_NONE)`**（ScenarioSetup.OnStartButton 的普通分支） | `[已验证失败]` | 授权者实机：**调用返回、进程不崩，但没有建出新局**（静默空操作）——与引擎自己的 Automation 要求一致（`Automation_StandardTests.lua:489`：HostGame 必须站在主菜单，不在就 `Events.ExitToMainMenu()`）。<br>⇒ 面板按钮与 `ExposedMembers.ModMiscToolUI.HostGameInGame` 已移除；`ModMiscCreateGame.HostGame()` 保留在代码里只为把“试过什么、结论是什么”钉住（调用点只剩它自己）。 |
-| 44 | 对局内 `Events.ExitToMainMenu()` | `[未验证]` | 兜底路径：退回前端后，用前端那套已验证的创建流程照样能换图（代价是绕一圈）。本轮新增前端探针 `[ModMiscTool][MapConfigProbe]` 专门回答“对局内写的配置能不能活到创建游戏界面”。 |
+| 44 | 对局内 `Events.ExitToMainMenu()` + “对局内写的配置能不能活到前端” | `[已验证可用]`（退出）／`[已验证失败]`（配置留存） | 授权者实机：退回主菜单后进创建游戏界面，前端探针 `[ModMiscTool][MapConfigProbe]` 打出来的**还是原来那张图** ⇒ 配置在离开对局时就被重置，**“退主菜单再创建”也带不走对局内写的 MAP_SCRIPT**。<br>含义：**换地图脚本这条路彻底走不通**；退出到主菜单本身仍然可用（当作兜底/回发布态入口）。 |
 | 45 | 对局内普通存档（`Network.SaveGame{Type=SINGLE_PLAYER, FileType=GAME_STATE}`） | `[未验证]` | 「切换前存档」按钮。前端配置档（第 32 条）与对局内配置档写入都已验证；普通档这条**没单独验过**，面板会等 `Events.SaveComplete` 回执。 |
 | 46 | 对局内改的配置**会不会被新局采用** | `[已验证失败]`（对 RestartGame） | 授权者实机：**配置没被采纳**，但**重开会更换地图生成种子** ⇒ 现实可得的换图能力是「同一张地图脚本重新生成一张新图」，不是「换成另一张地图脚本」。<br>与 RestartGame 的注释吻合：「The restart mechanic uses the game configuration **prior to the very beginning of the game**」（InGameTopOptionsMenu.lua:317，TTP 34989）—— 它读的是开局前那份配置，对局内的改动不算数。<br>结论：**换脚本**只剩「退主菜单 → 在创建游戏界面重新开局」这条路，能否带走在写入的配置 → 见前端探针（第 44 条）。 |
 
@@ -427,14 +427,14 @@ end
 * **`Network.HostGame` 在对局内是静默空操作**（返回、不崩、不建局）⇒ 按钮已移除。
 * 因此“切换地图”目前的实现口径是：**重启游戏 + 跨存档数据搬运 + （待验证的）回合/年代写回**，
   即“同一张地图脚本的新图 + 把状态搬过去”，不是“换成另一张地图脚本”。
-* 想换**脚本**：只能退主菜单，在创建游戏界面重新开局；对局内写入的配置能否活到那一刻，
-  由新增的前端探针 `[ModMiscTool][MapConfigProbe]` 回答（第 44 条）。
-* 面板收尾：`AutomationTestPanel` **本轮继续保留注册**（还要测回合 / 年代，见第 13 节）；
-  全部测完再按 1.54 的决定注释掉。
+* **换地图脚本没有任何就地办法**（第 41/44 条实测）：对局内写的配置既不进重开，也活不到前端；
+  想换脚本只能退主菜单、在**创建游戏界面**由玩家自己重新选图开局（那已经不是“对局内切换”了）。
+* 面板收尾（授权者 2026-10-05 定）：`AutomationTestPanel` **继续注册**（留着当调试入口），
+  只把已经证伪的试写按钮（HostGame、回合/年代）删掉；代码与结论留在模块头注释与本文档里。
 
 ---
 
-## 13. 回合数 / 年代显示（2026-10-05，**待实机**）
+## 13. 回合数 / 年代显示（2026-10-05 实机：**写接口全部无效**，只留读）
 
 **动机**：重启换图（第 12 节：`Network.RestartGame` 可用）之后，新局回到**第 1 回合、远古时代**。
 要假装“只是换了张图”，就得把回合与年代**写回去** —— 数据由跨存档通道带过来（那条已通）。
@@ -466,24 +466,20 @@ end
 
 | # | 接口 / 方法 | 状态 | 判定与备注 |
 |---|---|---|---|
-| 47 | `Game.SetCurrentGameTurn(n)`（**UI 直调 → gameplay 兜底**） | `[未验证]` | 全库唯一候选（第 a 条）。面板「回合 +10 / -10」→ `applied=true` 即回读 `Game.GetCurrentGameTurn()` 等于目标值。UI 层若没有这个函数，模块会自动转 gameplay 的 `ExposedMembers.ModMiscToolScript.TurnEraAPI`（明细里 `route=ui` / `route=gameplay`）。 |
-| 48 | `WorldBuilder.PlayerManager():SetPlayerEra(playerID, eraType)` 在**普通对局**（非地图编辑器）里改年代 | `[未验证]` | 通道已验证可用，但“普通对局里改了引擎认不认”没验过。面板「年代 +1 / -1」→ `applied=true` 即回读 `Players[id]:GetEra()` 变了（目标玩家跟随面板的「玩家」选择器）。 |
-| 49 | 年代改了之后**显示**跟不跟着变（顶栏时代名 / 领袖肖像 / 时代完成弹窗） | `[未验证]` | 看两处：`Game.GetEras():GetCurrentEra()` 是否跟着变、有没有收到 `Events.PlayerEraChanged`。⚠️ 全局时代可能是**各玩家时代综合**出来的，单改一个玩家不一定动全局 —— 这也是判断“能不能靠它复位年代”的关键。 |
-| 50 | 年份显示随回合变 | `[推断·待确认]` | 年份 = `Calendar.MakeYearStr(turn)`（第 d 条），纯函数 ⇒ 第 47 条一旦成立，年份显示自动跟着走。面板探测会打 `date=`，前后一对比即可。 |
-| 51 | `GameConfiguration.SetStartEra(hash)`（**下一局**的开始年代） | `[未验证]` | 面板「开始年代 +1」→ `applied=true`（回读 `GetStartEra()` 等于 `DB.MakeHash("ERA_…")`）；再点「重开新局」，看新局开局探针的 `playerEra=` 是不是目标时代。 |
-| 52 | `GameConfiguration.SetMaxTurns(n)` + `SetTurnLimitType`（**下一局**回合上限） | `[未验证]` | 引擎 Automation 在用；本轮未做按钮，需要“重开后带回合上限”时再加。 |
+| 47 | `Game.SetCurrentGameTurn(n)`（**UI 直调 → gameplay 兜底**） | `[已验证失败]` | 授权者实机：**改回合没成功** —— 调用不报错、回合数不变（面板试写返回 `applied=false`，回读值不动）。UI 层没有这个函数时会自动转 gameplay 的 `ExposedMembers.ModMiscToolScript.TurnEraAPI`，两条路都没写进去。 |
+| 48 | `WorldBuilder.PlayerManager():SetPlayerEra(playerID, eraType)` 在**普通对局**里改年代 | `[已验证失败]` | 授权者实机：**改年代没成功**。通道本身可用（地图编辑器在用，属 [已验证可用] 接口），但普通对局里改了不生效 ⇒ “编辑器能改”≠“对局内能改”。 |
+| 49 | 年代改了之后**显示**跟不跟着变 | `[已验证失败]`（前提不成立） | 第 48 条就没写进去，显示自然没动；面板临时挂的 `Events.PlayerEraChanged` 监听也没收到由它触发的事件（该监听已随试写按钮一起移除）。 |
+| 50 | 年份显示随回合变 | `[失效]`（依赖第 47 条） | 年份 = `Calendar.MakeYearStr(turn)` 仍是纯函数（第 d 条），但回合写不进去 ⇒ 年份也就改不了。**读**年份没问题（`GetDateString` 可用）。 |
+| 51 | `GameConfiguration.SetStartEra(hash)`（**下一局**的开始年代） | `[已验证失败]` | 授权者实机：写配置没有成功 —— 重开后的新局并未按它开局。 |
+| 52 | `GameConfiguration.SetMaxTurns(n)` + `SetTurnLimitType`（**下一局**回合上限） | `[未验证·已搁置]` | 引擎 Automation 在用；既然第 51 条（同一类“下一局配置”）都不生效，这条**暂不投入**，需要时再单独验。 |
 
-### 13.3 面板操作（第 2 页签「重开与时间线」）
+### 13.3 面板操作 —— **试写按钮已按授权者要求移除**
 
-1. **探测回合/年代** —— 只读。把 `now:` / `turn:` / `era:` / `routes:` / `api:` 五行记下来：
-   `routes:` 里 `gameplayChannel= / gameplaySetTurn= / gameplaySetEra=` 决定后面两步走哪条路；
-   `api:` 里 `Game.SetCurrentGameTurn=y/n` 直接回答“UI 层有没有这个写接口”；
-2. **回合 +10 / 回合 -10** —— 第二次点击时看当前回合是否在 `+10` 的基础上继续走（`-10` 能不能退回来）；
-3. **年代 +1 / 年代 -1** —— 选中的玩家（面板顶部「玩家」选择器）时代是否改变，顶栏时代名是否跟着变；
-4. **开始年代 +1** —— 为“重开后复位年代”做准备；点完再点**重开新局**，看新局开局探针的 `playerEra=`；
-5. 想保住这一局：先 **切换前存档**（普通档 `ModMiscCreateGame~switch-backup`）再重开。
+本轮验证用的按钮（探测回合/年代、回合 ±10、年代 ±1、开始年代 +1）连同对应文案都已删除
+（2026-10-05，第 13.5 节结论出来后）；要复测时按第 13.6 节的办法来。当前第 2 页签只保留
+「目标地图 / 探测创建接口 / 应用地图配置 / 写切换标记 / 切换前存档 / 重开新局 / 退回主菜单」。
 
-### 13.4 Lua.log 判定表（前缀 `[ModMiscTool][TurnEra]`）
+### 13.4 Lua.log 判定表（前缀 `[ModMiscTool][TurnEra]`；本轮已按此跑过，结论见 13.5）
 
 | 日志表现 | 结论 |
 |---|---|
@@ -495,10 +491,30 @@ end
 | `SetStartEra: applied=true …` | 下一局开始年代写成功；重开后看 `after-load: … playerEra=` 是否变 |
 | `after-load: turn=… date=… playerEra=… gameEra=…` | 每次进游戏一行现状 —— **重开前后各看一次**就知道回合/年代有没有被复位 |
 
-### 13.5 成品口径（推断，待第 47/48/51 条结论落地）
+### 13.5 实机结论（2026-10-05，授权者）
 
-* 若 **47 成立**：重启换图后立刻 `SetCurrentGameTurn(存档里的回合)`，顶栏回合数与年份一起回到原位（第 d 条）；
-* 若 **48/49 成立**：再对每个玩家（或至少本地玩家 + 主要文明）`SetPlayerEra(存档里的时代)`；
-* 若 **47 不成立、51 成立**：至少能在重开前把 `GAME_START_ERA` 写成目标时代，让新局**从目标时代开局**，
-  回合数只能靠 `AutoplayManager` 往前推（慢，但合法）；
-* 若三个都不成立：换图只能是“新开局 + 数据搬运”，回合/年代从零开始。
+**回合、年代、下一局开始年代 —— 三个写方向全部无效。** 授权者的评定：这些属于
+「增强沉浸感的边角料」，核心机制（重启换图 + 跨存档搬运）已经到手，不再投入。
+
+由此确定的口径：
+
+* 重启换图后，新局**就是第 1 回合、远古时代**，没法“拨回去”；
+* 想要回合/年代连续，只剩**合法但慢**的一条：`AutoplayManager` 往前推回合（能顺带把年代推上去），
+  代价是每换一次图都要空跑一遍回合；
+* 年份显示（`Calendar.MakeYearStr`）本来就是回合的函数，随着回合走 —— **读**没问题，**改**不了。
+
+### 13.6 要复测怎么做
+
+试写按钮已删；复测不用恢复界面，直接在任意 UI 上下文（或经 `ExposedMembers.ModMiscToolUI`）调：
+
+```lua
+-- 现状（读，仍可用）：turn / date / startTurn / endTurn / maxTurns / playerEra / gameEra
+print(ModMiscTurnEra.DescribeFingerprint())
+-- 试写（已验证失败，留档）：会打 [ModMiscTool][TurnEra] 日志并把 ok/applied 返回给你
+ModMiscTurnEra.AdjustTurn(10)                 -- Game.SetCurrentGameTurn（UI → gameplay 兜底）
+ModMiscTurnEra.AdjustPlayerEra(0, 1)          -- WorldBuilder SetPlayerEra
+ModMiscTurnEra.SetStartEra("ERA_MEDIEVAL")    -- 下一局开始年代（GAME_START_ERA）
+```
+
+该模块的写函数与 gameplay 后端 `ExposedMembers.ModMiscToolScript.TurnEraAPI` 都**保留在代码里**
+（头部写明“实测无效”），UI 层对外只暴露读接口。
