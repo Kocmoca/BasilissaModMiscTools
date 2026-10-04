@@ -40,14 +40,14 @@
             </Properties>
             <File>UI/Replacements/Civ6Common.lua</File>
         </ImportFiles>
-        <!-- 前端存档/读档探针：只在“创建场景”（ScenarioSetup）上下文生效，
-             由 Civ6Common replacement 里那条刷新回调驱动（不额外挂 UI）。
-             前端也要单独登记 ImportFiles，include("FrontEnd_ScenarioProbe") 才找得到。 -->
-        <ImportFiles id="FrontEndScenarioProbe">
+        <!-- 前端存档/读档探针：认“创建场景”（ScenarioSetup）与“创建游戏”（AdvancedSetup）
+             两个界面，由 Civ6Common replacement 里那条刷新回调驱动（不额外挂 UI）。
+             前端也要单独登记 ImportFiles，include("FrontEnd_SaveProbe") 才找得到。 -->
+        <ImportFiles id="FrontEndSaveProbe">
             <Properties>
                 <LoadOrder>10000</LoadOrder>
             </Properties>
-            <File>UI/FrontEnd_ScenarioProbe.lua</File>
+            <File>UI/FrontEnd_SaveProbe.lua</File>
         </ImportFiles>
     </FrontEndActions>
     <InGameActions>
@@ -192,7 +192,7 @@
         <File>UI/ButtonAdjust.lua</File>
         <File>UI/ButtonAdjust_PHONE.lua</File>
         <File>UI/Replacements/Civ6Common.lua</File>
-        <File>UI/FrontEnd_ScenarioProbe.lua</File>
+        <File>UI/FrontEnd_SaveProbe.lua</File>
         <!-- texts -->
         <File>Text.xml</File>
         <File>Text_CN.xml</File>

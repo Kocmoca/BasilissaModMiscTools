@@ -33,8 +33,8 @@ local MAX_ASSET_ENTRIES = 240
 local SAVE_NAME = "ModMiscAutomationTest"
 local CUSTOM_DATA_KEY = "ModMiscAutomationCrossSaveProbe"
 local LOCAL_PARAM_KEY = "ModMiscAutomationProbePayload"
--- 前端探针（UI/FrontEnd_ScenarioProbe.lua）产出的“配置档”文件名，两边必须一致
-local FE_CONFIG_SAVE_NAME = "ModMiscScenarioProbe"
+-- 前端探针（UI/FrontEnd_SaveProbe.lua）产出的“配置档”文件名，两边必须一致
+local FE_CONFIG_SAVE_NAME = "ModMiscFrontEndProbe"
 
 local m_Registered = false
 local m_SelectedPlayerIndex = nil
@@ -800,7 +800,7 @@ end
 -- 前端配置档：对局内能不能读它
 --
 -- 与“后台读档”唯一的区别是存档表里带 FileType = GAME_CONFIGURATION ——
--- 也就是 ScenarioSetup 探针（UI/FrontEnd_ScenarioProbe.lua）在前端产出的那种档。
+-- 也就是 ScenarioSetup 探针（UI/FrontEnd_SaveProbe.lua）在前端产出的那种档。
 -- 照抄 LoadGameMenu.OnLoadYes 对配置档的处理：**不** LeaveGame。
 -- ===========================================================================
 local function LoadFrontEndConfigInGame()

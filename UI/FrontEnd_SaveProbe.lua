@@ -1,16 +1,20 @@
 -- ===========================================================================
--- Mod Misc Tool: 前端（ScenarioSetup / 创建场景）存档·读档探针
+-- Mod Misc Tool: 前端（创建场景 / 创建游戏）存档·读档探针
 --
 -- 背景：对局内的 Network.LoadGame 会**显式**读档（LoadScreen 出现、整局重载），
---       授权者要求换方向 —— 把存档/读档挪到前端来试，先在 ScenarioSetup 上做。
+--       授权者要求换方向 —— 把存档/读档挪到前端来试。
 --
--- 这个文件只在前端“创建场景”上下文里干活（判据：Controls.ScenarioDescription），
--- 不自带 UI，只打日志；由 UI/Replacements/Civ6Common.lua 里那条**已经存在**的
+-- 覆盖两个前端“创建”界面，判据用各自独有的控件：
+--   ScenarioSetup（创建场景）  Controls.ScenarioDescription
+--   AdvancedSetup（创建游戏）  Controls.SaveConfig —— 就是游戏自己的“保存配置”按钮
+-- 后者永远可达（「场景」入口在没装剧本时会被游戏整个隐藏），所以两条路都留着。
+--
+-- 本文件不自带 UI，只打日志；由 UI/Replacements/Civ6Common.lua 里那条**已经存在**的
 -- 刷新回调驱动 —— 不能自己再 SetRefreshHandler，否则会把幽灵那边的回调顶掉。
 --
--- 一次「打开创建场景界面」= 一次完整实验。打开界面即自动开跑，日志按 step 顺序打：
+-- 一次「打开界面」= 一次完整实验，日志前缀 [ModMiscTool][FrontEndProbe]：
 --
---   step0 recon   上下文自述：contextID / SaveGame·LoadGame 是否可用 / 配置档类型
+--   step0 recon   自述：kind / contextID / SaveGame·LoadGame 是否可用 / 配置档类型
 --   step1 write   写 CustomData（**沿用对局内探针的 key**，这样读档进对局后，
 --                 对局内启动探针会把这份 payload 原样打在自己的 VERDICT 行里 —— 即
 --                 “前端写的数据有没有进对局”的直接证据，对局内一行代码都不用改）
@@ -26,29 +30,58 @@
 --   fe-save-ok         前端存档成功并收到 SaveComplete
 --   fe-load-fail       前端读档调用失败
 --   fe-load-requested  前端读档调用已发出（是否被顶掉、是否显式，看后续日志）
+--
+-- 【实机判读要点】对局内用 FileType=GAME_CONFIGURATION 调 Network.LoadGame，
+-- 即使档不存在也是**静默无操作**（不报错、不返回 false、不打断当前局）。
+-- 所以“有没有报错”不能当判据，只能看有没有真的重载：
+--   LoadScreen: true / gameplay scripts loading / 探针再打一行 —— 三样都没有就是没读进去。
 -- ===========================================================================
 
-local MODMISC_FE_PROBE_BUILD_TAG = "2026-10-04-A"
+local MODMISC_FE_PROBE_BUILD_TAG = "2026-10-04-B"
 
 -- 与对局内探针（UI/Support_UI.lua 的 CROSS_SAVE_PROBE_KEY）共用同一个 key：
 -- 前端写进去的这份 payload，会被对局内启动探针原样读出来打印。
 local FE_PROBE_KEY = "ModMiscToolCrossSaveProbe"
 
 -- 前端产出的“特殊存档”：游戏自己的“保存配置”走的就是 GAME_CONFIGURATION 档
-local FE_CONFIG_SAVE_NAME = "ModMiscScenarioProbe"
+local FE_CONFIG_SAVE_NAME = "ModMiscFrontEndProbe"
 
 -- 存档完成最多等多少帧（60 帧≈1 秒，按 10 秒算）
 local FE_SAVE_TIMEOUT_FRAMES = 600
+-- 等“开始游戏”按钮可点的上限（30 秒）：超时就按现状继续，免得永远等不到日志
+local FE_READY_TIMEOUT_FRAMES = 1800
 
 local m_Step = nil              -- nil = 本轮还没开跑
-local m_RunIndex = 0            -- 本次进程里第几次打开创建场景界面
+local m_ContextKind = nil       -- "ScenarioSetup" / "AdvancedSetup"
+local m_RunIndex = 0            -- 本次进程里第几次打开界面
 local m_LastHidden = true       -- 用来识别“隐藏 → 显示”这一刻
+local m_LoggedWait = false
 local m_SaveComplete = false
 local m_WaitFrames = 0
 local m_ConfigFile = nil
 
 local function Log(message)
-    print("[ModMiscTool][ScenarioProbe] " .. message)
+    print("[ModMiscTool][FrontEndProbe] " .. message)
+end
+
+-- ===========================================================================
+-- 上下文判据：两个“创建”界面各有一个只属于自己的控件
+-- ===========================================================================
+
+local function ModMiscFrontEndProbeContextKind()
+    if Controls == nil then return nil end
+    if Controls.ScenarioDescription ~= nil then return "ScenarioSetup" end
+    if Controls.SaveConfig ~= nil then return "AdvancedSetup" end
+    return nil
+end
+
+-- 配置没载入完就存档会产出退化档，所以等“开始游戏”按钮可点再动手
+local function ModMiscFrontEndProbeSetupReady()
+    if Controls == nil or Controls.StartButton == nil then return true end
+    if Controls.StartButton.IsDisabled == nil then return true end
+    local ok, disabled = pcall(function() return Controls.StartButton:IsDisabled() end)
+    if not ok then return true end
+    return not disabled
 end
 
 -- ===========================================================================
@@ -122,6 +155,7 @@ local function StepRecon()
     local hasSaveComplete = (Events ~= nil and Events.SaveComplete ~= nil) and "y" or "n"
 
     Log("step0 recon run=" .. tostring(m_RunIndex)
+        .. " kind=" .. tostring(m_ContextKind)
         .. " contextID=" .. contextID
         .. " SaveGame=" .. hasSaveGame
         .. " LoadGame=" .. hasLoadGame
@@ -134,6 +168,7 @@ end
 local function StepWrite()
     local previous = ReadProbe()
     local payload = "fe=1;run=" .. tostring(m_RunIndex)
+        .. ";ctx=" .. tostring(m_ContextKind)
         .. ";t=" .. tostring(os.time())
         .. ";r=" .. tostring(math.random(100000, 999999))
         .. ";prev=" .. tostring(previous)
@@ -239,21 +274,43 @@ local m_Steps = {
 
 -- ===========================================================================
 -- 对外唯一入口：由 Civ6Common replacement 的刷新回调每帧调用
--- 只认“创建场景”界面；其它前端界面（创建游戏/主菜单/选项/大厅…）直接返回
+-- 只认两个“创建”界面；其它前端界面（主菜单/选项/大厅/存档菜单…）直接返回
 -- ===========================================================================
 
-function ModMiscScenarioProbeRefresh()
-    if Controls == nil or Controls.ScenarioDescription == nil then return end
+function ModMiscFrontEndProbeRefresh()
+    local contextKind = ModMiscFrontEndProbeContextKind()
+    if contextKind == nil then return end
 
     local hidden = ContextPtr:IsHidden()
     if m_LastHidden and not hidden then
         -- 隐藏 → 显示：新的一轮
-        m_Step = "recon"
         m_RunIndex = m_RunIndex + 1
+        m_ContextKind = contextKind
+        m_LoggedWait = false
+        m_WaitFrames = 0
+        m_Step = "wait-ready"
     end
     m_LastHidden = hidden
 
     if hidden or m_Step == nil then return end
+
+    -- 等配置就绪（开始按钮可点）再动手；超时也继续，保证一定有日志可看
+    if m_Step == "wait-ready" then
+        m_WaitFrames = m_WaitFrames + 1
+        if not ModMiscFrontEndProbeSetupReady() then
+            if not m_LoggedWait then
+                m_LoggedWait = true
+                Log("界面已打开 kind=" .. tostring(m_ContextKind)
+                    .. "，但开始按钮仍禁用（配置没就绪）；等最多 "
+                    .. tostring(FE_READY_TIMEOUT_FRAMES) .. " 帧")
+            end
+            if m_WaitFrames < FE_READY_TIMEOUT_FRAMES then return end
+            Log("等待超时，按现状继续（产出的档可能不完整）")
+        end
+        m_WaitFrames = 0
+        m_Step = "recon"
+    end
+
     local step = m_Steps[m_Step]
     if step == nil then return end
     step()
