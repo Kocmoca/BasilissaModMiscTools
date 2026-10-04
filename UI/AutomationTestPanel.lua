@@ -33,8 +33,6 @@ local MAX_ASSET_ENTRIES = 240
 local SAVE_NAME = "ModMiscAutomationTest"
 local CUSTOM_DATA_KEY = "ModMiscAutomationCrossSaveProbe"
 local LOCAL_PARAM_KEY = "ModMiscAutomationProbePayload"
--- 前端探针（UI/FrontEnd_SaveProbe.lua）产出的“配置档”文件名，两边必须一致
-local FE_CONFIG_SAVE_NAME = "ModMiscFrontEndProbe"
 
 local m_Registered = false
 local m_SelectedPlayerIndex = nil
@@ -762,170 +760,14 @@ local function SaveGameToFixedSlot(actionName)
     return true
 end
 
-local function LoadGameFromFixedSlot()
-    if Network == nil or Network.LoadGame == nil then
-        SetError("LoadGame", "Network.LoadGame is nil")
-        return
-    end
-
-    local loadGame = {
-        Name = SAVE_NAME,
-        Location = SaveLocations.LOCAL_STORAGE,
-        Type = SaveTypes.SINGLE_PLAYER,
-        IsAutosave = false,
-        IsQuicksave = false,
-        Directory = SaveDirectories.DEFAULT,
-    }
-
-    -- 与 LoadGameMenu.OnLoadYes 一致：先 LeaveGame，再 LoadGame。
-    -- LoadGame 成功会切换加载状态，这个 Lua 栈随后不一定还在。
-    local ok, result = pcall(function()
-        if Network.LeaveGame ~= nil then
-            Network.LeaveGame()
-        end
-        return Network.LoadGame(loadGame, ServerType.SERVER_TYPE_NONE)
-    end)
-    if not ok then
-        SetError("LoadGame", result)
-        return
-    end
-    if result == false then
-        SetError("LoadGame", "Network.LoadGame returned false")
-    else
-        SetOutput(Locale.Lookup("LOC_MODMISC_AUTOMATION_TEST_LOAD_REQUESTED", SAVE_NAME))
-    end
-end
-
 -- ===========================================================================
--- 前端配置档：对局内能不能读它
---
--- 与“后台读档”唯一的区别是存档表里带 FileType = GAME_CONFIGURATION ——
--- 也就是前端探针（UI/FrontEnd_SaveProbe.lua）在“主界面/创建游戏/创建场景”里产出的那种档。
--- 照抄 LoadGameMenu.OnLoadYes 对配置档的处理：**不** LeaveGame。
---
--- 【先自检再读】档不存在时 Network.LoadGame 是**静默无操作**（不报错、不返回 false、
--- 也不打断当前局），盲测什么信息都拿不到。所以先用 UI.QuerySaveGameList 把
--- GAME_CONFIGURATION 档列出来，确认档真的在，再发读档请求。
+-- [已移除] 对局内读档入口（2026-10-04，授权者决定）
+--   * 读配置档（FileType=GAME_CONFIGURATION）：**直接卡死**，见 API_Verification_Status.md 第 36 条。
+--   * 读普通存档（SaveTypes.SINGLE_PLAYER）：本身能读（LoadScreen + 整局重载），但属于**显式读档**、
+--     会把当前局顶掉，工具面板不再提供这个入口 —— 要读档走游戏自己的「载入游戏」菜单。
+-- 对应的按钮 AutomationTestLoadGame / AutomationTestLoadConfig 也已从 XML 里删除。
+-- 保留：后台存档（SaveGameToFixedSlot）与探针相关按钮 —— 那是“对局内写数据”那条线要用的。
 -- ===========================================================================
-
-local m_ConfigQueryRequestId = nil
-local m_ConfigQueryPending = false
-
-local function BuildConfigLoadFile()
-    local saveType = SaveTypes.SINGLE_PLAYER
-    if Network ~= nil and Network.GetGameConfigurationSaveType ~= nil then
-        local typeOk, configuredType = pcall(function()
-            return Network.GetGameConfigurationSaveType()
-        end)
-        if typeOk and configuredType ~= nil then saveType = configuredType end
-    end
-
-    return {
-        Name = FE_CONFIG_SAVE_NAME,
-        Location = SaveLocations.LOCAL_STORAGE,
-        Type = saveType,
-        FileType = SaveFileTypes.GAME_CONFIGURATION,
-        Directory = SaveDirectories.DEFAULT,
-    }
-end
-
--- 真正发读档请求
-local function RequestConfigLoad(loadFile)
-    if Network == nil or Network.LoadGame == nil then
-        SetError("LoadConfig", "Network.LoadGame is nil")
-        return
-    end
-
-    local ok, result = pcall(function()
-        return Network.LoadGame(loadFile, ServerType.SERVER_TYPE_NONE)
-    end)
-    if not ok then
-        SetError("LoadConfig", result)
-        return
-    end
-    if result == false then
-        SetError("LoadConfig", "Network.LoadGame returned false")
-    else
-        SetOutput(Locale.Lookup("LOC_MODMISC_AUTOMATION_TEST_LOAD_CONFIG_REQUESTED", FE_CONFIG_SAVE_NAME))
-    end
-end
-
--- 存档列表里的 Name **带扩展名**（实机实测配置档是 "ModMiscFrontEndProbe.Civ6Cfg"），
--- 直接拿它跟不带扩展名的目标比会永远判“不在”——这一步是实机撞出来的坑。
-local function NormalizeSaveName(name)
-    if name == nil then return nil end
-    local text = tostring(name)
-    local stripped = text:match("^(.*)%.[^%.]+$")
-    if stripped ~= nil and stripped ~= "" then return stripped end
-    return text
-end
-
--- 存档列表查询回调：引擎通过 LuaEvents 回传 (fileList, 请求号)
-local function OnConfigQueryResults(fileList, requestId)
-    if not m_ConfigQueryPending then return end
-    if requestId ~= nil and m_ConfigQueryRequestId ~= nil and requestId ~= m_ConfigQueryRequestId then
-        return
-    end
-    m_ConfigQueryPending = false
-
-    local names = {}
-    local found = false
-    if fileList ~= nil then
-        for _, entry in ipairs(fileList) do
-            if entry ~= nil and entry.Name ~= nil then
-                local entryName = tostring(entry.Name)
-                table.insert(names, entryName)
-                if NormalizeSaveName(entryName) == FE_CONFIG_SAVE_NAME then
-                    found = true
-                end
-            end
-        end
-    end
-
-    if UI ~= nil and UI.CloseFileListQuery ~= nil and m_ConfigQueryRequestId ~= nil then
-        pcall(function() UI.CloseFileListQuery(m_ConfigQueryRequestId) end)
-    end
-    m_ConfigQueryRequestId = nil
-
-    local listing = "(空)"
-    if #names > 0 then listing = table.concat(names, ",") end
-
-    if not found then
-        SetOutput(Locale.Lookup("LOC_MODMISC_AUTOMATION_TEST_CONFIG_MISSING", FE_CONFIG_SAVE_NAME, listing))
-        return
-    end
-
-    SetOutput(Locale.Lookup("LOC_MODMISC_AUTOMATION_TEST_CONFIG_FOUND", FE_CONFIG_SAVE_NAME, listing))
-    RequestConfigLoad(BuildConfigLoadFile())
-end
-
--- 按钮入口：先查列表，确认档在，再读
-local function QueryThenLoadConfigInGame()
-    if UI == nil or UI.QuerySaveGameList == nil or LuaEvents == nil
-        or LuaEvents.FileListQueryResults == nil or SaveLocationOptions == nil then
-        -- 查不了就退回盲读，并把原因打出来，免得看起来“什么都没发生”
-        SetError("LoadConfig", "QuerySaveGameList/SaveLocationOptions 不可用，退回盲读")
-        RequestConfigLoad(BuildConfigLoadFile())
-        return
-    end
-
-    if m_ConfigQueryPending then
-        SetError("LoadConfig", "上一次列表查询没回结果（LuaEvents.FileListQueryResults 局内可能不触发），退回盲读")
-        m_ConfigQueryPending = false
-        RequestConfigLoad(BuildConfigLoadFile())
-        return
-    end
-
-    local loadFile = BuildConfigLoadFile()
-    local options = SaveLocationOptions.NORMAL + SaveLocationOptions.QUICKSAVE
-        + SaveLocationOptions.LOAD_METADATA
-
-    LuaEvents.FileListQueryResults.Add(OnConfigQueryResults)
-    m_ConfigQueryPending = true
-    m_ConfigQueryRequestId = UI.QuerySaveGameList(loadFile.Location, loadFile.Type, options,
-        loadFile.FileType, nil)
-    SetOutput(Locale.Lookup("LOC_MODMISC_AUTOMATION_TEST_CONFIG_QUERYING", FE_CONFIG_SAVE_NAME))
-end
 
 local function BuildProbePayload()
     local turn = 0
@@ -1195,14 +1037,8 @@ function OnInit()
 
     Controls.AutomationTestSaveGame:RegisterCallback(Mouse.eLClick,
         function() SafeCall("SaveGame", SaveGameToFixedSlot, "SaveGame") end)
-    Controls.AutomationTestLoadGame:RegisterCallback(Mouse.eLClick,
-        function() SafeCall("LoadGame", LoadGameFromFixedSlot) end)
-    -- [已验证失败] 对局内读配置档会**直接卡死**（2026-10-04 实机：发出
-    -- Requested load ... 之后 Lua.log 一行都没有，进程挂死；档不存在时倒是静默无操作）。
-    -- 按钮已经 Hidden="1" 停用，这里也不再注册回调 —— 需要复现那个卡死时，
-    -- 把下面两行放开、并把 XML 里 AutomationTestLoadConfig 的 Hidden 去掉。
-    -- Controls.AutomationTestLoadConfig:RegisterCallback(Mouse.eLClick,
-    --     function() SafeCall("LoadConfig", QueryThenLoadConfigInGame) end)
+    -- 对局内读档入口（普通存档 / 配置档）已按授权者决定移除，连同 XML 里的
+    -- AutomationTestLoadGame / AutomationTestLoadConfig 两个按钮 —— 原因见文件上方那段注释。
     Controls.AutomationTestProbeWrite:RegisterCallback(Mouse.eLClick,
         function() SafeCall("ProbeWrite", WriteProbe, "ProbeWrite") end)
     Controls.AutomationTestProbeRead:RegisterCallback(Mouse.eLClick,

@@ -51,8 +51,6 @@
                         Style="ButtonControl" FontSize="26" String="LOC_MODMISC_AUTOMATION_TEST_LOOK_CAPITAL" />
             <GridButton ID="AutomationTestSaveGame" Anchor="L,T" Offset="310,314" Size="280,60"
                         Style="ButtonControl" FontSize="26" String="LOC_MODMISC_AUTOMATION_TEST_SAVE" />
-            <GridButton ID="AutomationTestLoadGame" Anchor="L,T" Offset="600,314" Size="280,60"
-                        Style="ButtonControl" FontSize="26" String="LOC_MODMISC_AUTOMATION_TEST_LOAD" />
 
             <!-- CustomData 探针 -->
             <GridButton ID="AutomationTestProbeWrite" Anchor="L,T" Offset="20,382" Size="280,60"
@@ -75,11 +73,8 @@
             <GridButton ID="AutomationTestAssetIndexButton" Anchor="L,T" Offset="200,518" Size="660,56"
                         Style="ButtonControl" FontSize="26" String="" />
 
-            <!-- [已验证失败] 对局内读配置档会直接卡死（见 API_Verification_Status.md 第 36 条），
-                 按钮停用；要复现时把 Hidden="1" 去掉，并在 AutomationTestPanel.lua 里放开
-                 AutomationTestLoadConfig 的回调注册。 -->
-            <GridButton ID="AutomationTestLoadConfig" Anchor="L,T" Offset="20,718" Size="280,48" Hidden="1"
-                        Style="ButtonControl" FontSize="24" String="LOC_MODMISC_AUTOMATION_TEST_LOAD_CONFIG" />
+            <!-- 对局内读档入口（AutomationTestLoadGame / AutomationTestLoadConfig）已按授权者决定
+                 移除：普通存档读档是显式的、会把当前局顶掉；配置档读档直接卡死（第 36 条）。 -->
 
             <GridButton ID="AutomationTestPlaceAsset" Anchor="L,T" Offset="20,586" Size="280,60"
                         Style="ButtonControl" FontSize="26" String="LOC_MODMISC_AUTOMATION_TEST_ASSET_PLACE" />

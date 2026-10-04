@@ -322,9 +322,6 @@
 		<Row Tag="LOC_MODMISC_AUTOMATION_TEST_SAVE">
 			<Text>Background Save</Text>
 		</Row>
-		<Row Tag="LOC_MODMISC_AUTOMATION_TEST_LOAD">
-			<Text>Background Load</Text>
-		</Row>
 		<Row Tag="LOC_MODMISC_AUTOMATION_TEST_PROBE_WRITE">
 			<Text>Write CustomData Probe</Text>
 		</Row>
@@ -384,24 +381,6 @@
 		</Row>
 		<Row Tag="LOC_MODMISC_AUTOMATION_TEST_SAVE_REQUESTED">
 			<Text>Background save requested: {1_Name}</Text>
-		</Row>
-		<Row Tag="LOC_MODMISC_AUTOMATION_TEST_LOAD_REQUESTED">
-			<Text>Background load requested: {1_Name}</Text>
-		</Row>
-		<Row Tag="LOC_MODMISC_AUTOMATION_TEST_LOAD_CONFIG">
-			<Text>Load front-end config save</Text>
-		</Row>
-		<Row Tag="LOC_MODMISC_AUTOMATION_TEST_LOAD_CONFIG_REQUESTED">
-			<Text>Requested load of front-end configuration save: {1_Name} (FileType=GAME_CONFIGURATION)</Text>
-		</Row>
-		<Row Tag="LOC_MODMISC_AUTOMATION_TEST_CONFIG_QUERYING">
-			<Text>Querying save list for configuration save: {1_Name}</Text>
-		</Row>
-		<Row Tag="LOC_MODMISC_AUTOMATION_TEST_CONFIG_FOUND">
-			<Text>Config save found: {1_Name}; listed={2_List}</Text>
-		</Row>
-		<Row Tag="LOC_MODMISC_AUTOMATION_TEST_CONFIG_MISSING">
-			<Text>Config save NOT found: {1_Name}; listed={2_List} (run the front-end probe first)</Text>
 		</Row>
 		<Row Tag="LOC_MODMISC_AUTOMATION_TEST_PROBE_EMPTY">
 			<Text>CustomData probe is empty. local={1_Local}</Text>

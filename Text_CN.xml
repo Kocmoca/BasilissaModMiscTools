@@ -322,9 +322,6 @@
 		<Replace Tag="LOC_MODMISC_AUTOMATION_TEST_SAVE" Language="zh_Hans_CN">
 			<Text>后台存档</Text>
 		</Replace>
-		<Replace Tag="LOC_MODMISC_AUTOMATION_TEST_LOAD" Language="zh_Hans_CN">
-			<Text>后台读档</Text>
-		</Replace>
 		<Replace Tag="LOC_MODMISC_AUTOMATION_TEST_PROBE_WRITE" Language="zh_Hans_CN">
 			<Text>写入 CustomData 探针</Text>
 		</Replace>
@@ -384,24 +381,6 @@
 		</Replace>
 		<Replace Tag="LOC_MODMISC_AUTOMATION_TEST_SAVE_REQUESTED" Language="zh_Hans_CN">
 			<Text>已请求后台存档：{1_Name}</Text>
-		</Replace>
-		<Replace Tag="LOC_MODMISC_AUTOMATION_TEST_LOAD_REQUESTED" Language="zh_Hans_CN">
-			<Text>已请求后台读档：{1_Name}</Text>
-		</Replace>
-		<Replace Tag="LOC_MODMISC_AUTOMATION_TEST_LOAD_CONFIG" Language="zh_Hans_CN">
-			<Text>载入前端配置档</Text>
-		</Replace>
-		<Replace Tag="LOC_MODMISC_AUTOMATION_TEST_LOAD_CONFIG_REQUESTED" Language="zh_Hans_CN">
-			<Text>已请求读入前端配置档：{1_Name}（FileType=GAME_CONFIGURATION）</Text>
-		</Replace>
-		<Replace Tag="LOC_MODMISC_AUTOMATION_TEST_CONFIG_QUERYING" Language="zh_Hans_CN">
-			<Text>正在查存档列表里的配置档：{1_Name}</Text>
-		</Replace>
-		<Replace Tag="LOC_MODMISC_AUTOMATION_TEST_CONFIG_FOUND" Language="zh_Hans_CN">
-			<Text>配置档在：{1_Name}；列表={2_List}</Text>
-		</Replace>
-		<Replace Tag="LOC_MODMISC_AUTOMATION_TEST_CONFIG_MISSING" Language="zh_Hans_CN">
-			<Text>配置档不在：{1_Name}；列表={2_List}（请先跑前端探针）</Text>
 		</Replace>
 		<Replace Tag="LOC_MODMISC_AUTOMATION_TEST_PROBE_EMPTY" Language="zh_Hans_CN">
 			<Text>CustomData 探针为空。local={1_Local}</Text>
