@@ -51,13 +51,14 @@
             </Properties>
             <File>UI/FrontEnd_SaveProbe.lua</File>
         </ImportFiles>
-        <!-- 跨存档存储探针：把 payload 编进「配置档的名字」，下一轮从存档列表读回来。
-             这是“利用普通存档”那条路的最小实现；默认开启，结论出来后再定去留。 -->
-        <ImportFiles id="FrontEndStoreProbe">
+        <!-- 跨存档数据存储（UI/ModMiscStore.lua）：把数据编进「配置档的文件名」，
+             下一轮从存档列表读回来 —— 原版唯一可用、且已实机验证的跨存档通道。
+             前端登记给 include() 用；对局内 UI 那边走 InGameActions 的同名登记。 -->
+        <ImportFiles id="FrontEndStore">
             <Properties>
                 <LoadOrder>10000</LoadOrder>
             </Properties>
-            <File>UI/FrontEnd_StoreProbe.lua</File>
+            <File>UI/ModMiscStore.lua</File>
         </ImportFiles>
     </FrontEndActions>
     <InGameActions>
@@ -98,6 +99,7 @@
         </AddGameplayScripts>
         <ImportFiles id="Imports">
             <File>ModTool_DataStore.lua</File>
+            <File>UI/ModMiscStore.lua</File>
             <File>ModTool_Support_Functions.lua</File>
             <File>ModTool_Support_UI.lua</File>
             <File>ModTool_WorldBuilderAPI.lua</File>
@@ -205,7 +207,7 @@
         <File>UI/ButtonAdjust_PHONE.lua</File>
         <File>UI/Replacements/Civ6Common.lua</File>
         <File>UI/FrontEnd_SaveProbe.lua</File>
-        <File>UI/FrontEnd_StoreProbe.lua</File>
+        <File>UI/ModMiscStore.lua</File>
         <!-- texts -->
         <File>Text.xml</File>
         <File>Text_CN.xml</File>

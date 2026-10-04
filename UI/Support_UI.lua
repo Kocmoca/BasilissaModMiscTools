@@ -1,6 +1,7 @@
 include("ModTool_Support_Functions.lua")
 include("ModTool_Support_UI.lua")
 include("Civ6Common")   -- ReadCustomData：读取创建游戏时保存的城邦数量
+include("ModMiscStore") -- 跨存档存储（存档名编码通道）
 print("[ModMiscTool] Support_UI loaded build=" .. tostring(MODMISC_BUILD_TAG))
 
 local allUnitPromotions = {}
@@ -320,6 +321,44 @@ end
 
 function Initialize()
 	InitializeAllUnitPromotions()
+
+	-- ===========================================================================
+	-- [跨存档存储·对局内] 对局内能不能用同一套「存档名」通道读写
+	--
+	-- 读：扫一遍配置档列表（和前端同一套，能读到前端写进去的键）
+	-- 写：Network.SaveGame{FileType=GAME_CONFIGURATION} —— **这一枪对局内从没试过**，
+	--     风险与「对局内读配置档卡死」同源，所以调用前先打一行日志：
+	--     要是进程卡死，日志里最后一行就是它。
+	--     若这条路不行，退路是改成写普通存档（GAME_STATE，对局内写是静默的、已验证），
+	--     代价是存档列表里多一个大档。
+	-- ===========================================================================
+	local MODMISC_STORE_INGAME_WRITE_TEST = true
+
+	local function LogStoreInGame(message)
+		print("[ModMiscTool][Store] in-game: " .. message)
+	end
+
+	local function RunStoreProbeInGame()
+		if ModMiscStore == nil then
+			LogStoreInGame("ModMiscStore 模块没加载（ImportFiles 里缺 UI/ModMiscStore.lua？）")
+			return
+		end
+
+		ModMiscStore.OnReady(function()
+			LogStoreInGame("扫描完成；selftest=[" .. tostring(ModMiscStore.Get("selftest"))
+				.. "] ingame=[" .. tostring(ModMiscStore.Get("ingame")) .. "]")
+
+			if not MODMISC_STORE_INGAME_WRITE_TEST then return end
+			local payload = "ig=1;t=" .. tostring(os.time())
+				.. ";r=" .. tostring(math.random(100000, 999999))
+			LogStoreInGame("即将调用 Network.SaveGame(配置档) 写入 [" .. payload .. "]")
+			ModMiscStore.Save("ingame", payload)
+			LogStoreInGame("Save 调用已返回（没卡死）")
+		end)
+		ModMiscStore.Refresh()
+	end
+
+	RunStoreProbeInGame()
 
 	-- ===========================================================================
 	-- [跨存档探针·对局内] Options 那套存储，对局内 UI 能不能读、能不能写

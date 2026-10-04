@@ -1,0 +1,303 @@
+-- ===========================================================================
+-- Mod Misc Tool: 跨存档数据存储（UI 层）
+--
+-- 【为什么用「存档文件名」当载体】原版通道已全部实测（见 API_Verification_Status.md 通道表）：
+--   ✗ CustomData 不落盘、配置档也不带它        ✗ 对局内读配置档直接卡死
+--   ✗ io 库不存在（安卓 Lua 无 io/io.open）    ✗ Options 拒绝未注册的键
+--   ✗ 存档元数据字段全由引擎填
+-- 剩下唯一由 mod 控制、又**不需要读档**就能拿到的字段，就是存档列表里的**文件名**：
+--   写 Network.SaveGame{Name = …}（前端不需要运行中的对局即可写配置档）
+--   读 UI.QuerySaveGameList 的 Name（前后端都可用）
+-- 2026-10-04 实机验证：写一轮 → 杀进程 → 下一轮读回，payload 逐字一致。
+--
+-- 【文件命名】ModMiscStore~<hex(key)>~<hex(value)>.Civ6Cfg
+--   一个 key 一个档。hex 是为了绕开文件名禁用字符（`% " < > | / \ * ? :` 与控制字符）。
+--   写：先写新档，再删同一个 key 的旧档（写失败也不丢数据）。
+--   读：扫一遍配置档列表，把所有 ModMiscStore~ 开头的档解码进内存表。
+--
+-- 【公开 API】本 mod 内直接调；外部 mod 走 ExposedMembers.ModMiscToolUI
+--   ModMiscStore.Refresh()        重新扫存档列表（异步，结果进内存表）
+--   ModMiscStore.IsReady()        首次扫描是否已完成
+--   ModMiscStore.OnReady(fn)      扫描完成时回调（若已就绪则立刻调用）
+--   ModMiscStore.Save(key, value) 写一个键（异步落盘；值建议 ≤ 80 字节）
+--   ModMiscStore.Get(key)         读一个键（没存过 → nil）
+--   ModMiscStore.GetAll()         整张表（副本）
+--
+-- 注意：每个 UI context 有独立脚本环境，各持一份内存表；跨 context 靠 ExposedMembers。
+-- ===========================================================================
+
+local MODMISC_STORE_PREFIX = "ModMiscStore~"
+local MODMISC_STORE_BUILD_TAG = "2026-10-04-A"
+-- 自检：每轮写一份 ms=… payload 并读回上一轮的（验证通道还活着）。测试期开着。
+local MODMISC_STORE_SELFTEST = true
+-- 值长度上限（hex 后翻倍，文件名总长别顶到系统上限）
+local MODMISC_STORE_MAX_VALUE_BYTES = 120
+
+-- 本进程已解码到的数据
+local m_Data = {}
+-- key -> 存档列表条目（覆盖时用来删旧档）
+local m_Entries = {}
+-- 写完新档后要删的旧条目
+local m_PendingDelete = {}
+
+local m_RefreshRequestId = nil
+local m_Refreshing = false
+local m_Ready = false
+local m_ReadyCallbacks = {}
+
+local function Log(message)
+    print("[ModMiscTool][Store] " .. message)
+end
+
+ModMiscStore = ModMiscStore or {}
+ModMiscStore.BuildTag = MODMISC_STORE_BUILD_TAG
+
+-- ===========================================================================
+-- 编解码 / 文件名
+-- ===========================================================================
+
+local function EncodeText(text)
+    return (tostring(text):gsub(".", function(char)
+        return string.format("%02x", string.byte(char))
+    end))
+end
+
+local function DecodeText(hex)
+    if hex == nil or #hex == 0 or #hex % 2 ~= 0 then return nil end
+    local bytes = {}
+    for i = 1, #hex, 2 do
+        local byte = tonumber(hex:sub(i, i + 1), 16)
+        if byte == nil then return nil end
+        table.insert(bytes, string.char(byte))
+    end
+    return table.concat(bytes)
+end
+
+-- 存档列表里的 Name 带扩展名（配置档是 xxx.Civ6Cfg），比对前先剥掉
+local function StripExtension(name)
+    if name == nil then return nil end
+    local text = tostring(name)
+    local stripped = text:match("^(.*)%.[^%.]+$")
+    if stripped ~= nil and stripped ~= "" then return stripped end
+    return text
+end
+
+local function BuildFileName(key, value)
+    return MODMISC_STORE_PREFIX .. EncodeText(key) .. "~" .. EncodeText(value)
+end
+
+-- 从档名里解出 (key, value)；不是本存储的档 → nil
+local function ParseFileName(name)
+    local shortName = StripExtension(name)
+    if shortName == nil or shortName:sub(1, #MODMISC_STORE_PREFIX) ~= MODMISC_STORE_PREFIX then
+        return nil
+    end
+    local body = shortName:sub(#MODMISC_STORE_PREFIX + 1)
+    local keyHex, valueHex = body:match("^([^~]*)~(.+)$")
+    if keyHex == nil or valueHex == nil then return nil end
+    local key = DecodeText(keyHex)
+    local value = DecodeText(valueHex)
+    if key == nil or value == nil then return nil end
+    return key, value
+end
+
+local function BuildConfigFile(name)
+    if SaveLocations == nil or SaveFileTypes == nil then return nil end
+    local saveType = nil
+    if Network ~= nil and Network.GetGameConfigurationSaveType ~= nil then
+        local ok, value = pcall(function() return Network.GetGameConfigurationSaveType() end)
+        if ok then saveType = value end
+    end
+    if saveType == nil and SaveTypes ~= nil then saveType = SaveTypes.SINGLE_PLAYER end
+    if saveType == nil then return nil end
+
+    local configFile = {
+        Name = name,
+        Location = SaveLocations.LOCAL_STORAGE,
+        Type = saveType,
+        FileType = SaveFileTypes.GAME_CONFIGURATION,
+    }
+    if SaveDirectories ~= nil then
+        configFile.Directory = SaveDirectories.DEFAULT
+    end
+    return configFile
+end
+
+-- ===========================================================================
+-- 扫描（读）：一次列表查询，把所有存储档解码进内存表
+-- ===========================================================================
+
+local function NotifyReady()
+    m_Ready = true
+    for _, callback in ipairs(m_ReadyCallbacks) do
+        pcall(callback)
+    end
+    m_ReadyCallbacks = {}
+end
+
+local function OnStoreQueryResults(fileList, requestId)
+    if requestId ~= nil and m_RefreshRequestId ~= nil and requestId ~= m_RefreshRequestId then
+        return
+    end
+    m_Refreshing = false
+
+    m_Data = {}
+    m_Entries = {}
+    local decodedCount = 0
+    local otherNames = {}
+    if fileList ~= nil then
+        for _, entry in ipairs(fileList) do
+            if entry ~= nil and entry.Name ~= nil then
+                local key, value = ParseFileName(entry.Name)
+                if key ~= nil then
+                    m_Data[key] = value
+                    m_Entries[key] = entry
+                    decodedCount = decodedCount + 1
+                else
+                    table.insert(otherNames, tostring(entry.Name))
+                end
+            end
+        end
+    end
+
+    local listing = "(只有存储档)"
+    if #otherNames > 0 then listing = table.concat(otherNames, ",") end
+    Log("扫描完成 build=" .. MODMISC_STORE_BUILD_TAG
+        .. "：解出 " .. tostring(decodedCount) .. " 个键"
+        .. "；非存储档=[" .. listing .. "]")
+
+    if UI ~= nil and UI.CloseFileListQuery ~= nil and m_RefreshRequestId ~= nil then
+        pcall(function() UI.CloseFileListQuery(m_RefreshRequestId) end)
+        m_RefreshRequestId = nil
+    end
+
+    NotifyReady()
+    if MODMISC_STORE_SELFTEST then ModMiscStore.RunSelfTest() end
+end
+
+function ModMiscStore.Refresh()
+    if m_Refreshing then return false end
+    if UI == nil or UI.QuerySaveGameList == nil or LuaEvents == nil
+        or LuaEvents.FileListQueryResults == nil or SaveLocationOptions == nil then
+        Log("扫描不可用（QuerySaveGameList / SaveLocationOptions 缺失）")
+        return false
+    end
+    local configFile = BuildConfigFile(MODMISC_STORE_PREFIX .. "probe")
+    if configFile == nil then
+        Log("扫描不可用：存档表构建不了")
+        return false
+    end
+    local options = SaveLocationOptions.NORMAL + SaveLocationOptions.QUICKSAVE
+        + SaveLocationOptions.LOAD_METADATA
+    LuaEvents.FileListQueryResults.Add(OnStoreQueryResults)
+    m_Refreshing = true
+    m_RefreshRequestId = UI.QuerySaveGameList(configFile.Location, configFile.Type,
+        options, configFile.FileType, nil)
+    Log("已发出存档列表扫描（找 " .. MODMISC_STORE_PREFIX .. " 前缀的档）")
+    return true
+end
+
+function ModMiscStore.IsReady()
+    return m_Ready
+end
+
+function ModMiscStore.OnReady(callback)
+    if callback == nil then return end
+    if m_Ready then
+        pcall(callback)
+        return
+    end
+    table.insert(m_ReadyCallbacks, callback)
+end
+
+function ModMiscStore.Get(key)
+    if key == nil then return nil end
+    return m_Data[tostring(key)]
+end
+
+function ModMiscStore.GetAll()
+    local copy = {}
+    for key, value in pairs(m_Data) do
+        copy[key] = value
+    end
+    return copy
+end
+
+-- ===========================================================================
+-- 写：新档写出去 → 收到 SaveComplete 再删同 key 的旧档
+-- ===========================================================================
+
+local function OnStoreSaveComplete()
+    Events.SaveComplete.Remove(OnStoreSaveComplete)
+    if UI == nil or UI.DeleteSavedGame == nil then return end
+    for key, entry in pairs(m_PendingDelete) do
+        local ok, err = pcall(UI.DeleteSavedGame, entry)
+        if ok then
+            Log("已删除 [" .. tostring(key) .. "] 的旧档")
+        else
+            Log("删除 [" .. tostring(key) .. "] 旧档失败 -> " .. tostring(err))
+        end
+    end
+    m_PendingDelete = {}
+end
+
+function ModMiscStore.Save(key, value)
+    if key == nil then
+        Log("Save 失败：key 为 nil")
+        return false
+    end
+    if Network == nil or Network.SaveGame == nil then
+        Log("Save 失败：Network.SaveGame 不可用")
+        return false
+    end
+    local text = tostring(value)
+    if #text > MODMISC_STORE_MAX_VALUE_BYTES then
+        Log("Save 失败：值太长（" .. tostring(#text) .. " > "
+            .. tostring(MODMISC_STORE_MAX_VALUE_BYTES) .. " 字节）")
+        return false
+    end
+
+    local name = BuildFileName(key, text)
+    local configFile = BuildConfigFile(name)
+    if configFile == nil then
+        Log("Save 失败：存档表构建不了")
+        return false
+    end
+
+    local ok, err = pcall(Network.SaveGame, configFile)
+    if not ok then
+        Log("Save 失败 -> " .. tostring(err))
+        return false
+    end
+
+    -- 内存表立刻更新；旧档等 SaveComplete 再删（写失败也不丢）
+    m_Data[tostring(key)] = text
+    local oldEntry = m_Entries[tostring(key)]
+    if oldEntry ~= nil then
+        m_PendingDelete[tostring(key)] = oldEntry
+        m_Entries[tostring(key)] = nil
+        if Events ~= nil and Events.SaveComplete ~= nil then
+            Events.SaveComplete.Remove(OnStoreSaveComplete)
+            Events.SaveComplete.Add(OnStoreSaveComplete)
+        end
+    end
+
+    Log("已请求写入 [" .. tostring(key) .. "] = [" .. text .. "]")
+    return true
+end
+
+-- ===========================================================================
+-- 自检（测试期）：每轮写一份带 t/r 的 payload，并报告上一轮读到什么
+-- ===========================================================================
+
+function ModMiscStore.RunSelfTest()
+    if not MODMISC_STORE_SELFTEST then return end
+    local previous = m_Data["selftest"]
+    if previous ~= nil then
+        Log("自检：读到上一轮存的 [" .. tostring(previous) .. "] ⇒ 跨存档通道成立")
+    else
+        Log("自检：没有上一轮的值")
+    end
+    ModMiscStore.Save("selftest", "ms=1;t=" .. tostring(os.time())
+        .. ";r=" .. tostring(math.random(100000, 999999)))
+end

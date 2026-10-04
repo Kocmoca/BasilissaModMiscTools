@@ -866,9 +866,9 @@ end
 -- ===========================================================================
 
 -- 构建标记：前端与 gameplay 是不同 context，各自带一份字面量
--- A：探针调用；B：探针默认关闭；C：测试期打开；D：关回 + io 探针；E：UserOption 探针；F：存档名存储探针
+-- A…E 见历史；F：存档名存储探针；G：存储封装成 UI/ModMiscStore.lua 模块
 -- （ModTool.lua 那份 gameplay 的标记未动）
-local MODMISC_HOOK_BUILD_TAG = "2026-10-04-F"
+local MODMISC_HOOK_BUILD_TAG = "2026-10-04-G"
 local GHOST_CITY_STATE_CUSTOM_DATA_KEY = "ModMiscToolCityStateCount"
 local GHOST_MAJOR_PLAYER_CUSTOM_DATA_KEY = "ModMiscToolMajorPlayerCount"
 
@@ -1081,12 +1081,11 @@ if MODMISC_FRONT_END_PROBE_ENABLED
 	include("FrontEnd_SaveProbe")
 end
 
--- 跨存档存储探针（UI/FrontEnd_StoreProbe.lua）：把 payload 编进「配置档的名字」，
--- 下一轮从存档列表读回来。它就是“利用普通存档”那条路的最小实现。
--- 与上面那个探针不同，这个**默认开着**（只多一个小档，副作用小，且是当前唯一活路）；
--- 结论出来后再决定去留。
-if ModMiscStoreProbeRefresh == nil and ModMiscToolIsGameSetupContext() then
-	include("FrontEnd_StoreProbe")
+-- 跨存档数据存储（UI/ModMiscStore.lua）：把数据编进「配置档的文件名」，
+-- 下一轮从存档列表读回来。**已实机验证**（写一轮 → 杀进程 → 下一轮读回，payload 逐字一致）。
+-- 与上面那个探针不同，这个默认开着 —— 它是目前唯一可用的跨存档通道。
+if ModMiscStore == nil and ModMiscToolIsGameSetupContext() then
+	include("ModMiscStore")
 end
 
 -- [已验证失败] Events.SystemUpdateUI 在创建游戏界面根本不触发（只分辨率变化/恢复 UI/触摸输入），
@@ -1103,8 +1102,10 @@ local function ModMiscToolGhostRefresh(delta)
 	if ModMiscFrontEndProbeRefresh ~= nil then
 		ModMiscFrontEndProbeRefresh()
 	end
-	if ModMiscStoreProbeRefresh ~= nil then
-		ModMiscStoreProbeRefresh()
+	-- 跨存档存储：每个前端 context 首次刷新时扫一遍存档列表（结果进内存表）
+	if ModMiscStore ~= nil and ModMiscStoreAutoRefreshed == nil then
+		ModMiscStoreAutoRefreshed = true
+		ModMiscStore.Refresh()
 	end
 	ContextPtr:RequestRefresh()
 end
