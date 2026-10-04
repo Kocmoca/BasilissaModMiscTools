@@ -866,9 +866,9 @@ end
 -- ===========================================================================
 
 -- 构建标记：前端与 gameplay 是不同 context，各自带一份字面量
--- 2026-10-04-A：加入探针调用；B：探针默认关闭；C：测试期临时打开；D：实验结束关回 + io 探针
+-- 2026-10-04-A：加入探针调用；B：探针默认关闭；C：测试期临时打开；D：关回 + io 探针；E：UserOption 跨存档探针
 -- （ModTool.lua 那份 gameplay 的标记未动）
-local MODMISC_HOOK_BUILD_TAG = "2026-10-04-D"
+local MODMISC_HOOK_BUILD_TAG = "2026-10-04-E"
 local GHOST_CITY_STATE_CUSTOM_DATA_KEY = "ModMiscToolCityStateCount"
 local GHOST_MAJOR_PLAYER_CUSTOM_DATA_KEY = "ModMiscToolMajorPlayerCount"
 
@@ -882,6 +882,73 @@ local GHOST_MAJOR_PLAYER_CUSTOM_DATA_KEY = "ModMiscToolMajorPlayerCount"
 -- ===========================================================================
 -- 放在构建标记之后：函数体里要读 MODMISC_HOOK_BUILD_TAG，写前面会解析成全局 nil
 local function ModMiscProbeIOLibrary()
+
+-- ===========================================================================
+-- [跨存档探针] Options.GetUserOption / SetUserOption —— 原版自带的持久化存储
+--
+-- 线索（全在基座源码里，独立查出来的）：UI/FrontEnd/Multiplayer/PBCNotifyRemind.lua
+--   Options.SetUserOption("Interface", "PlayByCloudNotifyRemind", 1)
+-- 这个键**没有在任何 XML 里声明**，却在 Lobby.lua 里被读回来、而且显然要跨会话记住
+-- 用户的选择 ⇒ 说明 SetUserOption 能存**自定义键**，落盘在用户的 UserOptions 里。
+-- 基座里的用例全在 UI 侧（含对局内 UI：ActionPanel / CameraManager / DiplomacyRibbon），
+-- 所以这是「UI 层可读写、且天然跨存档/跨启动」的存储。
+--
+-- 协议（一轮就能定论）：
+--   启动时读 ModMiscTool/CrossSaveProbe：
+--     读到 = 上一轮（甚至上一局）写的 ⇒ ✅ 持久化成立，这就是跨存档通道
+--     没读到 → 写一份，下一轮再看
+--   对局内 UI 那边（UI/Support_UI.lua）会再读一次、并写一份新 payload，
+--   所以下一轮前端读到的是**对局内写的那份** ⇒ 顺带证明“对局内也能存”。
+-- ===========================================================================
+local MODMISC_USEROPTION_CATEGORY = "ModMiscTool"
+local MODMISC_USEROPTION_KEY = "CrossSaveProbe"
+
+local function ModMiscProbeUserOption()
+	local contextID = "?"
+	if ContextPtr ~= nil and ContextPtr.GetID ~= nil then
+		local ok, id = pcall(function() return ContextPtr:GetID() end)
+		if ok and id ~= nil then contextID = tostring(id) end
+	end
+	-- 只在前端“主界面”报一次，免得每个前端上下文都刷一行
+	if contextID ~= "MainMenu" then return end
+
+	if Options == nil or Options.GetUserOption == nil then
+		print("[ModMiscTool][UserOptionProbe] Options.GetUserOption 不可用")
+		return
+	end
+
+	local previous = nil
+	local readOk, value = pcall(function()
+		return Options.GetUserOption(MODMISC_USEROPTION_CATEGORY, MODMISC_USEROPTION_KEY)
+	end)
+	if readOk and value ~= nil and tostring(value) ~= "" then
+		previous = tostring(value)
+	end
+
+	if previous ~= nil then
+		print("[ModMiscTool][UserOptionProbe] 读到 [" .. previous
+			.. "] —— 上一轮写的值还在 ⇒ 跨启动/跨存档持久化成立")
+		return
+	end
+
+	local payload = "uo=1;t=" .. tostring(os.time())
+		.. ";r=" .. tostring(math.random(100000, 999999))
+	if Options.SetUserOption == nil then
+		print("[ModMiscTool][UserOptionProbe] 没读到，且 Options.SetUserOption 不可用")
+		return
+	end
+	local writeOk, err = pcall(function()
+		Options.SetUserOption(MODMISC_USEROPTION_CATEGORY, MODMISC_USEROPTION_KEY, payload)
+	end)
+	if not writeOk then
+		print("[ModMiscTool][UserOptionProbe] 写入失败 -> " .. tostring(err))
+		return
+	end
+	print("[ModMiscTool][UserOptionProbe] 没读到 → 已写入 [" .. payload
+		.. "]；下一轮启动看能不能读回来（对局内 UI 还会覆盖成它写的那份）")
+end
+
+ModMiscProbeUserOption()
 	local hasIO = (io ~= nil) and "y" or "n"
 	local hasOpen = (io ~= nil and io.open ~= nil) and "y" or "n"
 	local hasOS = (os ~= nil) and "y" or "n"

@@ -66,6 +66,18 @@
 > 关掉的原因：前端这条路虽然通，但每次开机都会动一遍配置（读档后按游戏菜单语义
 > **清空领袖/文明选择**）。要再跑实验就把开关改成 `true`。
 
+**跨存档通道候选（2026-10-04 独立排查，均待实机验证）**
+
+授权者提供线索：有人实现过跨存档数据、且不愿开源，原理可能是利用普通存档。
+不动别人的代码，自己把原版翻了一遍，能用得上的通道就下面几条：
+
+| 通道 | 机制（原版依据） | 现状 |
+|---|---|---|
+| **A** `Options.SetUserOption` / `GetUserOption` | 基座 UI 层在用，**对局内 UI 也在用**（`ActionPanel` / `CameraManager` / `DiplomacyRibbon`）。关键证据：`UI/FrontEnd/Multiplayer/PBCNotifyRemind.lua` 往 `("Interface", "PlayByCloudNotifyRemind")` 写，这个键**没在任何 XML 里声明**，却要在 `Lobby.lua` 里跨会话读回来 ⇒ **自定义键能存**。落盘在用户选项文件 ⇒ 天然跨存档/跨启动。 | 探针已埋（`[UserOptionProbe]`），待实机 |
+| **B** `io.open` 写自己的文件 | 若 Lua 环境带 io 库，直接写数据文件最干净（位置可用 `UI.GetSaveLocationPath()` 定位） | `[IOProbe]` 待实机 |
+| **C** 存档名编码 | 写：`Network.SaveGame{Name=…}`（对局内后台存档是静默的，已验证）；读：`UI.QuerySaveGameList` 的 `Name`（不需读档、前后端都能用，已验证）。**这就是“利用普通存档”那条路**。 | 纯原版可行，代价：污染存档列表；文件名禁 `%` 与 `" < > \| / \ * ? :` 及控制字符；一个 payload 一个文件 |
+| **D** 存档元数据注入 | ❌ 排除：`EnabledMods` / `RequiredMods` / `SavedByVersion` / `TunerActive` 等字段全由引擎填；`UI.GetSaveGameMetaData()` 只能读“正在加载的那个档”，没有任意档读取接口 | — |
+
 ## 4. WorldBuilder（地图编辑器）接口
 
 | # | 接口 / 方法 | 状态 | 证据与备注 |
