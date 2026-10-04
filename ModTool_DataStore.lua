@@ -80,6 +80,19 @@ end
 -- ===========================================================================
 
 local function RunDataStoreProbe()
+    -- 顺带测一条边界：UI 侧用 WriteCustomData 写进 game parameters 的东西，
+    -- gameplay 侧用 Game:GetProperty 读同一个 key 读不读得到？
+    -- 预期读不到（两个独立存储）—— 这一行就是那条边界的直接证据。
+    -- 那个 key 由 UI/Support_UI.lua 的开局探针每次进游戏写入，所以这里必定有值可比。
+    local uiSideValue = nil
+    local uiReadOk = pcall(function()
+        uiSideValue = Game:GetProperty("ModMiscToolCrossSaveProbe")
+    end)
+    if uiReadOk then
+        Log("startup: gameplay 读 UI 的 CustomData 键 -> " .. tostring(uiSideValue)
+            .. "（预期 nil = 两个存储互不可见）")
+    end
+
     local previous = ModMiscToolData.Get(MODMISC_DATA_PROBE_KEY)
     if previous ~= nil then
         Log("startup: 读到 [" .. tostring(previous)
