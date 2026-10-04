@@ -91,13 +91,18 @@ SaveData(key, value)   -- 写；值 ≤ 120 字节；先写新档、SaveComplete
 GetData(key)           -- 读（没存过 → nil）
 GetAllData()           -- 整张表（副本）
 RemoveData(key)        -- 删一个键及其档
+RemoveAllData()        -- 清空整张存储（返回删掉的键数）
 ```
 
 * 前端与**对局内 UI** 都能读写（各自的 context 各持一份内存表，跨 context 走 `ExposedMembers`）。
 * gameplay 层拿不到（`Network.SaveGame` / `UI.QuerySaveGameList` 都是 UI 接口）。
 * 实机证据：写一轮 → 杀进程 → 下一轮读回 payload **逐字一致**；
   对局内写入同样落盘（`ingame=ig=1;t=1791113603;r=755564` 跨进程读回）。
-* 测试面板上有对应按钮：存储写入 / 存储读取 / 存储清空（键 `panel`），便于就地验证。
+* 测试面板上有对应按钮：存储写入 / 存储读取 / 存储清空。
+  写入显示刚写的那一行（`panel = …`），读取与清空显示整张清单，三者格式一致、可直接逐行对照；
+  「存储清空」= `RemoveAllData()`，清空**整张**存储。
+* 脚手架已退场：`selftest`（自检）与 `ingame`（对局内写测试）都关了，且列入退役键 ——
+  扫描时若发现这两个键的档，直接清掉，免得正式用起来还躺着测试数据。
 
 **跨存档存储踩过的两个坑（2026-10-04 实机，已修）**
 

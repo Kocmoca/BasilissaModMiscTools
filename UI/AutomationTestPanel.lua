@@ -762,7 +762,7 @@ local function ShowStoreContents(actionName)
     local contents = FormatStoreContents()
     local keyCount = CountStoreKeys()
     local header = Locale.Lookup("LOC_MODMISC_AUTOMATION_TEST_STORE_HEADER", keyCount)
-    SetOutputDetail(header .. (keyCount > 0 and ("\n" .. contents) or ""),
+    SetOutputDetail(header .. (keyCount > 0 and ("\n" .. contents) or "\n  (空)"),
         Locale.Lookup("LOC_MODMISC_AUTOMATION_TEST_STORE_SUMMARY", actionName, keyCount),
         true)
 end
@@ -784,8 +784,10 @@ local function StoreClear()
         SetError("StoreClear", "ModMiscStore 模块没加载")
         return
     end
-    ModMiscStore.Remove(STORE_PANEL_KEY)
-    -- 删完立刻重扫一遍再显示：否则面板上看到的还是删之前的内容，像是“清空没生效”
+    -- 「存储清空」= 清空整张存储（不只是 panel 那个键）——
+    -- 之前只删 panel，剩下的 ingame/selftest 会让人以为“清空没生效”
+    ModMiscStore.RemoveAll()
+    -- 删完立刻重扫一遍再显示：否则面板上看到的还是删之前的内容
     ModMiscStore.Refresh(function()
         ShowStoreContents("StoreClear")
     end)

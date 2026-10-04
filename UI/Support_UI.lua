@@ -332,7 +332,10 @@ function Initialize()
 	--     若这条路不行，退路是改成写普通存档（GAME_STATE，对局内写是静默的、已验证），
 	--     代价是存档列表里多一个大档。
 	-- ===========================================================================
-	local MODMISC_STORE_INGAME_WRITE_TEST = true
+	-- 对局内写配置档这条已经验证通过（2026-10-04：ig=… 跨进程读回逐字一致），
+	-- 所以写测试关掉，免得每次开局都往存储里塞一个 ingame 键。
+	-- 读的那半留着：开局顺手打一行“存储里现在有什么”，当诊断用。
+	local MODMISC_STORE_INGAME_WRITE_TEST = false
 
 	local function LogStoreInGame(message)
 		print("[ModMiscTool][Store] in-game: " .. message)
@@ -442,6 +445,7 @@ ExposedMembers.ModMiscToolUI.RunCrossSaveProbeUI = RunCrossSaveProbeUI
 		ExposedMembers.ModMiscToolUI.GetData = ModMiscStore.Get
 		ExposedMembers.ModMiscToolUI.GetAllData = ModMiscStore.GetAll
 		ExposedMembers.ModMiscToolUI.RemoveData = ModMiscStore.Remove
+		ExposedMembers.ModMiscToolUI.RemoveAllData = ModMiscStore.RemoveAll
 		ExposedMembers.ModMiscToolUI.RefreshData = ModMiscStore.Refresh
 		ExposedMembers.ModMiscToolUI.IsDataReady = ModMiscStore.IsReady
 		ExposedMembers.ModMiscToolUI.OnDataReady = ModMiscStore.OnReady

@@ -27,7 +27,7 @@
 -- ===========================================================================
 
 local MODMISC_STORE_PREFIX = "ModMiscStore~"
-local MODMISC_STORE_BUILD_TAG = "2026-10-04-E"
+local MODMISC_STORE_BUILD_TAG = "2026-10-04-F"
 -- 自检：每轮写一份 ms=… payload 并读回上一轮的（验证通道还活着）。
 -- 通道已验证完毕（2026-10-04），关掉 —— 正式用起来它就是噪音键。
 local MODMISC_STORE_SELFTEST = false
@@ -37,6 +37,9 @@ local MODMISC_STORE_MAX_VALUE_BYTES = 120
 --   ModMiscFrontEndProbe —— 前端存读档探针写过的那种配置档（探针已默认关闭）
 --   形如 ModMiscStore~<单段hex> —— 本模块改版前的老格式（没有 key/value 两段）
 local MODMISC_STORE_LEGACY_NAME = "ModMiscFrontEndProbe"
+-- 退役的测试键：通道验证阶段由「自检」与「对局内写测试」写过，现在这两个测试都关了，
+-- 扫到就把它们的档一并清掉，免得正式用起来还躺着几条脚手架数据。
+local MODMISC_STORE_RETIRED_KEYS = { selftest = true, ingame = true }
 
 -- 本进程已解码到的数据
 local m_Data = {}
@@ -173,6 +176,13 @@ local function OnStoreQueryResults(fileList, requestId)
                 local key, value = ParseFileName(entry.Name)
                 if key ~= nil then
                     decodedFileCount = decodedFileCount + 1
+                    if MODMISC_STORE_RETIRED_KEYS[key] then
+                        -- 退役的测试键：不进内存表，直接排进删除队列
+                        table.insert(legacyEntries, { name = StripExtension(entry.Name), entry = entry })
+                        key = nil
+                    end
+                end
+                if key ~= nil then
                     -- 同一个 key 可能有多份档（多次扫描各写一份、删旧档偶尔没跟上）：
                     -- 比修改时间，留最新的一份，其余排进删除队列
                     local timestamp = GetEntryTimestamp(entry)
@@ -390,6 +400,24 @@ function ModMiscStore.Remove(key)
     local ok, err = pcall(UI.DeleteSavedGame, entry)
     Log(ok and ("已删除 [" .. name .. "]") or ("删除 [" .. name .. "] 失败 -> " .. tostring(err)))
     return ok
+end
+
+-- 清空整张存储（删掉所有键的档）
+function ModMiscStore.RemoveAll()
+    local keys = {}
+    for key in pairs(m_Data) do
+        table.insert(keys, key)
+    end
+    if #keys == 0 then
+        Log("RemoveAll：内存表是空的（可能还没扫描过）")
+        return 0
+    end
+    local removed = 0
+    for _, key in ipairs(keys) do
+        if ModMiscStore.Remove(key) then removed = removed + 1 end
+    end
+    Log("RemoveAll：已清空 " .. tostring(removed) .. "/" .. tostring(#keys) .. " 个键")
+    return removed
 end
 
 -- ===========================================================================
