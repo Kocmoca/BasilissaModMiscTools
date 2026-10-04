@@ -276,6 +276,46 @@ function RunCrossSaveProbeUI(source)
     return RunCrossSaveProbe(tostring(source or "panel"))
 end
 
+-- ===========================================================================
+-- 跨存档数据存取（UI 侧）
+--
+-- ⚠️ UI 端**用不了** Game:SetProperty（授权者确认），所以 UI 侧只能走 CustomData：
+--   它写进当前这局的 game parameters，**写完必须再存一次档**才会落盘。
+--   而且它和 gameplay 侧的 Game:SetProperty 是**两个独立的存储** —— 同一个 key
+--   在两边互不可见。要对局内自动落盘的数据，请用 gameplay 侧的 SetData。
+--
+-- 键前缀比 gameplay 侧多一个 ui_，避免两边混用同一个键时产生误解。
+-- ===========================================================================
+local MODMISC_UI_DATA_KEY_PREFIX = "kocmoca_modmisctool_ui_"
+
+local function LogUIData(message)
+    print("[ModMiscTool][UIData] " .. message)
+end
+
+function SetModMiscCustomData(key, value)
+    if key == nil then
+        LogUIData("Set 失败：key 为 nil")
+        return false
+    end
+    local ok, err = pcall(WriteCustomData, MODMISC_UI_DATA_KEY_PREFIX .. tostring(key), value)
+    if not ok then
+        LogUIData("Set 失败 key=" .. tostring(key) .. " -> " .. tostring(err))
+        return false
+    end
+    return true
+end
+
+function GetModMiscCustomData(key)
+    if key == nil then return nil end
+    local ok, value = pcall(ReadCustomData, MODMISC_UI_DATA_KEY_PREFIX .. tostring(key))
+    if not ok then
+        LogUIData("Get 失败 key=" .. tostring(key) .. " -> " .. tostring(value))
+        return nil
+    end
+    if value == nil or tostring(value) == "" then return nil end
+    return value
+end
+
 -- 探针只在启动函数里跑一次（每次进入游戏一次）：先读、读不到就写
 
 function Initialize()
@@ -304,5 +344,8 @@ ExposedMembers.ModMiscToolUI.ShowLoadWarningPopup = ShowLoadWarningPopup
 ExposedMembers.ModMiscToolUI.IsMinorPlayerUI = IsMinorPlayerUI
 ExposedMembers.ModMiscToolUI.GetUnsettledCityStatePlayerIDsUI = GetUnsettledCityStatePlayerIDsUI
 ExposedMembers.ModMiscToolUI.RunCrossSaveProbeUI = RunCrossSaveProbeUI
+	-- 跨存档数据存取（UI 侧）：写 CustomData，**写完要再存一次档**才落盘
+	ExposedMembers.ModMiscToolUI.SetCustomData = SetModMiscCustomData
+	ExposedMembers.ModMiscToolUI.GetCustomData = GetModMiscCustomData
 end
 Events.LoadGameViewStateDone.Add(Initialize)

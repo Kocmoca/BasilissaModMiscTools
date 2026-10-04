@@ -89,6 +89,7 @@
             <File>ExtensiveUnitBuild.lua</File>
         </AddGameplayScripts>
         <ImportFiles id="Imports">
+            <File>ModTool_DataStore.lua</File>
             <File>ModTool_Support_Functions.lua</File>
             <File>ModTool_Support_UI.lua</File>
             <File>ModTool_WorldBuilderAPI.lua</File>
@@ -166,6 +167,7 @@
         <File>SupportData.sql</File>
         <!-- scripts -->
         <File>ModTool.lua</File>
+        <File>ModTool_DataStore.lua</File>
         <File>ModTool_Support_Functions.lua</File>
         <File>ModTool_Support_UI.lua</File>
         <File>ModTool_WorldBuilderAPI.lua</File>

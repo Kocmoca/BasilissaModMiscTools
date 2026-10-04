@@ -573,6 +573,13 @@ function Initialize()
 	ExposedMembers.ModMiscToolScript.DamageToUnit = DamageToUnit
 	ExposedMembers.ModMiscToolScript.AoeAllUnitsForPlot = AoeAllUnitsForPlot
 	ExposedMembers.ModMiscToolScript.GetPlotsInRange = GetPlotsInRange
+	-- 跨存档数据存取（gameplay 侧）：别的 mod 用它存自己的数据。
+	-- 底层是 Game:SetProperty —— 随存档自动保存/还原；UI 端用不了这个 API。
+	ExposedMembers.ModMiscToolScript.SetData = ModMiscToolData.Set
+	ExposedMembers.ModMiscToolScript.GetData = ModMiscToolData.Get
+	ExposedMembers.ModMiscToolScript.HasData = ModMiscToolData.Has
+	ExposedMembers.ModMiscToolScript.RemoveData = ModMiscToolData.Remove
+	ExposedMembers.ModMiscToolScript.BuildDataKey = ModMiscToolData.BuildKey
 	-- WorldBuilder（地图编辑器）接口模块：Gameplay 后端，UI 层通过它调用
 	ExposedMembers.ModMiscToolScript.WorldBuilderAPI = WorldBuilderAPI
 end
