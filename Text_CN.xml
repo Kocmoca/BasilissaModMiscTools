@@ -290,5 +290,133 @@
 		<Replace Tag="LOC_MODMISC_WB_TEST_PLAYER_STATS_RESULT" Language="zh_Hans_CN">
 			<Text>槽位：{1_Summary}</Text>
 		</Replace>
+
+		<!-- Automation API test panel -->
+		<Replace Tag="LOC_MODMISC_AUTOMATION_TEST_TITLE" Language="zh_Hans_CN">
+			<Text>Automation 接口测试</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_AUTOMATION_TEST_TOOLTIP" Language="zh_Hans_CN">
+			<Text>打开 Automation 接口测试面板</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_AUTOMATION_TEST_PLAYER" Language="zh_Hans_CN">
+			<Text>玩家</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_AUTOMATION_TEST_TURNS" Language="zh_Hans_CN">
+			<Text>自动播回合</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_AUTOMATION_TEST_TURNS_UNLIMITED" Language="zh_Hans_CN">
+			<Text>不限回合</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_AUTOMATION_TEST_VIEW_PLAYER" Language="zh_Hans_CN">
+			<Text>切到选中玩家视角</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_AUTOMATION_TEST_VIEW_OBSERVER" Language="zh_Hans_CN">
+			<Text>观察者模式</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_AUTOMATION_TEST_STOP_VIEW" Language="zh_Hans_CN">
+			<Text>停止并回本地玩家</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_AUTOMATION_TEST_LOOK_CAPITAL" Language="zh_Hans_CN">
+			<Text>看选中玩家首都</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_AUTOMATION_TEST_SAVE" Language="zh_Hans_CN">
+			<Text>后台存档</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_AUTOMATION_TEST_LOAD" Language="zh_Hans_CN">
+			<Text>后台读档</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_AUTOMATION_TEST_PROBE_WRITE" Language="zh_Hans_CN">
+			<Text>写入 CustomData 探针</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_AUTOMATION_TEST_PROBE_READ" Language="zh_Hans_CN">
+			<Text>读取 CustomData 探针</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_AUTOMATION_TEST_PROBE_SAVE" Language="zh_Hans_CN">
+			<Text>写探针并存档</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_AUTOMATION_TEST_ASSET_TYPE" Language="zh_Hans_CN">
+			<Text>资产类型</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_AUTOMATION_TEST_ASSET_INDEX" Language="zh_Hans_CN">
+			<Text>资产</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_AUTOMATION_TEST_ASSET_PLACE" Language="zh_Hans_CN">
+			<Text>放置资产（选地块）</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_AUTOMATION_TEST_ASSET_CLEAR_PLOT" Language="zh_Hans_CN">
+			<Text>清除地块资产</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_AUTOMATION_TEST_ASSET_CLEAR_ALL" Language="zh_Hans_CN">
+			<Text>清除全部资产</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_AUTOMATION_TEST_MESSAGES" Language="zh_Hans_CN">
+			<Text>提示信息</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_AUTOMATION_TEST_OBSERVER" Language="zh_Hans_CN">
+			<Text>观察者</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_AUTOMATION_TEST_NO_PLAYER" Language="zh_Hans_CN">
+			<Text>无玩家</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_AUTOMATION_TEST_RESULT" Language="zh_Hans_CN">
+			<Text>{1_Test}：{2_Result}</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_AUTOMATION_TEST_ERROR" Language="zh_Hans_CN">
+			<Text>{1_Test} 错误：{2_Error}</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_AUTOMATION_TEST_NO_OPTIONS" Language="zh_Hans_CN">
+			<Text>该选择器没有可用选项。</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_AUTOMATION_TEST_NO_PLOT" Language="zh_Hans_CN">
+			<Text>锚点附近找不到有效地块。</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_AUTOMATION_TEST_PICK_PLOT" Language="zh_Hans_CN">
+			<Text>{1_Action}：请点击地图上高亮的地块。</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_AUTOMATION_TEST_PICK_ASSET_PLOT" Language="zh_Hans_CN">
+			<Text>请选择要放置资产的地块。</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_AUTOMATION_TEST_PICK_CLEAR_PLOT" Language="zh_Hans_CN">
+			<Text>请选择要清除资产的地块。</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_AUTOMATION_TEST_SAVE_COMPLETE" Language="zh_Hans_CN">
+			<Text>后台存档完成：{1_Name}</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_AUTOMATION_TEST_SAVE_REQUESTED" Language="zh_Hans_CN">
+			<Text>已请求后台存档：{1_Name}</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_AUTOMATION_TEST_LOAD_REQUESTED" Language="zh_Hans_CN">
+			<Text>已请求后台读档：{1_Name}</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_AUTOMATION_TEST_PROBE_EMPTY" Language="zh_Hans_CN">
+			<Text>CustomData 探针为空。local={1_Local}</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_AUTOMATION_TEST_PROBE_VALUE" Language="zh_Hans_CN">
+			<Text>CustomData={1_Value}；local={2_Local}；match={3_Match}</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_AUTOMATION_TEST_PROBE_AFTER_LOAD" Language="zh_Hans_CN">
+			<Text>读档后 CustomData 探针 = {1_Value}</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_AUTOMATION_TEST_ASSET_NOT_SELECTED" Language="zh_Hans_CN">
+			<Text>请选择资产……</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_AUTOMATION_TEST_ASSET_CITY" Language="zh_Hans_CN">
+			<Text>城市</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_AUTOMATION_TEST_ASSET_DISTRICT_BASE" Language="zh_Hans_CN">
+			<Text>区域基底</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_AUTOMATION_TEST_ASSET_BUILDING" Language="zh_Hans_CN">
+			<Text>区域建筑</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_AUTOMATION_TEST_ASSET_LANDMARK" Language="zh_Hans_CN">
+			<Text>地标</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_AUTOMATION_TEST_ASSET_UNIT" Language="zh_Hans_CN">
+			<Text>单位</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_AUTOMATION_TEST_READY" Language="zh_Hans_CN">
+			<Text>Automation 测试面板已就绪。</Text>
+		</Replace>
 </LocalizedText>
 </GameData>

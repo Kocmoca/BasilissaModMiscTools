@@ -1,0 +1,128 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Mod Misc Tool: Automation 系接口测试面板。
+  通过 LeftSideBar 注册入口；测试以下接口：
+    * AutoplayManager：切换任意玩家视角 / 观察者模式 / 自动播放
+    * Network：后台存档、后台读档
+    * CustomData：探针写入/读取，配合存档验证跨存档持久化
+    * AssetPreview / AutoProfiler：在指定地块摆放/清除资产
+  面板只做功能调用与日志展示；所有调用都用 pcall 包住，错误显示在提示信息窗。
+-->
+<Context>
+    <Container ID="AutomationTestRoot" Anchor="C,C" Size="900,780" ConsumeMouse="1" Hidden="1">
+        <Box Anchor="C,C" Size="parent,parent" Color="20,20,30,248">
+            <Grid Anchor="C,C" Size="parent+16,parent+16" Style="ScreenFrame" />
+
+            <Grid ID="AutomationTestHeader" Anchor="L,T" Size="parent,56"
+                  Texture="TopBar_Bar" SliceCorner="28,8" SliceTextureSize="57,29">
+                <Label ID="AutomationTestTitle" Anchor="L,C" Offset="24,0" Size="740,44"
+                       FontSize="32" FontStyle="glow" ColorSet="ShellHeader"
+                       String="LOC_MODMISC_AUTOMATION_TEST_TITLE" />
+                <Button ID="AutomationTestCloseButton" Anchor="R,C" Offset="-14,0" Size="44,44"
+                        Texture="Controls_CloseButton" Style="ButtonNormalText" ConsumeMouse="1" />
+            </Grid>
+
+            <Label ID="AutomationTestStatus" Anchor="L,T" Offset="20,64" Size="parent-40,32"
+                   FontSize="22" Color="225,225,225,255" WrapWidth="860" VerticalAlignment="Center" />
+
+            <!-- 玩家和自动播回合数 -->
+            <Label ID="AutomationTestPlayerLabel" Anchor="L,T" Offset="20,110" Size="170,56"
+                   FontSize="26" Color="225,225,225,255" VerticalAlignment="Center"
+                   String="LOC_MODMISC_AUTOMATION_TEST_PLAYER" />
+            <GridButton ID="AutomationTestPlayerButton" Anchor="L,T" Offset="200,110" Size="660,56"
+                        Style="ButtonControl" FontSize="26" String="" />
+
+            <Label ID="AutomationTestTurnsLabel" Anchor="L,T" Offset="20,178" Size="170,56"
+                   FontSize="26" Color="225,225,225,255" VerticalAlignment="Center"
+                   String="LOC_MODMISC_AUTOMATION_TEST_TURNS" />
+            <GridButton ID="AutomationTestTurnsButton" Anchor="L,T" Offset="200,178" Size="660,56"
+                        Style="ButtonControl" FontSize="26" String="" />
+
+            <!-- 视角切换 -->
+            <GridButton ID="AutomationTestViewPlayer" Anchor="L,T" Offset="20,246" Size="280,60"
+                        Style="ButtonControl" FontSize="26" String="LOC_MODMISC_AUTOMATION_TEST_VIEW_PLAYER" />
+            <GridButton ID="AutomationTestViewObserver" Anchor="L,T" Offset="310,246" Size="280,60"
+                        Style="ButtonControl" FontSize="26" String="LOC_MODMISC_AUTOMATION_TEST_VIEW_OBSERVER" />
+            <GridButton ID="AutomationTestStopView" Anchor="L,T" Offset="600,246" Size="280,60"
+                        Style="ButtonControl" FontSize="26" String="LOC_MODMISC_AUTOMATION_TEST_STOP_VIEW" />
+
+            <!-- 镜头 / 网络存读档 -->
+            <GridButton ID="AutomationTestLookAtCapital" Anchor="L,T" Offset="20,314" Size="280,60"
+                        Style="ButtonControl" FontSize="26" String="LOC_MODMISC_AUTOMATION_TEST_LOOK_CAPITAL" />
+            <GridButton ID="AutomationTestSaveGame" Anchor="L,T" Offset="310,314" Size="280,60"
+                        Style="ButtonControl" FontSize="26" String="LOC_MODMISC_AUTOMATION_TEST_SAVE" />
+            <GridButton ID="AutomationTestLoadGame" Anchor="L,T" Offset="600,314" Size="280,60"
+                        Style="ButtonControl" FontSize="26" String="LOC_MODMISC_AUTOMATION_TEST_LOAD" />
+
+            <!-- CustomData 探针 -->
+            <GridButton ID="AutomationTestProbeWrite" Anchor="L,T" Offset="20,382" Size="280,60"
+                        Style="ButtonControl" FontSize="26" String="LOC_MODMISC_AUTOMATION_TEST_PROBE_WRITE" />
+            <GridButton ID="AutomationTestProbeRead" Anchor="L,T" Offset="310,382" Size="280,60"
+                        Style="ButtonControl" FontSize="26" String="LOC_MODMISC_AUTOMATION_TEST_PROBE_READ" />
+            <GridButton ID="AutomationTestProbeSave" Anchor="L,T" Offset="600,382" Size="280,60"
+                        Style="ButtonControl" FontSize="26" String="LOC_MODMISC_AUTOMATION_TEST_PROBE_SAVE" />
+
+            <!-- AssetPreview 选择与放置 -->
+            <Label ID="AutomationTestAssetCategoryLabel" Anchor="L,T" Offset="20,450" Size="170,56"
+                   FontSize="26" Color="225,225,225,255" VerticalAlignment="Center"
+                   String="LOC_MODMISC_AUTOMATION_TEST_ASSET_TYPE" />
+            <GridButton ID="AutomationTestAssetCategoryButton" Anchor="L,T" Offset="200,450" Size="660,56"
+                        Style="ButtonControl" FontSize="26" String="" />
+
+            <Label ID="AutomationTestAssetIndexLabel" Anchor="L,T" Offset="20,518" Size="170,56"
+                   FontSize="26" Color="225,225,225,255" VerticalAlignment="Center"
+                   String="LOC_MODMISC_AUTOMATION_TEST_ASSET_INDEX" />
+            <GridButton ID="AutomationTestAssetIndexButton" Anchor="L,T" Offset="200,518" Size="660,56"
+                        Style="ButtonControl" FontSize="26" String="" />
+
+            <GridButton ID="AutomationTestPlaceAsset" Anchor="L,T" Offset="20,586" Size="280,60"
+                        Style="ButtonControl" FontSize="26" String="LOC_MODMISC_AUTOMATION_TEST_ASSET_PLACE" />
+            <GridButton ID="AutomationTestClearPlotAsset" Anchor="L,T" Offset="310,586" Size="280,60"
+                        Style="ButtonControl" FontSize="26" String="LOC_MODMISC_AUTOMATION_TEST_ASSET_CLEAR_PLOT" />
+            <GridButton ID="AutomationTestClearAllAssets" Anchor="L,T" Offset="600,586" Size="280,60"
+                        Style="ButtonControl" FontSize="26" String="LOC_MODMISC_AUTOMATION_TEST_ASSET_CLEAR_ALL" />
+
+            <GridButton ID="AutomationTestMessages" Anchor="L,T" Offset="20,654" Size="860,60"
+                        Style="ButtonControl" FontSize="26" String="LOC_MODMISC_AUTOMATION_TEST_MESSAGES" />
+
+            <!-- 展开的选项列表 -->
+            <Container ID="AutomationTestOptionPanel" Anchor="L,T" Size="660,300" ConsumeMouse="1" Hidden="1">
+                <Box Anchor="L,T" Size="parent,parent" Color="10,18,28,252">
+                    <Grid Anchor="C,C" Size="parent+8,parent+8" Style="ScreenFrame" />
+                    <ScrollPanel ID="AutomationTestOptionScroll" Anchor="C,T" Size="parent-8,parent-8"
+                                 Vertical="1" AutoScrollBar="0">
+                        <Stack ID="AutomationTestOptionList" StackGrowth="Bottom" Anchor="C,T" StackPadding="3" />
+                        <ScrollBar Anchor="R,C" Size="11,parent" Offset="2,0" AnchorSide="O,I" Style="ScrollVerticalBar" />
+                    </ScrollPanel>
+                </Box>
+            </Container>
+        </Box>
+
+        <!-- 提示信息小窗 -->
+        <Container ID="AutomationTestMessageWindow" Anchor="C,C" Size="680,340" ConsumeMouse="1" Hidden="1">
+            <Box Anchor="C,C" Size="parent,parent" Color="14,22,34,250">
+                <Grid Anchor="C,C" Size="parent+16,parent+16" Style="ScreenFrame" />
+
+                <Grid ID="AutomationTestMessageHeader" Anchor="L,T" Size="parent,52"
+                      Texture="TopBar_Bar" SliceCorner="28,8" SliceTextureSize="57,29">
+                    <Label ID="AutomationTestMessageTitle" Anchor="L,C" Offset="20,0" Size="520,40"
+                           FontSize="28" FontStyle="glow" ColorSet="ShellHeader"
+                           String="LOC_MODMISC_AUTOMATION_TEST_MESSAGES" />
+                    <Button ID="AutomationTestMessageClose" Anchor="R,C" Offset="-12,0" Size="40,40"
+                            Texture="Controls_CloseButton" Style="ButtonNormalText" ConsumeMouse="1" />
+                </Grid>
+
+                <Label ID="AutomationTestMessageText" Anchor="C,T" Offset="0,66" Size="parent-40,parent-86"
+                       FontSize="24" Color="225,225,225,255" WrapWidth="640" VerticalAlignment="Top" />
+            </Box>
+        </Container>
+    </Container>
+
+    <!-- 展开列表条目模板 -->
+    <Instance Name="AutomationTestOptionEntry">
+        <GridButton ID="EntryButton" Size="620,48" Style="ButtonControl" Anchor="C,T">
+            <Label ID="EntryLabel" Anchor="L,C" Offset="12,0" Size="parent-24,parent"
+                   FontSize="24" Color="225,225,225,255" VerticalAlignment="Center" TruncateWidth="590" />
+        </GridButton>
+    </Instance>
+</Context>

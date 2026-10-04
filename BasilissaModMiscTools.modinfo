@@ -110,6 +110,13 @@
             </Properties>
             <File>UI/LeftSideBar.xml</File>
         </AddUserInterfaces>
+        <AddUserInterfaces id="AutomationTestPanel">
+            <Properties>
+                <Context>InGame</Context>
+                <LoadOrder>-1</LoadOrder>
+            </Properties>
+            <File>UI/AutomationTestPanel.xml</File>
+        </AddUserInterfaces>
         <!-- 开发用的 WorldBuilder 测试面板：**默认不注册**（不加载、无左侧栏入口）。
              它的功能已经全部通过 API 暴露给其它 mod 调用
              （ExposedMembers.ModMiscToolScript.* 与 ExposedMembers.ModMiscToolUI.*）。
@@ -166,6 +173,8 @@
         <File>UI/ExtensiveUnitPanel.lua</File>
         <File>UI/LeftSideBar.xml</File>
         <File>UI/LeftSideBar.lua</File>
+        <File>UI/AutomationTestPanel.xml</File>
+        <File>UI/AutomationTestPanel.lua</File>
         <File>UI/WorldBuilderTestPanel.xml</File>
         <File>UI/WorldBuilderTestPanel.lua</File>
         <File>UI/ModMiscDebugUI.xml</File>

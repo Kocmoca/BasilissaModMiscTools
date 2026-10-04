@@ -290,5 +290,133 @@
 		<Row Tag="LOC_MODMISC_WB_TEST_PLAYER_STATS_RESULT">
 			<Text>Slots: {1_Summary}</Text>
 		</Row>
+
+		<!-- Automation API test panel -->
+		<Row Tag="LOC_MODMISC_AUTOMATION_TEST_TITLE">
+			<Text>Automation API Test</Text>
+		</Row>
+		<Row Tag="LOC_MODMISC_AUTOMATION_TEST_TOOLTIP">
+			<Text>Open the Automation API test panel</Text>
+		</Row>
+		<Row Tag="LOC_MODMISC_AUTOMATION_TEST_PLAYER">
+			<Text>Player</Text>
+		</Row>
+		<Row Tag="LOC_MODMISC_AUTOMATION_TEST_TURNS">
+			<Text>Autoplay Turns</Text>
+		</Row>
+		<Row Tag="LOC_MODMISC_AUTOMATION_TEST_TURNS_UNLIMITED">
+			<Text>No limit</Text>
+		</Row>
+		<Row Tag="LOC_MODMISC_AUTOMATION_TEST_VIEW_PLAYER">
+			<Text>View Selected Player</Text>
+		</Row>
+		<Row Tag="LOC_MODMISC_AUTOMATION_TEST_VIEW_OBSERVER">
+			<Text>Observer Mode</Text>
+		</Row>
+		<Row Tag="LOC_MODMISC_AUTOMATION_TEST_STOP_VIEW">
+			<Text>Stop / Return Local</Text>
+		</Row>
+		<Row Tag="LOC_MODMISC_AUTOMATION_TEST_LOOK_CAPITAL">
+			<Text>Look at Selected Capital</Text>
+		</Row>
+		<Row Tag="LOC_MODMISC_AUTOMATION_TEST_SAVE">
+			<Text>Background Save</Text>
+		</Row>
+		<Row Tag="LOC_MODMISC_AUTOMATION_TEST_LOAD">
+			<Text>Background Load</Text>
+		</Row>
+		<Row Tag="LOC_MODMISC_AUTOMATION_TEST_PROBE_WRITE">
+			<Text>Write CustomData Probe</Text>
+		</Row>
+		<Row Tag="LOC_MODMISC_AUTOMATION_TEST_PROBE_READ">
+			<Text>Read CustomData Probe</Text>
+		</Row>
+		<Row Tag="LOC_MODMISC_AUTOMATION_TEST_PROBE_SAVE">
+			<Text>Probe + Save</Text>
+		</Row>
+		<Row Tag="LOC_MODMISC_AUTOMATION_TEST_ASSET_TYPE">
+			<Text>Asset Type</Text>
+		</Row>
+		<Row Tag="LOC_MODMISC_AUTOMATION_TEST_ASSET_INDEX">
+			<Text>Asset</Text>
+		</Row>
+		<Row Tag="LOC_MODMISC_AUTOMATION_TEST_ASSET_PLACE">
+			<Text>Place Asset (pick plot)</Text>
+		</Row>
+		<Row Tag="LOC_MODMISC_AUTOMATION_TEST_ASSET_CLEAR_PLOT">
+			<Text>Clear Asset at Plot</Text>
+		</Row>
+		<Row Tag="LOC_MODMISC_AUTOMATION_TEST_ASSET_CLEAR_ALL">
+			<Text>Clear All Assets</Text>
+		</Row>
+		<Row Tag="LOC_MODMISC_AUTOMATION_TEST_MESSAGES">
+			<Text>Messages</Text>
+		</Row>
+		<Row Tag="LOC_MODMISC_AUTOMATION_TEST_OBSERVER">
+			<Text>Observer</Text>
+		</Row>
+		<Row Tag="LOC_MODMISC_AUTOMATION_TEST_NO_PLAYER">
+			<Text>No Player</Text>
+		</Row>
+		<Row Tag="LOC_MODMISC_AUTOMATION_TEST_RESULT">
+			<Text>{1_Test}: {2_Result}</Text>
+		</Row>
+		<Row Tag="LOC_MODMISC_AUTOMATION_TEST_ERROR">
+			<Text>{1_Test} error: {2_Error}</Text>
+		</Row>
+		<Row Tag="LOC_MODMISC_AUTOMATION_TEST_NO_OPTIONS">
+			<Text>No options available for this selector.</Text>
+		</Row>
+		<Row Tag="LOC_MODMISC_AUTOMATION_TEST_NO_PLOT">
+			<Text>No valid plot found around the anchor.</Text>
+		</Row>
+		<Row Tag="LOC_MODMISC_AUTOMATION_TEST_PICK_PLOT">
+			<Text>{1_Action}: pick a highlighted plot on the map.</Text>
+		</Row>
+		<Row Tag="LOC_MODMISC_AUTOMATION_TEST_PICK_ASSET_PLOT">
+			<Text>Pick a plot to place the selected asset.</Text>
+		</Row>
+		<Row Tag="LOC_MODMISC_AUTOMATION_TEST_PICK_CLEAR_PLOT">
+			<Text>Pick a plot to clear assets from.</Text>
+		</Row>
+		<Row Tag="LOC_MODMISC_AUTOMATION_TEST_SAVE_COMPLETE">
+			<Text>Background save complete: {1_Name}</Text>
+		</Row>
+		<Row Tag="LOC_MODMISC_AUTOMATION_TEST_SAVE_REQUESTED">
+			<Text>Background save requested: {1_Name}</Text>
+		</Row>
+		<Row Tag="LOC_MODMISC_AUTOMATION_TEST_LOAD_REQUESTED">
+			<Text>Background load requested: {1_Name}</Text>
+		</Row>
+		<Row Tag="LOC_MODMISC_AUTOMATION_TEST_PROBE_EMPTY">
+			<Text>CustomData probe is empty. local={1_Local}</Text>
+		</Row>
+		<Row Tag="LOC_MODMISC_AUTOMATION_TEST_PROBE_VALUE">
+			<Text>CustomData={1_Value}; local={2_Local}; match={3_Match}</Text>
+		</Row>
+		<Row Tag="LOC_MODMISC_AUTOMATION_TEST_PROBE_AFTER_LOAD">
+			<Text>After load, CustomData probe = {1_Value}</Text>
+		</Row>
+		<Row Tag="LOC_MODMISC_AUTOMATION_TEST_ASSET_NOT_SELECTED">
+			<Text>Select an asset...</Text>
+		</Row>
+		<Row Tag="LOC_MODMISC_AUTOMATION_TEST_ASSET_CITY">
+			<Text>City</Text>
+		</Row>
+		<Row Tag="LOC_MODMISC_AUTOMATION_TEST_ASSET_DISTRICT_BASE">
+			<Text>District Base</Text>
+		</Row>
+		<Row Tag="LOC_MODMISC_AUTOMATION_TEST_ASSET_BUILDING">
+			<Text>Building</Text>
+		</Row>
+		<Row Tag="LOC_MODMISC_AUTOMATION_TEST_ASSET_LANDMARK">
+			<Text>Landmark</Text>
+		</Row>
+		<Row Tag="LOC_MODMISC_AUTOMATION_TEST_ASSET_UNIT">
+			<Text>Unit</Text>
+		</Row>
+		<Row Tag="LOC_MODMISC_AUTOMATION_TEST_READY">
+			<Text>Automation test panel ready.</Text>
+		</Row>
 </BaseGameText>
 </GameData>
