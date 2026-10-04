@@ -800,7 +800,7 @@ end
 -- 前端配置档：对局内能不能读它
 --
 -- 与“后台读档”唯一的区别是存档表里带 FileType = GAME_CONFIGURATION ——
--- 也就是前端探针（UI/FrontEnd_SaveProbe.lua）在“创建场景/创建游戏”里产出的那种档。
+-- 也就是前端探针（UI/FrontEnd_SaveProbe.lua）在“主界面/创建游戏/创建场景”里产出的那种档。
 -- 照抄 LoadGameMenu.OnLoadYes 对配置档的处理：**不** LeaveGame。
 --
 -- 【先自检再读】档不存在时 Network.LoadGame 是**静默无操作**（不报错、不返回 false、
