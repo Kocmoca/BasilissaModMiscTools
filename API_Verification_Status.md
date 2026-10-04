@@ -47,11 +47,16 @@
 |---|---|---|---|
 | 19 | `Events.SystemUpdateUI` 在“创建游戏”界面监听 | `[已验证失败]` | 该事件在设置界面**根本不触发**（只有分辨率变化/恢复 UI/触摸输入），hook 完全静默。改用 `ContextPtr:SetRefreshHandler` + `RequestRefresh()` 轮询。 |
 | 20 | `MapSize_ValueChanged ~= nil` 判定“创建游戏”上下文 | `[部分可用]` | 安卓实测可用：该上下文 include 过 `GameSetupLogic`；对局内没有这个全局函数，因此不会误改对局内设置。<br>**PC 上这个判据不够**：PC 的城邦选择器 / 领袖选择器子上下文同样 include 了 `PlayerSetupLogic`，判据在那边也成立 → 见 §11。 |
-| 21 | `WriteCustomData` / `ReadCustomData` | `[部分可用]` | **同进程有效**：设置界面写 → 对局内读得到（幽灵流程即依赖此）。**跨启动无效**：完全退出进程后重开新局读不到（两次启动探针都是 `VERDICT=first-write`）。可当“设置界面 → 对局内”的传递通道，**不能当持久化存储**。 |
+| 21 | `WriteCustomData` / `ReadCustomData` | `[部分可用]` | **同进程有效**：设置界面写 → 对局内读得到（幽灵流程即依赖此）。**跨启动无效**：完全退出进程后重开新局读不到（两次启动探针都是 `VERDICT=first-write`）。可当“设置界面 → 对局内”的传递通道，**不能当持久化存储**。<br>**补充（2026-10-04，面板 payload 带随机数的那组实验）**：它其实是**绑在存档上**的 —— 存档时刻的快照随存档一起序列化，读该档时原样还原（读回的是“存档前那次写入”的值，存档后的改写会丢）；同进程里的**新局**不继承（读到空）。所以“进程内”这个说法不准确，准确说法是“随局/随档”。 |
 | 22 | `AddUserInterfaces` 创建的上下文默认隐藏 | `[已验证可用]` | 必须 `ChangeParent(ContextPtr:LookUpControl("/InGame"))` + `ReprocessAnchoring()`，不要用 `ContextPtr:SetHide`。 |
 | 23 | 面板上下文直接访问另一个 context 的全局 | `[已验证失败]` | 报 `attempt to index a nil value`；每个 context 有独立脚本全局，跨 context 只能走 `ExposedMembers` / `LuaEvents`。 |
 | 24 | `ExposedMembers` 跨 context 多返回值 | `[部分可用]` | 单返回值可靠；多返回值不可依赖，失败原因改用 getter（`GetLastGhostCreateDiagnostics`）。 |
 | 25 | `Locale.Lookup(key, arg1, arg2)` | `[已验证可用]` | 面板文案带参数正常；所有文案 EN + zh_Hans_CN 成对。 |
+| 32 | 前端 `Network.SaveGame{FileType=GAME_CONFIGURATION}` | `[已验证可用]` | 主界面/创建游戏界面实测都能存：`Events.SaveComplete` 收到，复查 `UI.QuerySaveGameList` 列表里确实出现 `ModMiscFrontEndProbe.Civ6Cfg`（`VERDICT=fe-save-ok-confirmed`）。`Type` 取 `Network.GetGameConfigurationSaveType()`。安卓上「高级选项」页会横向溢出（LoadConfig/SaveConfig 与 StartButton 挤在同一个向右生长的 `ButtonStack` 里），但存配置档**不需要**那个界面。 |
+| 33 | 前端 `Network.LoadGame{FileType=GAME_CONFIGURATION}`（绕过菜单直调） | `[部分可用]` | 调用返回 `true`、前端不被顶掉。**但必须自己补跑收尾**：走菜单时由 `LoadGameMenu.OnLoadComplete` 执行 `SetToPreGame()` + `RegenerateSeeds()` + 清玩家领袖/文明选择（源码注释：*Reset the seeds and leader selection when loading a config so that configs are more usable*），而那段外面套着 `if ContextPtr:IsVisible()` —— 绕过菜单就拿不到。后果：配置档把**地图/游戏种子**一起存进来且**不回滚**，表现是“同一领袖 + 不改设置 → 每次开局都是同一张地图”。本 mod 的探针自己挂 `Events.LoadComplete` 补跑这套收尾。 |
+| 34 | `UI.QuerySaveGameList` + `LuaEvents.FileListQueryResults` 查存档列表 | `[已验证可用]` | 前端与**对局内**都可用（回传 `(fileList, 请求号)`）。⚠️ 列表里的 `Name` **带扩展名**（配置档是 `xxx.Civ6Cfg`），拿它跟不带扩展名的目标做等值比较会**永远判“不在”** —— 必须先剥扩展名再比。这个假阴性害得探针连跑两次“创建”分支。 |
+| 35 | `UI.GetLastSaveName()` 当“已落盘”证据 | `[已验证失败]` | 配置档保存后回读是**空串**，判断不了文件是否写成功；改用 `UI.QuerySaveGameList` 复查列表。 |
+| 36 | 对局内 `Network.LoadGame{FileType=GAME_CONFIGURATION}` | `[已验证失败]` | 授权者实机：**直接卡死**。配置档是给前端设置态用的类型，对局内喂它会把引擎挂住（对照：档不存在时反而是静默无操作，已实测两次）。**此路不通** —— 对局内别碰配置档。<br>证据状态：授权者实机结论，对应 `Lua.log` 待补（2026-10-04 18:04 那份日志里只有多次开局测试，面板只被加载、未按按钮）。 |
 
 ## 4. WorldBuilder（地图编辑器）接口
 

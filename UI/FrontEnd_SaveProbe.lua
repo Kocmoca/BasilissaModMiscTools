@@ -31,6 +31,13 @@
 -- 【实机踩到的坑】存档列表里的 Name **带扩展名**（配置档是 "xxx.Civ6Cfg"），
 -- 直接跟不带扩展名的目标比会永远判“不在” —— 比对前必须先 NormalizeSaveName 去扩展名。
 --
+-- 【另一个坑：种子】配置档连**地图/游戏种子**一起存。游戏自己走菜单读档时，
+-- LoadGameMenu.OnLoadComplete 会 SetToPreGame + RegenerateSeeds + 清领袖选择
+-- （源码注释：so that configs are more usable），但那段被 `if ContextPtr:IsVisible()`
+-- 挡着；我们绕过菜单直接 Network.LoadGame 就吃不到这层收尾 → 种子被配置档锁死，
+-- 表现是“同一领袖 + 不改设置 → 每次开局都是同一张图”。
+-- 本文件因此自己挂 Events.LoadComplete 补跑这套收尾。
+--
 -- 判定写在日志的 VERDICT= 里：
 --   fe-load-requested  读档请求已发出（是否被顶掉、是否显式，看后续日志）
 --   fe-load-fail       读档调用失败
@@ -44,7 +51,7 @@
 --   LoadScreen: true / gameplay scripts loading / 探针再打一行 —— 三样都没有就是没读进去。
 -- ===========================================================================
 
-local MODMISC_FE_PROBE_BUILD_TAG = "2026-10-04-D"
+local MODMISC_FE_PROBE_BUILD_TAG = "2026-10-04-E"
 
 -- 与对局内探针（UI/Support_UI.lua 的 CROSS_SAVE_PROBE_KEY）共用同一个 key：
 -- 前端写进去的这份 payload，会被对局内启动探针原样读出来打印。
@@ -62,6 +69,7 @@ local FE_QUERY_TIMEOUT_FRAMES = 300
 
 local m_Step = nil              -- nil = 本轮还没开跑
 local m_ContextKind = nil       -- MainMenu / AdvancedSetup / ScenarioSetup
+local m_ContextInstance = nil   -- tostring(ContextPtr)：用来识别“上下文被重建了”
 local m_RunIndex = 0            -- 本次进程里第几次进入界面
 local m_LastHidden = true       -- 用来识别“隐藏 → 显示”这一刻
 local m_LoggedWait = false
@@ -199,6 +207,63 @@ local function IssueConfigQuery(mode)
         options, queryFile.FileType, nil)
     Log("query 已发出(" .. tostring(mode) .. "): 找[" .. FE_CONFIG_SAVE_NAME .. "]")
     return true
+end
+
+-- ===========================================================================
+-- 配置档读入后的收尾：必须照抄游戏自己的做法
+--
+-- 游戏走菜单读配置档时，LoadGameMenu.OnLoadComplete（源码注释：Reset the seeds and
+-- leader selection when loading a config so that configs are more usable）会做三件事：
+--     ① GameConfiguration.SetToPreGame()
+--     ② GameConfiguration.RegenerateSeeds()
+--     ③ 清掉每个玩家的领袖/文明选择
+-- 而那段代码外面套着 `if ContextPtr:IsVisible()`（菜单可见才做）。
+-- 我们是**绕过菜单**直接 Network.LoadGame 的 → 菜单不可见 → 收尾不跑 →
+-- 配置档里的种子原样留在 GameConfiguration 里 → 之后每次开局都是同一张图。
+-- 这一条是授权者实机观察（“同一领袖 + 不改设置 → 地图总是不变”）对着源码找出来的。
+-- ===========================================================================
+
+local function OnConfigLoadComplete(eResult, eType, eOptions, eFileType)
+    if SaveFileTypes == nil or eFileType ~= SaveFileTypes.GAME_CONFIGURATION then return end
+    Log("LoadComplete: 配置档读完(result=" .. tostring(eResult) .. ") → 补跑游戏菜单里的收尾")
+
+    if GameConfiguration == nil then
+        Log("收尾跳过：GameConfiguration 为 nil")
+        return
+    end
+
+    if GameConfiguration.SetToPreGame ~= nil then
+        pcall(function() GameConfiguration.SetToPreGame() end)
+    end
+
+    if GameConfiguration.RegenerateSeeds ~= nil then
+        pcall(function() GameConfiguration.RegenerateSeeds() end)
+        Log("已 RegenerateSeeds()：下次开局的 Map Seed 应当是新的"
+            .. "（对照游戏启动那行 GenerateRandomMap: Map Seed = ...）")
+    else
+        Log("RegenerateSeeds 不可用 → 地图种子仍会被配置档锁住")
+    end
+
+    if GameConfiguration.GetParticipatingPlayerIDs == nil or PlayerConfigurations == nil then return end
+    local ok, playerIDs = pcall(function() return GameConfiguration.GetParticipatingPlayerIDs() end)
+    if not ok or playerIDs == nil then return end
+    for _, playerID in ipairs(playerIDs) do
+        local playerConfig = PlayerConfigurations[playerID]
+        if playerConfig ~= nil then
+            pcall(function()
+                playerConfig:SetLeaderTypeName(nil)
+                playerConfig:SetCivilizationTypeName(nil)
+            end)
+        end
+    end
+    Log("已清掉玩家领袖/文明选择（与游戏菜单一致：配置档当模板用）")
+end
+
+-- 只在第一次 include 时挂一次（前端上下文重建时会再 include，别重复挂）
+if Events ~= nil and Events.LoadComplete ~= nil
+    and ModMiscFrontEndProbeLoadHookInstalled == nil then
+    ModMiscFrontEndProbeLoadHookInstalled = true
+    Events.LoadComplete.Add(OnConfigLoadComplete)
 end
 
 -- ===========================================================================
@@ -467,9 +532,19 @@ function ModMiscFrontEndProbeRefresh()
     local contextKind = ModMiscFrontEndProbeContextKind()
     if contextKind == nil then return end
 
+    -- 上下文实例变了 = 前端被重建（进对局会把前端上下文销毁重建）→ 当作新的一轮。
+    -- 只靠“隐藏→显示”不够：进对局时上下文是被销毁的，最后一次 Refresh 时它还是可见的，
+    -- m_LastHidden 停在 false，回来以后再也判不出新一轮 ——
+    -- 实测表现就是“一个进程里只有第一次进前端会跑探针”。
+    local contextInstance = tostring(ContextPtr)
+    if m_ContextInstance ~= contextInstance then
+        m_ContextInstance = contextInstance
+        m_LastHidden = true
+    end
+
     local hidden = ContextPtr:IsHidden()
     if m_LastHidden and not hidden then
-        -- 隐藏 → 显示：新的一轮
+        -- 新实例 / 隐藏 → 显示：新的一轮
         m_RunIndex = m_RunIndex + 1
         m_ContextKind = contextKind
         m_LoggedWait = false
