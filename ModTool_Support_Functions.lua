@@ -732,6 +732,14 @@ function RemoveDummyBuilding(city, buildingIndex)
 	end
 end
 
+function GetPlayerLeaderAndCivType(playerID)
+	local playerConfig = PlayerConfigurations[playerID]
+	if playerConfig == nil then return nil, nil end
+	local civType = playerConfig:GetCivilizationTypeName()
+	local leaderType = playerConfig:GetLeaderTypeName()
+	return leaderType, civType
+end
+
 function GetPlayerTraits(playerID)
 	local playerConfig = PlayerConfigurations[playerID]
 	if playerConfig == nil then return {} end

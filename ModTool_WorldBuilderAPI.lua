@@ -71,6 +71,16 @@ function API.SetPlayerLeader(playerID, leaderType, civType, civLevel)
     return WorldBuilder.PlayerManager():SetPlayerLeader(playerID, leaderType, civType, civLevel)
 end
 
+function API.ChangePlayerLeader(playerID, newLeaderType)
+	local playerConfig = API.GetPlayerConfig(playerID)
+	API.SetPlayerLeader(playerID, newLeaderType, playerConfig.Civ, playerConfig.CivLevel)
+end
+
+function API.ChangePlayerCivilization(playerID, newCivType)
+	local playerConfig = API.GetPlayerConfig(playerID)
+	API.SetPlayerLeader(playerID, playerConfig.Leader, newCivType, playerConfig.CivLevel)
+end
+
 function API.SetPlayerEra(playerID, eraType)
     return WorldBuilder.PlayerManager():SetPlayerEra(playerID, eraType)
 end
