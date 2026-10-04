@@ -34,7 +34,7 @@
 
 | # | 接口 / 方法 | 状态 | 证据与备注 |
 |---|---|---|---|
-| 13 | `MapSizes.MaxCityStates` / `MapSizes.MaxPlayers`（DB 抬上限） | `[已验证可用]` | 抬到 62 后设置界面可选范围变大。 |
+| 13 | `MapSizes.MaxCityStates` / `MapSizes.MaxPlayers`（DB 抬上限） | `[部分可用]` | 抬上限后设置界面可选范围变大。**但不要再一律抬到 62**：引擎在**地图生成阶段**就要给所有这些玩家找出生点，小图上塞不下会开局失败（授权者实机：小概率加载失败，疑似出生位置重叠）。现改为**按尺寸分档**（`GhostPlayers_MapSizes.sql`，每档绝对赋值所以可重复加载）：城邦上限 DUEL 14 / TINY 18 / SMALL 22 / STANDARD 26 / LARGE 30 / HUGE 32（原版各为 6/10/14/18/22/24），主要文明 = 原版 +2；非标准地图脚本（Earth/Balance 等自带 Domain 的）再按**它自己的** `MaxPlayers + 6` 收一道。开局日志 `poll: CITY_STATE_COUNT=n maxMinor=<本档上限>` 可直接核对生效值。 |
 | 14 | `GameConfiguration.SetValue("CITY_STATE_COUNT", maxMinor)`（前端） | `[已验证可用]` | 玩家选 6 → 引擎开局建 **36** 个城邦（原来只有 6）。 |
 | 15 | `GameConfiguration.SetParticipatingPlayerCount()` + `MapConfiguration.GetMaxMajorPlayers()`（前端） | `[已验证可用]` | 玩家选 4 → 引擎开局建 **26** 个主要文明（槽位 0..25）。 |
 | 16 | `MapConfiguration.GetMaxMinorPlayers()` / `GetHiddenPlayerCount()` | `[已验证可用]` | 预算计算用；`n = 目标 + hidden` 口径要一致。 |
