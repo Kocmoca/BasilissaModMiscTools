@@ -75,7 +75,7 @@
 |---|---|---|
 | **A** `Options.SetUserOption` / `GetUserOption` | 基座 UI 层在用，**对局内 UI 也在用**（`ActionPanel` / `CameraManager` / `DiplomacyRibbon`）。关键证据：`UI/FrontEnd/Multiplayer/PBCNotifyRemind.lua` 往 `("Interface", "PlayByCloudNotifyRemind")` 写，这个键**没在任何 XML 里声明**，却要在 `Lobby.lua` 里跨会话读回来 ⇒ **自定义键能存**。落盘在用户选项文件 ⇒ 天然跨存档/跨启动。 | 探针已埋（`[UserOptionProbe]`），待实机 |
 | **B** `io.open` 写自己的文件 | 若 Lua 环境带 io 库，直接写数据文件最干净（位置可用 `UI.GetSaveLocationPath()` 定位） | `[IOProbe]` 待实机 |
-| **C** 存档名编码 | 写：`Network.SaveGame{Name=…}`（对局内后台存档是静默的，已验证）；读：`UI.QuerySaveGameList` 的 `Name`（不需读档、前后端都能用，已验证）。**这就是“利用普通存档”那条路**。 | 纯原版可行，代价：污染存档列表；文件名禁 `%` 与 `" < > \| / \ * ? :` 及控制字符；一个 payload 一个文件 |
+| **C** 存档名编码 | 写：`Network.SaveGame{Name=…}`（前端不需要运行中的对局即可写配置档）；读：`UI.QuerySaveGameList` 的 `Name`（不需读档、前后端都能用）。**这就是“利用普通存档”那条路**。 | ✅ **`[已验证可用]`（2026-10-04 实机）**：写一轮 `ms=1;t=1791112827;r=811157` → 杀进程 → 下一轮读回**逐字一致**；旧档按 key 自动清理，列表里始终只有一个存储档。<br>代价：文件名禁 `%` `"` `<` `>` `|` `/` `\` `*` `?` `:` 与控制字符（用 hex 绕开）；一个 key 一个档。已封装为 `UI/ModMiscStore.lua`（`Save/Get/GetAll/Refresh/OnReady`）。 |
 | **D** 存档元数据注入 | ❌ 排除：`EnabledMods` / `RequiredMods` / `SavedByVersion` / `TunerActive` 等字段全由引擎填；`UI.GetSaveGameMetaData()` 只能读“正在加载的那个档”，没有任意档读取接口 | — |
 | **B′** | `io` 库（mod 自己写文件） | `[已验证失败]` | 实机 `[IOProbe] io=n io.open=n os=y` —— **安卓端 Lua 没有 io 库**，这条路直接断。 |
 | **A′** | `Options.SetUserOption` 存自定义键 | `[已验证失败]` | 实机：`写入失败 -> [ModMiscTool] CrossSaveProbe is not a registered option.` 引擎会校验选项是否注册；而注册表在引擎内部（`PlayByCloudNotifyRemind` 这类键在**全部数据文件里都搜不到声明**），mod 注册不了新选项 ⇒ 不通。<br>顺带发现：Civ6 里 **`pcall` 挡不住日志** —— 被捕获的错误照样打 `Runtime Error` + traceback。 |
