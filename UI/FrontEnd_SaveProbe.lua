@@ -25,13 +25,18 @@
 --   step3 分支
 --       在 → Network.LoadGame(这个档)      ← 本次要问的核心问题：前端能不能强制读配置档
 --       不在 → Network.SaveGame(新建这个档) ← 没有就创建
---   step4 verify  仅创建路径：Events.SaveComplete + UI.GetLastSaveName()
+--   step4 verify  仅创建路径：Events.SaveComplete 之后**再查一次列表**确认真的落盘
+--                 （UI.GetLastSaveName() 在配置档这条路上实测是空串，当不了证据）
+--
+-- 【实机踩到的坑】存档列表里的 Name **带扩展名**（配置档是 "xxx.Civ6Cfg"），
+-- 直接跟不带扩展名的目标比会永远判“不在” —— 比对前必须先 NormalizeSaveName 去扩展名。
 --
 -- 判定写在日志的 VERDICT= 里：
 --   fe-load-requested  读档请求已发出（是否被顶掉、是否显式，看后续日志）
 --   fe-load-fail       读档调用失败
---   fe-save-ok         创建成功并收到 SaveComplete
---   fe-save-fail       创建失败/超时（含 Network.SaveGame 为 nil）
+--   fe-save-ok-confirmed   创建成功，且复查列表里确实出现了这个档
+--   fe-save-unconfirmed    收到了 SaveComplete，但列表里没有（未落盘）
+--   fe-save-fail           创建失败/超时（含 Network.SaveGame 为 nil）
 --
 -- 【实机判读要点】对局内用 FileType=GAME_CONFIGURATION 调 Network.LoadGame，
 -- 即使档不存在也是**静默无操作**（不报错、不返回 false、不打断当前局）——
@@ -39,7 +44,7 @@
 --   LoadScreen: true / gameplay scripts loading / 探针再打一行 —— 三样都没有就是没读进去。
 -- ===========================================================================
 
-local MODMISC_FE_PROBE_BUILD_TAG = "2026-10-04-C"
+local MODMISC_FE_PROBE_BUILD_TAG = "2026-10-04-D"
 
 -- 与对局内探针（UI/Support_UI.lua 的 CROSS_SAVE_PROBE_KEY）共用同一个 key：
 -- 前端写进去的这份 payload，会被对局内启动探针原样读出来打印。
@@ -70,6 +75,7 @@ local m_QueryResolved = false
 local m_QueryFound = false
 local m_QueryRequestId = nil
 local m_BranchTaken = false
+local m_QueryMode = nil
 
 -- 【前置声明】下面的事件回调（查询回音 / SaveComplete）要在 step 函数定义之前
 -- 引用它们。Lua 5.1 里不前置声明的话，函数体里的 StepLoad/StepSave 会被解析成
@@ -164,6 +170,38 @@ local function BuildConfigFile()
 end
 
 -- ===========================================================================
+-- 存档列表查询：发一次、结果走 LuaEvents 回传
+--   mode = "existence" 开跑时查在不在；"recheck" 创建完成后复查是否真落盘
+-- 前置声明 OnConfigQueryResults：助手要先注册它，而它定义在后面（Lua 5.1 前向引用坑）
+-- ===========================================================================
+local OnConfigQueryResults
+
+local function IssueConfigQuery(mode)
+    if UI == nil or UI.QuerySaveGameList == nil or LuaEvents == nil
+        or LuaEvents.FileListQueryResults == nil or SaveLocationOptions == nil then
+        Log("query 不可用（QuerySaveGameList/SaveLocationOptions 缺失）")
+        return false
+    end
+    local queryFile = BuildConfigFile()
+    if queryFile == nil then
+        Log("query 建不了存档表")
+        return false
+    end
+
+    local options = SaveLocationOptions.NORMAL + SaveLocationOptions.QUICKSAVE
+        + SaveLocationOptions.LOAD_METADATA
+    m_QueryMode = mode
+    m_QueryPending = true
+    m_QueryResolved = false
+    m_WaitFrames = 0
+    LuaEvents.FileListQueryResults.Add(OnConfigQueryResults)
+    m_QueryRequestId = UI.QuerySaveGameList(queryFile.Location, queryFile.Type,
+        options, queryFile.FileType, nil)
+    Log("query 已发出(" .. tostring(mode) .. "): 找[" .. FE_CONFIG_SAVE_NAME .. "]")
+    return true
+end
+
+-- ===========================================================================
 -- 各 step：每个 step 跑完就把 m_Step 推到下一个（字典分派，避免 if/else 长链）
 -- ===========================================================================
 
@@ -172,19 +210,28 @@ end
 local function OnSaveComplete()
     m_SaveComplete = true
     if m_Step ~= "verify" then return end
-    m_Step = "done"
 
-    local lastName = "?"
-    if UI ~= nil and UI.GetLastSaveName ~= nil then
-        local ok, name = pcall(function() return UI.GetLastSaveName() end)
-        if ok and name ~= nil then lastName = tostring(name) end
+    -- UI.GetLastSaveName() 在配置档这条路上实测是空串，不能当“落盘”的证据 ——
+    -- 所以保存完再查一次列表，以“列表里真的出现了这个档”为准
+    Log("step4 verify SaveComplete（引擎已接受创建请求）; 复查列表确认落盘")
+    if not IssueConfigQuery("recheck") then
+        Log("step4 recheck 发不出去; VERDICT=fe-save-ok（未复查）")
+        m_Step = "done"
     end
-    Log("step4 verify SaveComplete; UI.GetLastSaveName()=" .. lastName
-        .. "; VERDICT=fe-save-ok（配置档已创建，下次进前端会走“强制读取”分支）")
 end
 
--- 存档列表查询回调：引擎通过 LuaEvents 回传 (fileList, 请求号)
-local function OnConfigQueryResults(fileList, requestId)
+-- 存档列表里的 Name **带扩展名**（实机实测配置档是 "ModMiscFrontEndProbe.Civ6Cfg"），
+-- 直接拿它跟不带扩展名的目标比会永远判“不在”——这一步是实机撞出来的坑。
+local function NormalizeSaveName(name)
+    if name == nil then return nil end
+    local text = tostring(name)
+    local stripped = text:match("^(.*)%.[^%.]+$")
+    if stripped ~= nil and stripped ~= "" then return stripped end
+    return text
+end
+
+-- 查询回调：引擎通过 LuaEvents 回传 (fileList, 请求号)
+OnConfigQueryResults = function(fileList, requestId)
     if not m_QueryPending then return end
     if requestId ~= nil and m_QueryRequestId ~= nil and requestId ~= m_QueryRequestId then
         return
@@ -194,12 +241,16 @@ local function OnConfigQueryResults(fileList, requestId)
 
     local names = {}
     local found = false
+    local matchedName = nil
     if fileList ~= nil then
         for _, entry in ipairs(fileList) do
             if entry ~= nil and entry.Name ~= nil then
                 local entryName = tostring(entry.Name)
                 table.insert(names, entryName)
-                if entryName == FE_CONFIG_SAVE_NAME then found = true end
+                if NormalizeSaveName(entryName) == FE_CONFIG_SAVE_NAME then
+                    found = true
+                    matchedName = entryName
+                end
             end
         end
     end
@@ -207,8 +258,21 @@ local function OnConfigQueryResults(fileList, requestId)
 
     local listing = "(空)"
     if #names > 0 then listing = table.concat(names, ",") end
-    Log("step2 query 回结果: 档[" .. FE_CONFIG_SAVE_NAME .. "]="
-        .. (found and "在" or "不在") .. "; 列表=[" .. listing .. "]")
+    Log("query 回结果(" .. tostring(m_QueryMode) .. "): 档[" .. FE_CONFIG_SAVE_NAME .. "]="
+        .. (found and "在" or "不在") .. "; 列表=[" .. listing .. "]"
+        .. (matchedName ~= nil and ("; 命中=" .. matchedName) or ""))
+
+    if m_QueryMode == "recheck" then
+        if found then
+            Log("step4 recheck 通过: 档已在列表里 [" .. tostring(matchedName)
+                .. "]; VERDICT=fe-save-ok-confirmed")
+        else
+            Log("step4 recheck 未通过: 收到了 SaveComplete，但列表里没有这个档;"
+                .. " VERDICT=fe-save-unconfirmed")
+        end
+        m_Step = "done"
+        return
+    end
 
     -- 分支也放在事件里：不依赖刷新回调还活着
     m_BranchTaken = true
@@ -266,37 +330,24 @@ end
 local function StepQuery()
     if not m_QueryIssued then
         m_QueryIssued = true
-        m_WaitFrames = 0
-
-        if UI == nil or UI.QuerySaveGameList == nil or LuaEvents == nil
-            or LuaEvents.FileListQueryResults == nil or SaveLocationOptions == nil then
-            Log("step2 query 不可用（QuerySaveGameList/SaveLocationOptions 缺失）→ 按“不存在”处理")
+        if not IssueConfigQuery("existence") then
+            -- 查不了就按“不存在”处理，直接走创建（授权者要求：没有就创建）
             m_QueryResolved = true
             m_QueryFound = false
-        else
-            local queryFile = BuildConfigFile()
-            if queryFile == nil then
-                Log("step2 query 建不了存档表 → 按“不存在”处理")
-                m_QueryResolved = true
-                m_QueryFound = false
-            else
-                local options = SaveLocationOptions.NORMAL + SaveLocationOptions.QUICKSAVE
-                    + SaveLocationOptions.LOAD_METADATA
-                LuaEvents.FileListQueryResults.Add(OnConfigQueryResults)
-                m_QueryPending = true
-                m_QueryRequestId = UI.QuerySaveGameList(queryFile.Location, queryFile.Type,
-                    options, queryFile.FileType, nil)
-                Log("step2 query 已发出: 找[" .. FE_CONFIG_SAVE_NAME .. "]")
-                return
-            end
+            m_BranchTaken = true
+            Log("step2 query 不可用 → 按“不存在”处理，直接创建")
+            StepSave()
+            return
         end
     end
+
+    if m_BranchTaken then return end
 
     if not m_QueryResolved then
         m_WaitFrames = m_WaitFrames + 1
         if m_WaitFrames < FE_QUERY_TIMEOUT_FRAMES then return end
         m_QueryPending = false
-        Log("step2 query 超时（" .. tostring(FE_QUERY_TIMEOUT_FRAMES)
+        Log("query 超时（" .. tostring(FE_QUERY_TIMEOUT_FRAMES)
             .. " 帧没等到 LuaEvents.FileListQueryResults）→ 按“不存在”处理")
         m_QueryResolved = true
         m_QueryFound = false
@@ -308,7 +359,6 @@ local function StepQuery()
     end
 
     -- 正常路径已由 OnConfigQueryResults 分支；这里只兜“查询根本没回音”的那种
-    if m_BranchTaken then return end
     m_BranchTaken = true
     Log("step3 分支：档不存在 → 创建（查询无回音兜底）")
     StepSave()
@@ -382,7 +432,16 @@ end
 
 -- 只看门：收尾在 OnSaveComplete（事件驱动）里做
 local function StepVerify()
-    if m_SaveComplete then return end
+    if m_SaveComplete then
+        -- 已进入复查阶段：给复查也配个看门狗，免得“复查列表确认落盘”之后一片空白
+        if m_QueryMode == "recheck" and not m_QueryResolved then
+            m_WaitFrames = m_WaitFrames + 1
+            if m_WaitFrames < FE_QUERY_TIMEOUT_FRAMES then return end
+            Log("step4 recheck 超时（列表查询无回音）; VERDICT=fe-save-ok（未复查）")
+            m_Step = "done"
+        end
+        return
+    end
     m_WaitFrames = m_WaitFrames + 1
     if m_WaitFrames < FE_SAVE_TIMEOUT_FRAMES then return end
     Log("step4 verify TIMEOUT（" .. tostring(FE_SAVE_TIMEOUT_FRAMES)
@@ -419,6 +478,7 @@ function ModMiscFrontEndProbeRefresh()
         m_QueryResolved = false
         m_QueryFound = false
         m_BranchTaken = false
+        m_QueryMode = nil
         m_Step = "wait-ready"
     end
     m_LastHidden = hidden

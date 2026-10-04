@@ -850,6 +850,16 @@ local function RequestConfigLoad(loadFile)
     end
 end
 
+-- 存档列表里的 Name **带扩展名**（实机实测配置档是 "ModMiscFrontEndProbe.Civ6Cfg"），
+-- 直接拿它跟不带扩展名的目标比会永远判“不在”——这一步是实机撞出来的坑。
+local function NormalizeSaveName(name)
+    if name == nil then return nil end
+    local text = tostring(name)
+    local stripped = text:match("^(.*)%.[^%.]+$")
+    if stripped ~= nil and stripped ~= "" then return stripped end
+    return text
+end
+
 -- 存档列表查询回调：引擎通过 LuaEvents 回传 (fileList, 请求号)
 local function OnConfigQueryResults(fileList, requestId)
     if not m_ConfigQueryPending then return end
@@ -865,7 +875,9 @@ local function OnConfigQueryResults(fileList, requestId)
             if entry ~= nil and entry.Name ~= nil then
                 local entryName = tostring(entry.Name)
                 table.insert(names, entryName)
-                if entryName == FE_CONFIG_SAVE_NAME then found = true end
+                if NormalizeSaveName(entryName) == FE_CONFIG_SAVE_NAME then
+                    found = true
+                end
             end
         end
     end
