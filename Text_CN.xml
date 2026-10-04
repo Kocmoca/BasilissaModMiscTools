@@ -316,6 +316,12 @@
 		<Replace Tag="LOC_MODMISC_AUTOMATION_TEST_STORE_CLEAR" Language="zh_Hans_CN">
 			<Text>存储清空</Text>
 		</Replace>
+		<Replace Tag="LOC_MODMISC_AUTOMATION_TEST_STORE_WRITTEN" Language="zh_Hans_CN">
+			<Text>跨存档存储写入：{1_Detail}</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_AUTOMATION_TEST_STORE_WRITE_SUMMARY" Language="zh_Hans_CN">
+			<Text>跨存档存储：已写入 {1_Key}（点上方消息栏看详情）</Text>
+		</Replace>
 		<Replace Tag="LOC_MODMISC_AUTOMATION_TEST_STORE_HEADER" Language="zh_Hans_CN">
 			<Text>跨存档存储（{1_Count} 个键）：</Text>
 		</Replace>

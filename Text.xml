@@ -316,6 +316,12 @@
 		<Row Tag="LOC_MODMISC_AUTOMATION_TEST_STORE_CLEAR">
 			<Text>Store clear</Text>
 		</Row>
+		<Row Tag="LOC_MODMISC_AUTOMATION_TEST_STORE_WRITTEN">
+			<Text>Cross-save store write: {1_Detail}</Text>
+		</Row>
+		<Row Tag="LOC_MODMISC_AUTOMATION_TEST_STORE_WRITE_SUMMARY">
+			<Text>Cross-save store: wrote {1_Key} (tap Messages above for details)</Text>
+		</Row>
 		<Row Tag="LOC_MODMISC_AUTOMATION_TEST_STORE_HEADER">
 			<Text>Cross-save store ({1_Count} keys):</Text>
 		</Row>

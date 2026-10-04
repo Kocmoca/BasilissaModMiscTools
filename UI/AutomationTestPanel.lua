@@ -55,8 +55,13 @@ end
 
 -- 只有详情没有本地化包装时用这个：detailText 直接进消息窗口与日志（可含换行），
 -- shortStatus 放状态行（32px 单行标签，长文本会被截断）。
-local function SetOutputDetail(detailText, shortStatus)
+local function SetOutputDetail(detailText, shortStatus, replaceHistory)
     local message = tostring(detailText or "")
+    if replaceHistory then
+        -- 存储这类“一次性结论”不该和历史混在一起：混了就会看成
+        -- “读了两次出现两条”“清空后还留着一条”。每次只显示本次结果。
+        m_Messages = {}
+    end
     table.insert(m_Messages, message)
     while #m_Messages > MESSAGE_HISTORY_MAX do
         table.remove(m_Messages, 1)
@@ -742,20 +747,24 @@ local function StoreWrite()
     end
     local payload = STORE_TEST_PAYLOAD_PREFIX .. ";t=" .. tostring(os.time())
         .. ";r=" .. tostring(math.random(100000, 999999))
-    if ModMiscStore.Save(STORE_PANEL_KEY, payload) then
-        SetResult("StoreWrite", STORE_PANEL_KEY .. "=" .. payload)
-    end
+    if not ModMiscStore.Save(STORE_PANEL_KEY, payload) then return end
+
+    -- 只显示“刚写进去的那一条”，格式与读取清单里的行完全一致（都是 "key = value"），
+    -- 这样写入与下一次读取可以直接逐行对照。
+    local detail = "  " .. STORE_PANEL_KEY .. " = " .. payload
+    print("[ModMiscTool][AutomationTest] StoreWrite raw: " .. STORE_PANEL_KEY .. " = " .. payload)
+    SetOutputDetail(Locale.Lookup("LOC_MODMISC_AUTOMATION_TEST_STORE_WRITTEN", detail),
+        Locale.Lookup("LOC_MODMISC_AUTOMATION_TEST_STORE_WRITE_SUMMARY", STORE_PANEL_KEY),
+        true)
 end
 
 local function ShowStoreContents(actionName)
     local contents = FormatStoreContents()
     local keyCount = CountStoreKeys()
-    -- 表头走 LOC；清单是代码拼的（键值不是用户文案），换行由 Lua 给出 ——
-    -- 不要把带换行的串塞进 Locale.Lookup 的参数里，那一层对特殊字符的处理不可靠
-    -- （已经栽过一次：参数里的 "|" 会把后面整段吃掉）。
     local header = Locale.Lookup("LOC_MODMISC_AUTOMATION_TEST_STORE_HEADER", keyCount)
     SetOutputDetail(header .. (keyCount > 0 and ("\n" .. contents) or ""),
-        Locale.Lookup("LOC_MODMISC_AUTOMATION_TEST_STORE_SUMMARY", actionName, keyCount))
+        Locale.Lookup("LOC_MODMISC_AUTOMATION_TEST_STORE_SUMMARY", actionName, keyCount),
+        true)
 end
 
 local function StoreRead()
