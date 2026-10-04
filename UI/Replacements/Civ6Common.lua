@@ -1017,6 +1017,10 @@ local function ModMiscToolNormalizeMapSizeKey(value)
 	if value == nil then return nil end
 	local text = tostring(value)
 	if string.find(text, "MAPSIZE_") ~= nil then return text end
+	-- 原版 map 脚本（Continents.lua）把 Map.GetMapSize() 的返回值直接当 MapSizeType
+	-- 字符串用，所以这里也认“MAPSIZE_”开头的写法；大写后再判一次，防大小写差异
+	local upper = string.upper(text)
+	if string.find(upper, "MAPSIZE_") ~= nil then return upper end
 	return nil
 end
 
@@ -1029,11 +1033,20 @@ end
 -- 这里把三种候选写法的返回值（类型 + 内容）一并打出来，下次照实修即可。
 -- 只在前端“创建游戏”界面里、值变化时打一次，不刷屏。
 -- ===========================================================================
-local m_MapSizeDiagDone = false
+-- 每个 context 各打一次：原来是一次性开关，结果只在 MainMenu 打过 ——
+-- 而 MainMenu 里地图还没配置，读到的数字很可能是垃圾值。
+-- 真正要看的“创建游戏”界面（地图已选好）从来没打过。
+local m_MapSizeDiagByContext = {}
 
 local function ModMiscToolDumpMapSizeDiagnostics()
-	if m_MapSizeDiagDone then return end
-	m_MapSizeDiagDone = true
+	local contextID = "?"
+	if ContextPtr ~= nil and ContextPtr.GetID ~= nil then
+		local ok, id = pcall(function() return ContextPtr:GetID() end)
+		if ok and id ~= nil then contextID = tostring(id) end
+	end
+	if m_MapSizeDiagByContext[contextID] then return end
+	m_MapSizeDiagByContext[contextID] = true
+	print("[ModMiscTool][MapSizeDiag] === 上下文 " .. contextID .. " ===")
 
 	local function Describe(label, getter)
 		local ok, value = pcall(getter)
@@ -1066,7 +1079,8 @@ local function ModMiscToolDumpMapSizeDiagnostics()
 		return MapConfiguration.GetMaxMinorPlayers()
 	end)
 
-	-- GetMapSize() 返回的是哈希，这里把六个尺寸名的哈希一并算出来，便于事后比对
+	-- GetMapSize() 实测返回数字；这里把六个尺寸名的哈希、以及当前地图文件的哈希
+	-- 一并算出来，直接对照就知道它到底是什么
 	if DB ~= nil and DB.MakeHash ~= nil then
 		local hashes = {}
 		for key, text in pairs(GHOST_MAP_SIZE_TEXT_BY_KEY) do
@@ -1074,6 +1088,16 @@ local function ModMiscToolDumpMapSizeDiagnostics()
 			if ok then table.insert(hashes, key .. "=" .. tostring(hash)) end
 		end
 		print("[ModMiscTool][MapSizeDiag] DB.MakeHash 六个尺寸：" .. table.concat(hashes, " "))
+
+		local mapOk, mapValue = pcall(function() return MapConfiguration.GetValue("Map") end)
+		if mapOk and mapValue ~= nil then
+			local mapText = tostring(mapValue)
+			local hashOk, mapHash = pcall(function() return DB.MakeHash(mapText) end)
+			print("[ModMiscTool][MapSizeDiag] 当前地图=" .. mapText
+				.. " 其哈希=" .. (hashOk and tostring(mapHash) or "?"))
+		else
+			print("[ModMiscTool][MapSizeDiag] MapConfiguration.GetValue(\"Map\") 取不到")
+		end
 	end
 	Describe("MapConfiguration.GetMaxMajorPlayers()", function()
 		return MapConfiguration.GetMaxMajorPlayers()
