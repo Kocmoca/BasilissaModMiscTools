@@ -40,10 +40,11 @@
             </Properties>
             <File>UI/Replacements/Civ6Common.lua</File>
         </ImportFiles>
-        <!-- 前端存档/读档探针：认“主界面”（MainMenu）、“创建游戏”（AdvancedSetup）与
-             “创建场景”（ScenarioSetup）三个界面，由 Civ6Common replacement 里那条刷新
-             回调驱动（不额外挂 UI）。主界面一开机就有，所以不需要任何导航就能开跑。
-             前端也要单独登记 ImportFiles，include("FrontEnd_SaveProbe") 才找得到。 -->
+        <!-- 前端存档/读档探针：**默认关闭**（开关 MODMISC_FRONT_END_PROBE_ENABLED 在
+             UI/Replacements/Civ6Common.lua 顶部）。认“主界面 / 创建游戏 / 创建场景”三个
+             界面，由那条已有的刷新回调驱动（不额外挂 UI）。这里是登记给 include() 用的：
+             开关打开时 include("FrontEnd_SaveProbe") 要能找到文件。
+             结论与踩过的坑见 API_Verification_Status.md 第 32-37 条。 -->
         <ImportFiles id="FrontEndSaveProbe">
             <Properties>
                 <LoadOrder>10000</LoadOrder>

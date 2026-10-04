@@ -866,8 +866,9 @@ end
 -- ===========================================================================
 
 -- 构建标记：前端与 gameplay 是不同 context，各自带一份字面量
--- 2026-10-04-A：加入前端存读档探针的调用（ModTool.lua 那份 gameplay 的标记未动）
-local MODMISC_HOOK_BUILD_TAG = "2026-10-04-A"
+-- 2026-10-04-A：加入前端存读档探针的调用；B：探针默认关闭（开关见下方）
+-- （ModTool.lua 那份 gameplay 的标记未动）
+local MODMISC_HOOK_BUILD_TAG = "2026-10-04-B"
 local GHOST_CITY_STATE_CUSTOM_DATA_KEY = "ModMiscToolCityStateCount"
 local GHOST_MAJOR_PLAYER_CUSTOM_DATA_KEY = "ModMiscToolMajorPlayerCount"
 
@@ -962,16 +963,29 @@ local function ModMiscToolApplyGhostMajorPlayers()
 		.. " hidden=" .. tostring(hidden) .. ")")
 end
 
--- 前端存档/读档探针（UI/FrontEnd_SaveProbe.lua）：认“创建场景”（ScenarioSetup）与
--- “创建游戏”（AdvancedSetup）两个界面，别的界面自己会 return。
--- 它不自带 UI、只打日志，所以复用下面这条刷新回调；
--- **不要**再给它单独 SetRefreshHandler —— 一个上下文只有一条刷新回调，
--- 再设一次会把幽灵那边的顶掉。
+-- ===========================================================================
+-- 前端存档/读档探针（UI/FrontEnd_SaveProbe.lua）—— **默认关闭**
 --
+-- 探针做三件事：写 CustomData → 查存档列表 → 档在就强制读、不在就创建，
+-- 读档后补跑游戏菜单那套收尾（SetToPreGame + RegenerateSeeds + 清领袖/文明选择）。
+-- 前端这条路是通的，但副作用是**每次开机都会动一遍配置**（尤其清领袖选择），
+-- 所以结论入库后默认关掉（授权者 2026-10-04 决定）。
+--
+-- 【打开方式】把下面的 false 改成 true，重新打包即可（一个开关，不用改别处）。
+-- 结论与踩过的坑见 API_Verification_Status.md 第 32-37 条。
+--
+-- 探针认“主界面 / 创建游戏 / 创建场景”三个界面，只打日志、不带 UI，
+-- 所以复用下面那条刷新回调；**不要**给它单独 SetRefreshHandler ——
+-- 一个上下文只有一条刷新回调，再设一次会把幽灵那边的顶掉。
 -- 本文件在创建游戏/创建场景里会被执行两次（PlayerSetupLogic 里 include 一次、
 -- 界面自己再 include 一次，日志里“setup hook installed”打两行就是这个原因），
 -- 所以探针用全局函数名做一次幂等，免得同一个 context 里塞进两份探针状态。
-if ModMiscFrontEndProbeRefresh == nil and ModMiscToolIsGameSetupContext() then
+-- ===========================================================================
+local MODMISC_FRONT_END_PROBE_ENABLED = false
+
+if MODMISC_FRONT_END_PROBE_ENABLED
+	and ModMiscFrontEndProbeRefresh == nil
+	and ModMiscToolIsGameSetupContext() then
 	include("FrontEnd_SaveProbe")
 end
 

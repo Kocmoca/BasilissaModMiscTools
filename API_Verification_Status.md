@@ -59,6 +59,11 @@
 | 36 | 对局内 `Network.LoadGame{FileType=GAME_CONFIGURATION}` | `[已验证失败]` | **直接卡死**。日志证据（2026-10-04 18:16 那份）：面板自检通过（`Config save found: ModMiscFrontEndProbe; listed=ModMiscFrontEndProbe.Civ6Cfg`）→ 发出 `Requested load of front-end configuration save: … (FileType=GAME_CONFIGURATION)` → **Lua.log 到此为止，之后一行都没有**（无 Runtime Error、无任何后续 UI 日志），进程挂死。<br>对照：**档不存在时**同一个调用是静默无操作（不报错、不返回 false、不打断当前局，已实测两次）⇒ 卡死发生在“真的去读这个档”的那一下。配置档是给前端设置态用的类型，对局内喂它会把引擎挂住。**此路不通，对局内别碰配置档。** |
 | 37 | `Events.LoadComplete`（前端，回传 `(eResult, eType, eOptions, eFileType)`） | `[部分可用]` | 可用来补跑配置档读入后的收尾：配置档 `eFileType = SaveFileTypes.GAME_CONFIGURATION`，成功时 `eResult = 0`。⚠️ 它**广播给每个前端上下文** —— 每个上下文各挂一次就会各跑一遍收尾（实测 Options / HostGame / StagingRoom / MainMenu / AdvancedSetup 五个都打了日志）。只让“真正发起这次读档的那个上下文”处理（本 mod 用 `m_LoadIssued` 标记）。 |
 
+> 第 32-37 条来自前端存读档探针（`UI/FrontEnd_SaveProbe.lua`）。该探针**默认关闭** ——
+> 开关 `MODMISC_FRONT_END_PROBE_ENABLED`（`UI/Replacements/Civ6Common.lua` 顶部）。
+> 关掉的原因：前端这条路虽然通，但每次开机都会动一遍配置（读档后按游戏菜单语义
+> **清空领袖/文明选择**）。要再跑实验就把开关改成 `true`。
+
 ## 4. WorldBuilder（地图编辑器）接口
 
 | # | 接口 / 方法 | 状态 | 证据与备注 |
