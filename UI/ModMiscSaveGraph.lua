@@ -214,6 +214,17 @@ function API.GetCurrentNodeId()
     return ReadCustomDataValue("NodeId")
 end
 
+-- “本局来源”：换图重开后，开局探针把待接分支固化到 CustomData 里（随档保存），
+-- 于是本局第一次存档就知道自己挂在谁下面、算分支 —— 而且不依赖“存储此刻还读不读得到”。
+function API.GetIncomingBranch()
+    local parent = ReadCustomDataValue("PendingParent")
+    if parent == nil or parent == "" then return nil end
+    return {
+        Parent = (parent ~= MODMISC_SAVE_ROOT_PARENT) and parent or nil,
+        Kind = ReadCustomDataValue("PendingKind") or MODMISC_KIND_BRANCH,
+    }
+end
+
 local function GetStore()
     return ModMiscStore
 end
@@ -263,6 +274,41 @@ local function SetMainlineHead(nodeId)
     local store = GetStore()
     if store == nil or store.Save == nil or nodeId == nil then return false end
     return store.Save(MODMISC_STORE_KEY_MAINLINE_HEAD, tostring(nodeId))
+end
+
+-- ===========================================================================
+-- 跨存档存储的就绪门（**这是踩过的坑，别绕过**）
+--
+-- `ModMiscStore` 的内存表是**每个 UI context 各一份**：换图重开之后，新起的
+-- AutomationTestPanel / ModMiscSavePanel 上下文里那张表**是空的**，不先 Refresh 一遍
+-- 就读不到 `sg_head` / `sg_pending` ⇒ 新局会把自己当成树根，**分支不知道自己是谁**
+-- （授权者 2026-10-05 实测：分支创建成功，但新档没标成分支）。
+--
+-- 所以凡是“要依据主线头/待接分支做决定”的动作，一律先过这道门：
+--   * 已就绪        → 立刻回调；
+--   * 还没就绪      → 挂 OnReady + 触发 Refresh，扫完再回调（期间动作排队，不会拿旧数据决定）；
+--   * 存储用不了    → 回调 notReady，调用方自己决定“带警告继续”还是“取消”。
+-- ===========================================================================
+local function EnsureStoreReady(callback)
+    local store = GetStore()
+    if store == nil then callback(false, "存储模块没加载"); return end
+    if store.IsReady == nil or store.IsReady() then callback(true, "ready"); return end
+    if store.OnReady == nil then callback(false, "存储模块没有 OnReady"); return end
+
+    local done = false
+    local function Finish(ready, reason)
+        if done then return end
+        done = true
+        callback(ready, reason)
+    end
+
+    store.OnReady(function() Finish(true, "ready") end)
+    local started = true
+    if store.Refresh ~= nil then started = store.Refresh() end
+    -- Refresh 返回 false 且当前没有扫描在跑 = 扫描根本起不来（依赖缺失），别把动作挂死
+    if not started and store.IsRefreshing ~= nil and not store.IsRefreshing() then
+        Finish(false, "扫描起不来")
+    end
 end
 
 -- 这次存档算不算“延续主线”：主线头没记录时按延续处理（宁可当主线，也别把正常进度标成分支）
@@ -486,32 +532,43 @@ local function ResolveNewSaveParent()
     local currentId = API.GetCurrentNodeId()
     if currentId ~= nil then
         -- 本局已经有节点（本局存过 / 读的是本 mod 的档）→ 接它
-        return currentId, nil
+        return currentId, nil, "current"
     end
+    -- 换图重开后的新局：开局探针已经把待接分支固化成“本局来源”
+    local incoming = API.GetIncomingBranch()
+    if incoming ~= nil and incoming.Parent ~= nil then
+        return incoming.Parent, incoming.Kind or MODMISC_KIND_BRANCH, "incoming"
+    end
+    -- 兜底：存储里的待接分支（理论上开局就该被固化，这里防“探针没跑到”）
     local pending = API.GetPendingBranch()
     if pending ~= nil and pending.Parent ~= nil then
-        -- 换图后的新局：接原档，且**算分支**（授权者定的口径）
-        return pending.Parent, pending.Kind or MODMISC_KIND_BRANCH
+        return pending.Parent, pending.Kind or MODMISC_KIND_BRANCH, "pending"
     end
     -- 什么都没有（第一次用 / 读的是老档或非本 mod 档）→ 无父，当树根
-    return nil, MODMISC_KIND_MAINLINE
+    return nil, MODMISC_KIND_MAINLINE, "root"
 end
 
 -- 本次要写的节点：Parent / Kind / Id / Turn / Map / Stamp 全定下来
 local function BuildNextNode()
-    local parentId, forcedKind = ResolveNewSaveParent()
+    local currentId = API.GetCurrentNodeId()
+    local headId = API.GetMainlineHeadId()
+    local pending = API.GetPendingBranch()
+
+    local incoming = API.GetIncomingBranch()
+    local parentId, forcedKind, parentSource = ResolveNewSaveParent()
     local kind = forcedKind
     if kind == nil then
         kind = IsMainlineHead(parentId) and MODMISC_KIND_MAINLINE or MODMISC_KIND_BRANCH
     end
-    -- 这次的父是不是从“待接分支”来的？（换图后的新局第一次存档才是）
-    local consumedPending = false
-    if API.GetCurrentNodeId() == nil and parentId ~= nil then
-        local pending = API.GetPendingBranch()
-        if pending ~= nil and tostring(pending.Parent) == tostring(parentId) then
-            consumedPending = true
-        end
-    end
+    -- 父来自“待接分支 / 本局来源” ⇒ 这是换图后新局的第一次存档，要消费掉存储里的 pending
+    local consumedPending = (currentId == nil and parentSource ~= "root")
+    Log("判定：current=" .. tostring(currentId)
+        .. " incoming=" .. (incoming ~= nil and tostring(incoming.Parent) or "nil")
+        .. " head=" .. tostring(headId)
+        .. " pending=" .. (pending ~= nil and tostring(pending.Parent) or "nil")
+        .. " 来源=" .. tostring(parentSource)
+        .. " => parent=" .. tostring(parentId) .. " kind=" .. tostring(kind)
+        .. " consumePending=" .. tostring(consumedPending))
     return {
         Id = BuildNodeId(),
         Parent = parentId,
@@ -616,8 +673,22 @@ local function SaveNode(node, opts)
 end
 
 -- options = { Reason = "manual"|"switch", OnSaved = function(found, node) end }
+-- 返回 (true, nil) = 请求已受理（真正开写前会先等跨存档存储就绪）；
+-- 真正写完看 options.OnSaved(found, node)。
 function API.SaveCurrentGame(options)
-    return SaveNode(BuildNextNode(), options)
+    local opts = options or {}
+    if Network == nil or Network.SaveGame == nil then
+        Log("存档失败：Network.SaveGame 不可用")
+        return false, "Network.SaveGame 不可用"
+    end
+    EnsureStoreReady(function(ready, reason)
+        if not ready then
+            -- 存储用不了就**别拦玩家**：照样存，只是关系可能判错（日志会写明）
+            Log("警告：跨存档存储不可用（" .. tostring(reason) .. "），存档照旧但关系可能判错")
+        end
+        SaveNode(BuildNextNode(), opts)
+    end)
+    return true, nil
 end
 
 -- ===========================================================================
@@ -677,25 +748,32 @@ function API.SwitchMap()
         return false, "Network.RestartGame 不可用（换图只能靠它，见第 42 条）"
     end
     if m_SavePending ~= nil then
-        return false, "上一笔存档还没回执，稍后再试"
+        return false, "上一笔存档还在等回执，稍后再试"
     end
 
-    -- ① 先把节点算出来（id 先生成好），**先写待接分支** —— 重开后只有跨存档存储能过去，
-    --    先写就给了它足够时间落盘（游戏存档要慢得多）；
-    local node = BuildNextNode()
-    SetPendingBranch(node.Id, MODMISC_KIND_BRANCH, node.Stamp)
-    Log("换图：待接分支已写入存储（parent=" .. tostring(node.Id) .. "，新局算分支）")
+    EnsureStoreReady(function(ready, reason)
+        if not ready then
+            Log("警告：跨存档存储不可用（" .. tostring(reason)
+                .. "），换图照旧但新局可能接不上关系")
+        end
+        -- ① 先把节点算出来（id 先生成好），**先写待接分支** —— 重开后只有跨存档存储能过去，
+        --    先写就给了它足够时间落盘（游戏存档要慢得多）；
+        local node = BuildNextNode()
+        SetPendingBranch(node.Id, MODMISC_KIND_BRANCH, node.Stamp)
+        Log("换图：待接分支已写入存储（parent=" .. tostring(node.Id) .. "，新局算分支）")
 
-    -- ② 存原档；③ 落盘后再确认待接分支 → 重开（顺序不能反：原档没落盘就重开 = 原档丢失）
-    return SaveNode(node, {
-        Reason = "switch",
-        OnSaved = function(found, savedNode)
-            Log("原档 " .. tostring(savedNode.Id)
-                .. (found and " 已在存档列表里" or " 未在列表里（可能还没写完）")
-                .. "，准备换图")
-            VerifyPendingThenRestart(savedNode, 0)
-        end,
-    })
+        -- ② 存原档；③ 落盘后再确认待接分支 → 重开（顺序不能反：原档没落盘就重开 = 原档丢失）
+        SaveNode(node, {
+            Reason = "switch",
+            OnSaved = function(found, savedNode)
+                Log("原档 " .. tostring(savedNode.Id)
+                    .. (found and " 已在存档列表里" or " 未在列表里（可能还没写完）")
+                    .. "，准备换图")
+                VerifyPendingThenRestart(savedNode, 0)
+            end,
+        })
+    end)
+    return true, nil
 end
 
 -- ===========================================================================
@@ -703,14 +781,30 @@ end
 -- ===========================================================================
 
 function API.ReportAfterLoad()
-    local currentId = API.GetCurrentNodeId()
-    local head = API.GetMainlineHeadId()
-    local pending = API.GetPendingBranch()
-    Log("after-load: current=" .. tostring(currentId)
-        .. " head=" .. tostring(head)
-        .. " pending=" .. (pending ~= nil and tostring(pending.Parent) or "nil")
-        .. (pending ~= nil and "（本局是换图后的分支，第一次存档会挂到它下面）" or ""))
-    -- 顺手扫一次列表（异步），完成后把关系树打进日志，便于对照
+    -- ⚠️ 新 context 的存储内存表是空的：不等它读起来，pending/head 一定读成 nil
+    -- （“分支不知道自己是分支”就是这么来的）。所以探针先触发存储扫描，扫完再打权威那行。
+    EnsureStoreReady(function(ready, reason)
+        local currentId = API.GetCurrentNodeId()
+        local head = API.GetMainlineHeadId()
+        local pending = API.GetPendingBranch()
+        Log("after-load(store=" .. tostring(ready) .. "/" .. tostring(reason) .. "): current="
+            .. tostring(currentId) .. " head=" .. tostring(head)
+            .. " pending=" .. (pending ~= nil and tostring(pending.Parent) or "nil"))
+
+        -- 新局 + 有待接分支 ⇒ **开局就固化成本局的来源**（写进 CustomData，随档保存），
+        -- 然后把存储里那条消费掉：
+        --   ① 之后存档不再依赖“存储此刻读不读得到”（这正是分支认不出自己的根因）；
+        --   ② 万一玩家之后退回主菜单另开新局，也不会被这条陈旧的 pending 误挂成分支。
+        if currentId == nil and pending ~= nil and pending.Parent ~= nil then
+            WriteCustomDataValue("PendingParent", pending.Parent)
+            WriteCustomDataValue("PendingKind", pending.Kind or MODMISC_KIND_BRANCH)
+            ClearPendingBranch()
+            Log("本局接手待接分支：parent=" .. tostring(pending.Parent)
+                .. " kind=" .. tostring(pending.Kind or MODMISC_KIND_BRANCH)
+                .. "（已固化到本局身份，存储里那条已消费）")
+        end
+    end)
+    -- 顺手扫一次存档列表（异步），完成后把关系树打进日志，便于对照
     API.Refresh(function()
         Log("after-load 关系树：\n" .. API.DescribeTree())
     end)

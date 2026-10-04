@@ -1200,6 +1200,15 @@ gameplay 侧要换图，走 `ExposedMembers.ModMiscToolScript.WorldBuilderAPI.Se
 失败兜底：`pending` 两次都没确认也照样重开（原档已保存，丢的只是一条边，不损坏任何档），
 日志里会写清楚。
 
+#### 3.13.3b 两个必须知道的实现细节（踩过）
+
+1. **存储内存表是「每 context 一份」**：换图重开后面板是新上下文，`ModMiscStore` 的表是空的，
+   不 `Refresh()` 就读不到 `sg_head` / `sg_pending` ⇒ 新局会把自己当树根（“分支不知道自己是谁”）。
+   模块里统一走 `EnsureStoreReady()` 门：没就绪就等扫描完再决定，绝不拿空数据做判断。
+2. **开局固化**：新局启动时探针把“本局来源（parent + kind）”写进 **CustomData**（随档保存），
+   并消费掉存储里的 pending ⇒ 之后存档只依赖 CustomData（跨 context 必然可见），
+   也不必担心“玩家退出后另开新局”被陈旧 pending 误挂成分支。
+
 #### 3.13.4 本 mod 内直接调（`UI/ModMiscSaveGraph.lua`，UI 层）
 
     ModMiscSaveGraph.DescribeContext()                  只读：格式 + 当前节点/主线头/待接分支 + 扫描状态

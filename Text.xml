@@ -514,7 +514,7 @@
 			<Text>Refresh list</Text>
 		</Row>
 		<Row Tag="LOC_MODMISC_SAVEPANEL_INFO">
-			<Text>This game: {1_Current}   |   Mainline head: {2_Head}   |   Incoming branch: {3_Pending}</Text>
+			<Text>This game: {1_Current}   |   Origin: {2_Incoming}   |   Mainline head: {3_Head}   |   Pending: {4_Pending}</Text>
 		</Row>
 		<Row Tag="LOC_MODMISC_SAVEPANEL_NONE">
 			<Text>none</Text>
@@ -535,7 +535,10 @@
 			<Text>Save panel ready.</Text>
 		</Row>
 		<Row Tag="LOC_MODMISC_SAVEPANEL_SAVING">
-			<Text>Saving: {1_Name}</Text>
+			<Text>Saving...</Text>
+		</Row>
+		<Row Tag="LOC_MODMISC_SAVEPANEL_SAVING_DETAIL">
+			<Text>Waiting for the cross-save store to load, then writing the save. The result shows up when SaveComplete arrives.</Text>
 		</Row>
 		<Row Tag="LOC_MODMISC_SAVEPANEL_SAVED">
 			<Text>Saved node {1_Id} ({2_State})</Text>
@@ -547,7 +550,7 @@
 			<Text>not seen in the list yet</Text>
 		</Row>
 		<Row Tag="LOC_MODMISC_SAVEPANEL_SWITCHING">
-			<Text>Switching map - saving the original first: {1_Name}</Text>
+			<Text>Switching map - saving the original first...</Text>
 		</Row>
 		<Row Tag="LOC_MODMISC_SAVEPANEL_SWITCHING_DETAIL">
 			<Text>The game restarts automatically once the original save is on disk. The new map is a BRANCH of that save, so the next save here hangs under it.</Text>

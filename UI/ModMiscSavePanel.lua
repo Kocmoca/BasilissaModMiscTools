@@ -77,12 +77,20 @@ local function UpdateInfoLine()
     local current = ModMiscSaveGraph.GetCurrentNodeId()
     local head = ModMiscSaveGraph.GetMainlineHeadId()
     local pending = ModMiscSaveGraph.GetPendingBranch()
-    local pendingText = Locale.Lookup("LOC_MODMISC_SAVEPANEL_NONE")
+    local incoming = ModMiscSaveGraph.GetIncomingBranch()
+    local noneText = Locale.Lookup("LOC_MODMISC_SAVEPANEL_NONE")
+
+    -- 本局来源：换图重开后开局探针固化下来的“我挂在谁下面、算什么”
+    local incomingText = noneText
+    if incoming ~= nil then
+        incomingText = tostring(incoming.Parent) .. " → " .. tostring(incoming.Kind)
+    end
+    local pendingText = noneText
     if pending ~= nil then
         pendingText = tostring(pending.Parent) .. " → " .. tostring(pending.Kind)
     end
     Controls.ModMiscSaveInfo:SetText(Locale.Lookup("LOC_MODMISC_SAVEPANEL_INFO",
-        DescribeId(current), DescribeId(head), pendingText))
+        DescribeId(current), incomingText, DescribeId(head), pendingText))
 end
 
 -- 一条关系档的显示文本：缩进 + [M/B] + id + T回合 + 地图 + 时间 + 标记
@@ -126,6 +134,12 @@ end
 
 local function RefreshAll(onDone)
     UpdateInfoLine()
+    -- ① 先把**跨存档存储**读起来：本 context 的内存表可能是空的（换图重开后的新上下文
+    --    就是），不扫就读不到主线头 / 待接分支 —— 那会让新档把自己当树根。
+    if ModMiscStore ~= nil and ModMiscStore.Refresh ~= nil then
+        ModMiscStore.Refresh(function() UpdateInfoLine() end)
+    end
+    -- ② 再扫存档列表，渲染关系树
     ModMiscSaveGraph.Refresh(function(nodes)
         RenderTree()
         UpdateInfoLine()
@@ -140,9 +154,13 @@ end
 -- ===========================================================================
 
 local function DoSave()
-    local ok, nameOrErr = ModMiscSaveGraph.SaveCurrentGame({
+    local ok, err = ModMiscSaveGraph.SaveCurrentGame({
         Reason = "manual",
         OnSaved = function(found, node)
+            if node == nil then
+                ReportError("Save", "存档未完成（跨存档存储不可用）")
+                return
+            end
             Report(Locale.Lookup("LOC_MODMISC_SAVEPANEL_SAVED", tostring(node.Id),
                     Locale.Lookup(found and "LOC_MODMISC_SAVEPANEL_SAVED_ON_DISK"
                         or "LOC_MODMISC_SAVEPANEL_SAVED_UNCONFIRMED")),
@@ -151,20 +169,22 @@ local function DoSave()
         end,
     })
     if not ok then
-        ReportError("Save", nameOrErr)
+        ReportError("Save", err)
         return
     end
-    Report(Locale.Lookup("LOC_MODMISC_SAVEPANEL_SAVING", tostring(nameOrErr)), tostring(nameOrErr))
+    -- 请求已受理：真正开写前会先等跨存档存储就绪（新 context 的内存表是空的）
+    Report(Locale.Lookup("LOC_MODMISC_SAVEPANEL_SAVING"),
+        Locale.Lookup("LOC_MODMISC_SAVEPANEL_SAVING_DETAIL"))
 end
 
 local function DoSwitchMap()
-    local ok, nameOrErr = ModMiscSaveGraph.SwitchMap()
+    local ok, err = ModMiscSaveGraph.SwitchMap()
     if not ok then
-        ReportError("SwitchMap", nameOrErr)
+        ReportError("SwitchMap", err)
         return
     end
-    -- 换图是链式的：存原档 → 落盘确认 → 重开。面板只需把“正在做什么”讲清楚。
-    Report(Locale.Lookup("LOC_MODMISC_SAVEPANEL_SWITCHING", tostring(nameOrErr)),
+    -- 换图是链式的：等存储就绪 → 存原档 → 落盘确认 → 重开。面板把“正在做什么”讲清楚即可。
+    Report(Locale.Lookup("LOC_MODMISC_SAVEPANEL_SWITCHING"),
         Locale.Lookup("LOC_MODMISC_SAVEPANEL_SWITCHING_DETAIL"))
 end
 
@@ -186,7 +206,7 @@ function OpenModMiscSavePanel()
     local panelRoot = AttachPanelToInGame()
     panelRoot:SetHide(false)
     SetStatus(Locale.Lookup("LOC_MODMISC_SAVEPANEL_READY"))
-    RefreshAll()
+    RefreshAll()   -- 内含跨存档存储扫描：新 context 必须先读起来才知道主线头 / 待接分支
     Log("面板已打开")
 end
 

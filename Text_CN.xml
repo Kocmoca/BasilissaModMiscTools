@@ -514,7 +514,7 @@
 			<Text>刷新列表</Text>
 		</Replace>
 		<Replace Tag="LOC_MODMISC_SAVEPANEL_INFO" Language="zh_Hans_CN">
-			<Text>本局：{1_Current}　｜　主线头：{2_Head}　｜　待接分支：{3_Pending}</Text>
+			<Text>本局：{1_Current}　｜　来源：{2_Incoming}　｜　主线头：{3_Head}　｜　待接分支：{4_Pending}</Text>
 		</Replace>
 		<Replace Tag="LOC_MODMISC_SAVEPANEL_NONE" Language="zh_Hans_CN">
 			<Text>无</Text>
@@ -535,7 +535,10 @@
 			<Text>存档面板已就绪。</Text>
 		</Replace>
 		<Replace Tag="LOC_MODMISC_SAVEPANEL_SAVING" Language="zh_Hans_CN">
-			<Text>正在存档：{1_Name}</Text>
+			<Text>正在存档…</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_SAVEPANEL_SAVING_DETAIL" Language="zh_Hans_CN">
+			<Text>先等跨存档存储读起来再落盘；结果等 SaveComplete 回执后显示。</Text>
 		</Replace>
 		<Replace Tag="LOC_MODMISC_SAVEPANEL_SAVED" Language="zh_Hans_CN">
 			<Text>已存节点 {1_Id}（{2_State}）</Text>
@@ -547,7 +550,7 @@
 			<Text>列表里还没看到</Text>
 		</Replace>
 		<Replace Tag="LOC_MODMISC_SAVEPANEL_SWITCHING" Language="zh_Hans_CN">
-			<Text>换图中——先存原档：{1_Name}</Text>
+			<Text>换图中——先存原档…</Text>
 		</Replace>
 		<Replace Tag="LOC_MODMISC_SAVEPANEL_SWITCHING_DETAIL" Language="zh_Hans_CN">
 			<Text>原档确认落盘后会自动重开。新图算这条记录的分支：本局之后存的档都挂在它下面。</Text>
