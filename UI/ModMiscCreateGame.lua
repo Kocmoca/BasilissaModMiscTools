@@ -10,6 +10,10 @@
 -- 再配合已验证的对局内读档接口（`Network.LoadGame`，见 API_Verification_Status.md
 -- 第 38 条）就能模拟「游戏中切换地图」。
 --
+-- 【2026-10-05 实机结论】HostGame 在对局内是**静默空操作**（不崩、也不建新局）；
+-- 引擎自带的 `Network.RestartGame()` **可用**，换图（同一脚本重新生成、换种子）靠它。
+-- 详见 API_Verification_Status.md 第 12 节。
+--
 -- 【静态事实】（都来自游戏自己的代码，不是推断）
 --   * `Network.RestartGame()` 是引擎自带的**对局内**重开：
 --     Base/Assets/UI/Menus/InGameTopOptionsMenu.lua:78
@@ -515,7 +519,16 @@ function API.RestartGame()
     end)
 end
 
--- 本模块的验证目标：ScenarioSetup.OnStartButton() 普通分支的等价调用
+-- ScenarioSetup.OnStartButton() 普通分支的等价调用。
+--
+-- 【2026-10-05 实机结论：对局内不可用 —— 调用**静默空操作**】
+--   面板按钮实测：`Events.SetGameEntryMethod` + `Network.HostGame(SERVER_TYPE_NONE)`
+--   调用返回、进程不崩，但**没有建出新局**（开局探针没有出现、当前局照旧）。
+--   与引擎自己的 Automation 要求一致（Automation_StandardTests.lua:489
+--   「We must be at the Main Menu to do this test」，不在主菜单就先 ExitToMainMenu）。
+--   ⇒ 换图只能走「Network.RestartGame()」或「退主菜单后在前端创建」这两条路。
+--   本函数**保留**是为了把“试过什么、结论是什么”钉在代码里；对外**不再暴露**
+--   （Support_UI 里没有 HostGameInGame），面板按钮也已移除。
 function API.HostGame()
     if Network == nil or Network.HostGame == nil then
         return false, "Network.HostGame 不可用"

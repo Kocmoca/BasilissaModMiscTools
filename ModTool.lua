@@ -6,6 +6,7 @@ print("[ModMiscTool] gameplay scripts loading, build=" .. tostring(MODMISC_BUILD
 include('ModTool_Support_Functions.lua')
 include('ModTool_WorldBuilderAPI.lua')
 include('ModTool_GhostPlayers.lua')
+include('ModTool_TurnEraAPI.lua')
 
 local playerCitiesInfo = {}
 local defeatedPlayers = {}
@@ -582,5 +583,8 @@ function Initialize()
 	ExposedMembers.ModMiscToolScript.BuildDataKey = ModMiscToolData.BuildKey
 	-- WorldBuilder（地图编辑器）接口模块：Gameplay 后端，UI 层通过它调用
 	ExposedMembers.ModMiscToolScript.WorldBuilderAPI = WorldBuilderAPI
+	-- 回合 / 年代（gameplay 后端）：UI 层直调失败时经它兜底；也供别的 mod 直接用。
+	-- 接口与静态依据见 ModTool_TurnEraAPI.lua 头部。
+	ExposedMembers.ModMiscToolScript.TurnEraAPI = TurnEraAPI
 end
 Events.LoadGameViewStateDone.Add(Initialize)

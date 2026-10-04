@@ -6,7 +6,8 @@
     * Network：后台存档、后台读档
     * CustomData：探针写入/读取，配合存档验证跨存档持久化
     * AssetPreview / AutoProfiler：在指定地块摆放/清除资产
-    * 对局内创建新局 / 换地图：ScenarioSetup 的 HostGame 调用 + RestartGame 对照 + 退主菜单
+    * 重开与时间线（第 2 页签）：RestartGame 换图、切换前存档、回合 / 年代探查与试写
+      （ScenarioSetup 的 HostGame 已实测**对局内不可用**，按钮已移除）
   面板只做功能调用与日志展示；所有调用都用 pcall 包住，错误显示在提示信息窗。
 -->
 <Context>
@@ -16,9 +17,16 @@
 
             <Grid ID="AutomationTestHeader" Anchor="L,T" Size="parent,56"
                   Texture="TopBar_Bar" SliceCorner="28,8" SliceTextureSize="57,29">
-                <Label ID="AutomationTestTitle" Anchor="L,C" Offset="24,0" Size="740,44"
+                <Label ID="AutomationTestTitle" Anchor="L,C" Offset="24,0" Size="300,44"
                        FontSize="32" FontStyle="glow" ColorSet="ShellHeader"
                        String="LOC_MODMISC_AUTOMATION_TEST_TITLE" />
+                <!-- 页签：常规（视角/存储/资产）｜重开与时间线（创建新局 + 回合/年代） -->
+                <GridButton ID="AutomationTestTabMain" Anchor="L,C" Offset="340,0" Size="240,40"
+                            Style="ButtonControl" FontSize="24"
+                            String="LOC_MODMISC_AUTOMATION_TEST_TAB_MAIN" />
+                <GridButton ID="AutomationTestTabTimeline" Anchor="L,C" Offset="590,0" Size="240,40"
+                            Style="ButtonControl" FontSize="24"
+                            String="LOC_MODMISC_AUTOMATION_TEST_TAB_TIMELINE" />
                 <Button ID="AutomationTestCloseButton" Anchor="R,C" Offset="-14,0" Size="44,44"
                         Texture="Controls_CloseButton" Style="ButtonNormalText" ConsumeMouse="1" />
             </Grid>
@@ -93,34 +101,61 @@
             <GridButton ID="AutomationTestMessages" Anchor="L,T" Offset="20,654" Size="860,60"
                         Style="ButtonControl" FontSize="26" String="LOC_MODMISC_AUTOMATION_TEST_MESSAGES" />
 
+
             <!-- ============================================================
-                 创建新局 / 换地图（对局内）：验证 ScenarioSetup 的「创建游戏」调用。
-                 按钮按风险从低到高排：探测 → 改地图配置 → 打标记 → 切换前存档
-                 → 重开新局（RestartGame）→ HostGame（验证目标）→ 退回主菜单。
-                 判定与日志协议见 UI/ModMiscCreateGame.lua 与 API_Verification_Status.md。
+                 第 2 页「重开与时间线」（默认隐藏，点页签切换）：
+                   * 创建新局 / 换地图：Network.RestartGame 是**已验证可用**的换图手段；
+                     Network.HostGame 对局内**不可用**（静默空操作，按钮已移除）。
+                   * 回合 / 年代：探查能否把重启后的新局“拨回”原来的回合与年代。
+                 判定与日志协议见 UI/ModMiscCreateGame.lua / UI/ModMiscTurnEra.lua
+                 与 API_Verification_Status.md 第 12、13 节。
                  ============================================================ -->
-            <Label ID="AutomationCreateGameMapLabel" Anchor="L,T" Offset="20,722" Size="170,52"
-                   FontSize="26" Color="225,225,225,255" VerticalAlignment="Center"
+            <Label ID="AutomationCreateGameMapLabel" Anchor="L,T" Offset="20,246" Size="170,52"
+                   FontSize="26" Color="225,225,225,255" VerticalAlignment="Center" Hidden="1"
                    String="LOC_MODMISC_CREATEGAME_MAP_TARGET" />
-            <GridButton ID="AutomationCreateGameMapButton" Anchor="L,T" Offset="200,722" Size="660,52"
-                        Style="ButtonControl" FontSize="26" String="" />
+            <GridButton ID="AutomationCreateGameMapButton" Anchor="L,T" Offset="200,246" Size="660,52"
+                        Style="ButtonControl" FontSize="26" String="" Hidden="1" />
 
-            <GridButton ID="AutomationCreateGameProbe" Anchor="L,T" Offset="20,780" Size="280,56"
-                        Style="ButtonControl" FontSize="26" String="LOC_MODMISC_CREATEGAME_PROBE" />
-            <GridButton ID="AutomationCreateGameApplyMap" Anchor="L,T" Offset="310,780" Size="280,56"
-                        Style="ButtonControl" FontSize="26" String="LOC_MODMISC_CREATEGAME_APPLY_MAP" />
-            <GridButton ID="AutomationCreateGameArmMarker" Anchor="L,T" Offset="600,780" Size="280,56"
-                        Style="ButtonControl" FontSize="26" String="LOC_MODMISC_CREATEGAME_ARM_MARKER" />
+            <GridButton ID="AutomationCreateGameProbe" Anchor="L,T" Offset="20,306" Size="280,56"
+                        Style="ButtonControl" FontSize="26" Hidden="1"
+                        String="LOC_MODMISC_CREATEGAME_PROBE" />
+            <GridButton ID="AutomationCreateGameApplyMap" Anchor="L,T" Offset="310,306" Size="280,56"
+                        Style="ButtonControl" FontSize="26" Hidden="1"
+                        String="LOC_MODMISC_CREATEGAME_APPLY_MAP" />
+            <GridButton ID="AutomationCreateGameArmMarker" Anchor="L,T" Offset="600,306" Size="280,56"
+                        Style="ButtonControl" FontSize="26" Hidden="1"
+                        String="LOC_MODMISC_CREATEGAME_ARM_MARKER" />
 
-            <GridButton ID="AutomationCreateGameSave" Anchor="L,T" Offset="20,844" Size="280,56"
-                        Style="ButtonControl" FontSize="26" String="LOC_MODMISC_CREATEGAME_SAVE" />
-            <GridButton ID="AutomationCreateGameRestart" Anchor="L,T" Offset="310,844" Size="280,56"
-                        Style="ButtonControl" FontSize="26" String="LOC_MODMISC_CREATEGAME_RESTART" />
-            <GridButton ID="AutomationCreateGameHost" Anchor="L,T" Offset="600,844" Size="280,56"
-                        Style="ButtonControl" FontSize="26" String="LOC_MODMISC_CREATEGAME_HOST" />
+            <!-- 回合 / 年代（探查 + 试写）：接口与依据见 UI/ModMiscTurnEra.lua -->
+            <GridButton ID="AutomationTurnEraProbe" Anchor="L,T" Offset="20,370" Size="280,56"
+                        Style="ButtonControl" FontSize="26" Hidden="1"
+                        String="LOC_MODMISC_TURNERA_PROBE" />
+            <GridButton ID="AutomationTurnPlus" Anchor="L,T" Offset="310,370" Size="280,56"
+                        Style="ButtonControl" FontSize="26" Hidden="1"
+                        String="LOC_MODMISC_TURNERA_TURN_PLUS" />
+            <GridButton ID="AutomationTurnMinus" Anchor="L,T" Offset="600,370" Size="280,56"
+                        Style="ButtonControl" FontSize="26" Hidden="1"
+                        String="LOC_MODMISC_TURNERA_TURN_MINUS" />
 
-            <GridButton ID="AutomationCreateGameExit" Anchor="L,T" Offset="20,908" Size="280,56"
-                        Style="ButtonControl" FontSize="26" String="LOC_MODMISC_CREATEGAME_EXIT" />
+            <GridButton ID="AutomationEraPlus" Anchor="L,T" Offset="20,434" Size="280,56"
+                        Style="ButtonControl" FontSize="26" Hidden="1"
+                        String="LOC_MODMISC_TURNERA_ERA_PLUS" />
+            <GridButton ID="AutomationEraMinus" Anchor="L,T" Offset="310,434" Size="280,56"
+                        Style="ButtonControl" FontSize="26" Hidden="1"
+                        String="LOC_MODMISC_TURNERA_ERA_MINUS" />
+            <GridButton ID="AutomationStartEraPlus" Anchor="L,T" Offset="600,434" Size="280,56"
+                        Style="ButtonControl" FontSize="26" Hidden="1"
+                        String="LOC_MODMISC_TURNERA_START_ERA_PLUS" />
+
+            <GridButton ID="AutomationCreateGameSave" Anchor="L,T" Offset="20,498" Size="280,56"
+                        Style="ButtonControl" FontSize="26" Hidden="1"
+                        String="LOC_MODMISC_CREATEGAME_SAVE" />
+            <GridButton ID="AutomationCreateGameRestart" Anchor="L,T" Offset="310,498" Size="280,56"
+                        Style="ButtonControl" FontSize="26" Hidden="1"
+                        String="LOC_MODMISC_CREATEGAME_RESTART" />
+            <GridButton ID="AutomationCreateGameExit" Anchor="L,T" Offset="600,498" Size="280,56"
+                        Style="ButtonControl" FontSize="26" Hidden="1"
+                        String="LOC_MODMISC_CREATEGAME_EXIT" />
 
             <!-- 展开的选项列表 -->
             <Container ID="AutomationTestOptionPanel" Anchor="L,T" Size="660,300" ConsumeMouse="1" Hidden="1">

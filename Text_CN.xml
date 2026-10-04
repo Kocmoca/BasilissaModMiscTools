@@ -437,9 +437,6 @@
 		<Replace Tag="LOC_MODMISC_CREATEGAME_RESTART" Language="zh_Hans_CN">
 			<Text>重开新局</Text>
 		</Replace>
-		<Replace Tag="LOC_MODMISC_CREATEGAME_HOST" Language="zh_Hans_CN">
-			<Text>HostGame 建新局</Text>
-		</Replace>
 		<Replace Tag="LOC_MODMISC_CREATEGAME_EXIT" Language="zh_Hans_CN">
 			<Text>退回主菜单</Text>
 		</Replace>
@@ -494,6 +491,65 @@
 		<Replace Tag="LOC_MODMISC_CREATEGAME_RETURNED_SHORT" Language="zh_Hans_CN">
 			<Text>{1_Action} 已返回</Text>
 		</Replace>
+		<!-- 页签 + 回合 / 年代（第 2 页签） -->
+		<Replace Tag="LOC_MODMISC_AUTOMATION_TEST_TAB_MAIN" Language="zh_Hans_CN">
+			<Text>常规</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_AUTOMATION_TEST_TAB_TIMELINE" Language="zh_Hans_CN">
+			<Text>重开与时间线</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_TURNERA_PROBE" Language="zh_Hans_CN">
+			<Text>探测回合/年代</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_TURNERA_PROBE_HEADER" Language="zh_Hans_CN">
+			<Text>对局内回合 / 年代探测（日志前缀 [ModMiscTool][TurnEra]）：</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_TURNERA_PROBE_SHORT" Language="zh_Hans_CN">
+			<Text>回合/年代探测完成</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_TURNERA_TURN_PLUS" Language="zh_Hans_CN">
+			<Text>回合 +10</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_TURNERA_TURN_MINUS" Language="zh_Hans_CN">
+			<Text>回合 -10</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_TURNERA_ERA_PLUS" Language="zh_Hans_CN">
+			<Text>年代 +1</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_TURNERA_ERA_MINUS" Language="zh_Hans_CN">
+			<Text>年代 -1</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_TURNERA_START_ERA_PLUS" Language="zh_Hans_CN">
+			<Text>开始年代 +1</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_TURNERA_TURN_RESULT" Language="zh_Hans_CN">
+			<Text>回合写入：{1_Result}</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_TURNERA_TURN_OK_SHORT" Language="zh_Hans_CN">
+			<Text>回合已写入</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_TURNERA_TURN_FAIL_SHORT" Language="zh_Hans_CN">
+			<Text>回合写入没生效</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_TURNERA_ERA_RESULT" Language="zh_Hans_CN">
+			<Text>年代写入：{1_Result}</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_TURNERA_ERA_OK_SHORT" Language="zh_Hans_CN">
+			<Text>年代已写入</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_TURNERA_ERA_FAIL_SHORT" Language="zh_Hans_CN">
+			<Text>年代写入没生效</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_TURNERA_START_ERA_RESULT" Language="zh_Hans_CN">
+			<Text>开始年代写入（下一局生效）：{1_Result}</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_TURNERA_START_ERA_OK_SHORT" Language="zh_Hans_CN">
+			<Text>开始年代已写入</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_TURNERA_START_ERA_FAIL_SHORT" Language="zh_Hans_CN">
+			<Text>开始年代写入没生效</Text>
+		</Replace>
 </LocalizedText>
+
 
 </GameData>

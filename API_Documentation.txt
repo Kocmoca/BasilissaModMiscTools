@@ -1026,8 +1026,8 @@ ScenarioSetup 是前端上下文、对局内没有它，所以这里是**照抄�
     ModMiscCreateGame.ArmMarker(action)            写「切换前快照」到 CustomData（返回 payload）
     ModMiscCreateGame.ReadMarker() / ClearMarker() 读 / 清 标记
     ModMiscCreateGame.SaveBeforeSwitch()           切换前存档（普通单机档，异步）
-    ModMiscCreateGame.RestartGame()                Network.RestartGame（对照组）
-    ModMiscCreateGame.HostGame()                   ScenarioSetup 等价调用（验证目标）
+    ModMiscCreateGame.RestartGame()                Network.RestartGame（**换图就靠它**）
+    ModMiscCreateGame.HostGame()                   ScenarioSetup 等价调用（**对局内不可用**，见下）
     ModMiscCreateGame.ExitToMainMenu()             退回前端
     ModMiscCreateGame.ReportAfterCreateInGame()    开局探针（由 Support_UI.Initialize 调一次）
 
@@ -1039,8 +1039,7 @@ ScenarioSetup 是前端上下文、对局内没有它，所以这里是**照抄�
     ListMapScripts()              地图脚本清单
     ApplyMapScript(file)          改地图配置 + 回读
     ArmCreateGameMarker(action)   写「切换前快照」
-    HostGameInGame()              对局内 HostGame（验证目标）
-    RestartGameInGame()           对局内 RestartGame
+    RestartGameInGame()           对局内 RestartGame（实测可用）
 
 ⚠️ 这些是 **UI 层**接口（`Network.*` / `MapConfiguration` / `GameConfiguration` 都在 UI 上下文）。
 gameplay 侧要换图，走 `ExposedMembers.ModMiscToolScript.WorldBuilderAPI.SetMapValue("MapScript", file)`
@@ -1064,17 +1063,75 @@ gameplay 侧要换图，走 `ExposedMembers.ModMiscToolScript.WorldBuilderAPI.Se
     即将调用 … / 调用已返回（没卡死）
     after-create: VERDICT=new-game | marker-present
 
-#### 3.11.4 注意
+#### 3.11.4 实机结论（2026-10-05）
 
-* 三个入口（`RestartGame` / `HostGame` / `ExitToMainMenu`）都会**把当前局顶掉或直接重开**，
+* `Network.RestartGame()` —— **对局内可用**：立刻重开一局，地图**重新生成、换种子**，
+  但**地图脚本不变**（对局内写的 `MAP_SCRIPT` 不被采纳：RestartGame 用的是“开局前那份配置”，
+  见 `InGameTopOptionsMenu.lua:317`）。
+* `Events.SetGameEntryMethod` + `Network.HostGame(SERVER_TYPE_NONE)` —— **对局内不可用**：
+  调用返回、进程不崩，但**不建新局**（静默空操作）。面板按钮与 `HostGameInGame` 已移除。
+  想换**地图脚本**只能退主菜单、在创建游戏界面重新开局。
+* 新增前端探针 `[ModMiscTool][MapConfigProbe]`（在 `UI/Replacements/Civ6Common.lua`）：
+  在创建游戏界面打一行当前配置（`MAP_SCRIPT` / `MAP_SIZE` / `SEED` / `START_ERA` / `START_TURN`），
+  用来回答“对局内写的配置能不能活到前端”——能活，那条路就成立。
+
+#### 3.11.5 注意
+
+* 三个入口（`RestartGame` / `ExitToMainMenu`）都会**把当前局顶掉或直接重开**，
   想保住进度先点「切换前存档」（普通档，档名 `ModMiscCreateGame~switch-backup`）；
 * 对局内改配置是**直接写配置对象**，绕过了前端 SetupParameters 的参数系统，
   所以前端那套“游戏已开始不可改”的限制在这里不适用 —— 但**写了算不算数要实测**
   （RestartGame 用的是“开局前那份配置”，可能忽略对局内的改动；HostGame 读当前配置）；
 * 引擎自带的 Automation 明确要求 `HostGame` 站在主菜单才能用
-  （`Automation_StandardTests.lua:489`）⇒ 对局内直调很可能不被支持，
-  失败也在预期之内，届时退回「退主菜单再建」这条路；
+  （`Automation_StandardTests.lua:489`）⇒ 对局内直调**实测确实无效**（见 3.11.4）；
 * 每次进游戏（新局 / 读档）都会打一行开局探针结论，属正常日志，不是报错。
+
+------------------------------------------------------------------------------
+### 3.12 回合数 / 年代显示（ModMiscTurnEra，探查中）
+------------------------------------------------------------------------------
+
+**用途**：重启换图（3.11）之后把新局“拨回”原来的回合与年代 —— 数据由跨存档通道带过来。
+本模块只做**探查与试写**，结论见 `API_Verification_Status.md` 第 13 节。
+
+#### 3.12.1 本 mod 内直接调（`UI/ModMiscTurnEra.lua`，UI 层）
+
+    ModMiscTurnEra.DescribeContext()                 只读探测：现状 + 候选接口可用性 + 两条调用路径
+    ModMiscTurnEra.DescribeFingerprint()             一行现状（turn/date/startTurn/…/playerEra/gameEra）
+    ModMiscTurnEra.GetTurnInfo()                     回合 / 结束回合 / 上限 / 开始回合
+    ModMiscTurnEra.GetDateString(turn)               该回合对应的年份文本（Calendar）
+    ModMiscTurnEra.GetEraEntries()                   时代清单（GameInfo.Eras，按 Index 排序）
+    ModMiscTurnEra.GetPlayerEraType(playerID)        该玩家当前时代类型
+    ModMiscTurnEra.GetEraTypeByOffset(playerID, n)   该玩家 ±n 个时代之后是哪个时代
+    ModMiscTurnEra.SetTurn(turn)                     写回合（UI 直调 → gameplay 兜底，返回 ok, 明细）
+    ModMiscTurnEra.AdjustTurn(delta)                 回合 ±N（夹到 >= 1）
+    ModMiscTurnEra.SetPlayerEra(playerID, eraType)   写年代（gameplay WorldBuilder 通道）
+    ModMiscTurnEra.AdjustPlayerEra(playerID, delta)  年代 ±N
+    ModMiscTurnEra.SetStartEra(eraType)              写**下一局**的开始年代（配置键 GAME_START_ERA）
+    ModMiscTurnEra.ReportAfterLoad()                 开局探针：一行现状（Support_UI 调一次）
+
+#### 3.12.2 Gameplay 后端（`ModTool_TurnEraAPI.lua` → `ExposedMembers.ModMiscToolScript.TurnEraAPI`）
+
+    GetTurnInfo()                         回合 / 结束回合 / 上限 / 开始回合
+    SetCurrentGameTurn(turn)              试写回合（Game.SetCurrentGameTurn）
+    GetEraInfo(playerID)                  玩家时代序号 + 类型 + 全局当前时代
+    SetPlayerEra(playerID, eraType)       试写年代（WorldBuilder 通道）
+    SetCurrentEra(eraType, playerIDs)     批量写年代（不传玩家 = 全部存活主要文明）
+
+#### 3.12.3 静态依据（详见第 13.1 节）
+
+    Game.SetCurrentGameTurn(n)                        全库唯一的回合写接口（出处：波兰场景，被注释掉）
+    Players[id]:GetEra() / GameInfo.Eras[idx]         年代读（0 基）
+    Game.GetEras():GetCurrentEra()                    全局时代读（该对象**只有读方法**）
+    WorldBuilder.PlayerManager():SetPlayerEra(...)    年代写（地图编辑器在用，gameplay 层）
+    GameConfiguration.SetStartEra(hash)               **下一局**的开始年代（GAME_START_ERA，哈希）
+    GameConfiguration.SetMaxTurns(n) + SetTurnLimitType   **下一局**的回合上限
+    Calendar.MakeYearStr(turn)                        年份显示 = 回合的纯函数 ⇒ 改回合即改年份
+    Events.PlayerEraChanged(playerIndex, currentEra)  年代真变了才会有的事件（判定用）
+
+#### 3.12.4 面板入口
+
+Automation 面板**头部页签**切到「重开与时间线」：探测回合/年代 → 回合 ±10 → 年代 ±1 →
+开始年代 +1 →（切换前存档 / 重开新局 / 退回主菜单）。判定看 Lua.log 前缀 `[ModMiscTool][TurnEra]`。
 
 ==============================================================================
 ## 四、数据库表（供其他 mod 插入数据）

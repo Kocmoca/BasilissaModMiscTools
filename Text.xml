@@ -437,9 +437,6 @@
 		<Row Tag="LOC_MODMISC_CREATEGAME_RESTART">
 			<Text>RestartGame</Text>
 		</Row>
-		<Row Tag="LOC_MODMISC_CREATEGAME_HOST">
-			<Text>HostGame (new game)</Text>
-		</Row>
 		<Row Tag="LOC_MODMISC_CREATEGAME_EXIT">
 			<Text>Exit to main menu</Text>
 		</Row>
@@ -494,6 +491,65 @@
 		<Row Tag="LOC_MODMISC_CREATEGAME_RETURNED_SHORT">
 			<Text>{1_Action} returned</Text>
 		</Row>
+		<!-- 页签 + 回合 / 年代（第 2 页签） -->
+		<Row Tag="LOC_MODMISC_AUTOMATION_TEST_TAB_MAIN">
+			<Text>Main</Text>
+		</Row>
+		<Row Tag="LOC_MODMISC_AUTOMATION_TEST_TAB_TIMELINE">
+			<Text>Restart &amp; Timeline</Text>
+		</Row>
+		<Row Tag="LOC_MODMISC_TURNERA_PROBE">
+			<Text>Probe turn/era</Text>
+		</Row>
+		<Row Tag="LOC_MODMISC_TURNERA_PROBE_HEADER">
+			<Text>Turn / era probe in game (log prefix [ModMiscTool][TurnEra]):</Text>
+		</Row>
+		<Row Tag="LOC_MODMISC_TURNERA_PROBE_SHORT">
+			<Text>turn/era probe done</Text>
+		</Row>
+		<Row Tag="LOC_MODMISC_TURNERA_TURN_PLUS">
+			<Text>Turn +10</Text>
+		</Row>
+		<Row Tag="LOC_MODMISC_TURNERA_TURN_MINUS">
+			<Text>Turn -10</Text>
+		</Row>
+		<Row Tag="LOC_MODMISC_TURNERA_ERA_PLUS">
+			<Text>Era +1</Text>
+		</Row>
+		<Row Tag="LOC_MODMISC_TURNERA_ERA_MINUS">
+			<Text>Era -1</Text>
+		</Row>
+		<Row Tag="LOC_MODMISC_TURNERA_START_ERA_PLUS">
+			<Text>Start era +1</Text>
+		</Row>
+		<Row Tag="LOC_MODMISC_TURNERA_TURN_RESULT">
+			<Text>Turn write: {1_Result}</Text>
+		</Row>
+		<Row Tag="LOC_MODMISC_TURNERA_TURN_OK_SHORT">
+			<Text>turn written</Text>
+		</Row>
+		<Row Tag="LOC_MODMISC_TURNERA_TURN_FAIL_SHORT">
+			<Text>turn write failed</Text>
+		</Row>
+		<Row Tag="LOC_MODMISC_TURNERA_ERA_RESULT">
+			<Text>Era write: {1_Result}</Text>
+		</Row>
+		<Row Tag="LOC_MODMISC_TURNERA_ERA_OK_SHORT">
+			<Text>era written</Text>
+		</Row>
+		<Row Tag="LOC_MODMISC_TURNERA_ERA_FAIL_SHORT">
+			<Text>era write failed</Text>
+		</Row>
+		<Row Tag="LOC_MODMISC_TURNERA_START_ERA_RESULT">
+			<Text>Start-era write (takes effect on the next game): {1_Result}</Text>
+		</Row>
+		<Row Tag="LOC_MODMISC_TURNERA_START_ERA_OK_SHORT">
+			<Text>start era written</Text>
+		</Row>
+		<Row Tag="LOC_MODMISC_TURNERA_START_ERA_FAIL_SHORT">
+			<Text>start era write failed</Text>
+		</Row>
 </BaseGameText>
+
 
 </GameData>

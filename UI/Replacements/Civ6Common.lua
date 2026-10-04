@@ -868,7 +868,7 @@ end
 -- 构建标记：前端与 gameplay 是不同 context，各自带一份字面量
 -- A…E 见历史；F：存储探针；G：封装成模块；H：键值清单+遗留档清理；I：暴露接口；J：修外来查询污染
 -- （ModTool.lua 那份 gameplay 的标记未动）
-local MODMISC_HOOK_BUILD_TAG = "2026-10-04-K"
+local MODMISC_HOOK_BUILD_TAG = "2026-10-05-A"
 local GHOST_CITY_STATE_CUSTOM_DATA_KEY = "ModMiscToolCityStateCount"
 local GHOST_MAJOR_PLAYER_CUSTOM_DATA_KEY = "ModMiscToolMajorPlayerCount"
 
@@ -1274,11 +1274,54 @@ end
 -- hook 会完全静默；因此轮询只能用 ContextPtr 的刷新回调。
 -- 创建游戏界面里 SystemUpdateUI 只在分辨率变化时触发，轮询要用 ContextPtr 的刷新回调
 -- （AdvancedSetup 自己没有设置刷新回调，因此这里设置是安全的）
+-- ===========================================================================
+-- [MapConfigProbe] 对局内写的地图/年代配置，能不能活到前端？
+--
+-- 背景（2026-10-05 实机）：对局内写 MAP_SCRIPT / GAME_START_ERA 之后再
+-- `Network.RestartGame()`，**配置没被采纳** —— 新局还是原来的地图脚本，只是换了生成种子。
+-- 但「退到主菜单 → 回创建游戏界面重新开局」是**另一条路**：那条路的配置由前端读，
+-- 而这个配置对象是进程级的，所以对局内写进去的值**有可能**还在。
+--
+-- 所以这里在创建游戏界面把当前看到的配置打一行：
+--   * 打出的是对局内写进去的目标图 ⇒ 那条路能把地图换掉（退主菜单再创建即可）
+--   * 还是原来那张          ⇒ 离开对局时配置被重置，换图只能靠重启换种子
+-- 只在“值变化”时打一行（隐藏时清空，重新打开界面会再打一次）；全程 pcall，
+-- 出错绝不影响幽灵 hook。
+-- ===========================================================================
+local m_MapConfigProbeLastKey = nil
+
+local function ModMiscToolProbeMapConfig()
+	if ContextPtr:IsHidden() then
+		m_MapConfigProbeLastKey = nil	-- 关掉界面就清掉，下次打开再打一行
+		return
+	end
+	-- 主设置界面（创建游戏 / 创建场景）才有 StartButton；PC 的选择器子上下文没有
+	if Controls.StartButton == nil then return end
+
+	local parts = {}
+	local function Add(label, getter)
+		local ok, value = pcall(getter)
+		table.insert(parts, label .. "=" .. tostring(ok and value or "err"))
+	end
+	Add("MAP_SCRIPT", function() return MapConfiguration.GetValue("MAP_SCRIPT") end)
+	Add("GetScript", function() return MapConfiguration.GetScript() end)
+	Add("MAP_SIZE", function() return MapConfiguration.GetMapSize() end)
+	Add("SEED", function() return MapConfiguration.GetValue("RANDOM_SEED") end)
+	Add("START_ERA", function() return GameConfiguration.GetStartEra() end)
+	Add("START_TURN", function() return GameConfiguration.GetStartTurn() end)
+
+	local key = table.concat(parts, " ")
+	if key == m_MapConfigProbeLastKey then return end
+	m_MapConfigProbeLastKey = key
+	print("[ModMiscTool][MapConfigProbe] 创建游戏界面看到的配置: " .. key)
+end
+
 local function ModMiscToolGhostRefresh(delta)
 	if not ModMiscToolIsGameSetupContext() then return end
 	if not ContextPtr:IsHidden() then
 		ModMiscToolApplyGhostCityStates()
 		ModMiscToolApplyGhostMajorPlayers()
+		ModMiscToolProbeMapConfig()
 	end
 	-- 探针在隐藏时也要跑：它靠“隐藏→显示”的那一刻判定新一轮（内部自己判界面）
 	if ModMiscFrontEndProbeRefresh ~= nil then

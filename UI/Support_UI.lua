@@ -4,6 +4,7 @@ include("Civ6Common")   -- ReadCustomData：读取创建游戏时保存的城邦
 include("ModMiscStore") -- 跨存档存储（存档名编码通道）
 include("ModMiscAssetStore") -- 永久资产放置（读档自动重放）
 include("ModMiscCreateGame") -- 对局内「创建新局 / 换地图」验证（开局探针 + 面板入口）
+include("ModMiscTurnEra") -- 回合数 / 年代 探查与试写（开局探针 + 面板入口）
 print("[ModMiscTool] Support_UI loaded build=" .. tostring(MODMISC_BUILD_TAG))
 
 local allUnitPromotions = {}
@@ -441,6 +442,14 @@ function Initialize()
 		end
 	end
 
+	-- 回合 / 年代：开局探针（一行现状）。重启换图前后一对比就知道回合与年代有没有被复位。
+	if ModMiscTurnEra ~= nil then
+		local ok, err = pcall(ModMiscTurnEra.ReportAfterLoad)
+		if not ok then
+			print("[ModMiscTool][TurnEra] 开局探针失败 -> " .. tostring(err))
+		end
+	end
+
 
 	-- 跨存档探针：启动流程只跑这一次，结论看 Lua.log 里的 [ModMiscTool][Probe] 行
 	m_ProbeLoadIndex = m_ProbeLoadIndex + 1
@@ -477,8 +486,21 @@ ExposedMembers.ModMiscToolUI.RunCrossSaveProbeUI = RunCrossSaveProbeUI
 		ExposedMembers.ModMiscToolUI.ListMapScripts = ModMiscCreateGame.ListMapScripts
 		ExposedMembers.ModMiscToolUI.ApplyMapScript = ModMiscCreateGame.ApplyMapScript
 		ExposedMembers.ModMiscToolUI.ArmCreateGameMarker = ModMiscCreateGame.ArmMarker
-		ExposedMembers.ModMiscToolUI.HostGameInGame = ModMiscCreateGame.HostGame
 		ExposedMembers.ModMiscToolUI.RestartGameInGame = ModMiscCreateGame.RestartGame
+		-- 注意：HostGame **故意不暴露** —— 2026-10-05 实机结论：对局内调用它不报错、
+		-- 也不建新局（静默空操作），详见 API_Verification_Status.md 第 43 条。
+	end
+
+	-- 回合数 / 年代（UI 层）：探查与试写，接口与静态依据见 UI/ModMiscTurnEra.lua
+	if ModMiscTurnEra ~= nil then
+		ExposedMembers.ModMiscToolUI.TurnEra = ModMiscTurnEra
+		ExposedMembers.ModMiscToolUI.DescribeTurnEraContext = ModMiscTurnEra.DescribeContext
+		ExposedMembers.ModMiscToolUI.GetTurnInfo = ModMiscTurnEra.GetTurnInfo
+		ExposedMembers.ModMiscToolUI.SetTurn = ModMiscTurnEra.SetTurn
+		ExposedMembers.ModMiscToolUI.AdjustTurn = ModMiscTurnEra.AdjustTurn
+		ExposedMembers.ModMiscToolUI.SetPlayerEra = ModMiscTurnEra.SetPlayerEra
+		ExposedMembers.ModMiscToolUI.AdjustPlayerEra = ModMiscTurnEra.AdjustPlayerEra
+		ExposedMembers.ModMiscToolUI.SetStartEra = ModMiscTurnEra.SetStartEra
 	end
 
 	-- 永久资产放置（API_Documentation.txt 3.10.2 里写的对外名字，实现是 ModMiscAssetStore）
