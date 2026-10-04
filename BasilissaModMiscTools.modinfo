@@ -129,6 +129,8 @@
             </Properties>
             <File>UI/LeftSideBar.xml</File>
         </AddUserInterfaces>
+        <!-- Automation 调试面板：**默认不注册**（授权者 2026-10-04 决定；它的实验项目都已收尾）。
+             代码与文案都留着，需要时把下面这段 AddUserInterfaces 加回来即可：
         <AddUserInterfaces id="AutomationTestPanel">
             <Properties>
                 <Context>InGame</Context>
@@ -136,10 +138,11 @@
             </Properties>
             <File>UI/AutomationTestPanel.xml</File>
         </AddUserInterfaces>
-        <!-- 开发用的 WorldBuilder 测试面板：**默认不注册**（不加载、无左侧栏入口）。
-             它的功能已经全部通过 API 暴露给其它 mod 调用
-             （ExposedMembers.ModMiscToolScript.* 与 ExposedMembers.ModMiscToolUI.*）。
-             需要调试时把下面这段 AddUserInterfaces 加回来即可：
+        -->
+        <!-- WorldBuilder 测试面板：**默认注册**（2026-10-04 起启用）——
+             它带玩家列表，能直接看出哪些槽位是幽灵，调试幽灵池最方便。
+             它的功能同时也通过 API 暴露给其它 mod（ExposedMembers.ModMiscToolScript.*
+             与 ExposedMembers.ModMiscToolUI.*）。要停用就把下面这段注释掉。 -->
         <AddUserInterfaces id="WorldBuilderTestPanel">
             <Properties>
                 <Context>InGame</Context>
@@ -147,7 +150,6 @@
             </Properties>
             <File>UI/WorldBuilderTestPanel.xml</File>
         </AddUserInterfaces>
-        -->
         <AddUserInterfaces id="ModMiscDebugUI">
             <Properties>
                 <Context>InGame</Context>

@@ -1078,6 +1078,26 @@ local function AttachPanelToInGame()
     return panelRoot
 end
 
+-- 幽灵池摘要：打开面板就打一行，直接看数量（授权者要求“方便查看幽灵玩家数量”）
+local function ReportGhostPoolSummary()
+    local script = ExposedMembers.ModMiscToolScript
+    if script == nil or script.GetGhostPlayerCount == nil then
+        print("[ModMiscTool][Ghost] pool summary: ModMiscToolScript API 不可用")
+        return
+    end
+    local total = script.GetGhostPlayerCount()
+    local available = nil
+    if script.GetAvailableGhostPlayerCount ~= nil then
+        available = script.GetAvailableGhostPlayerCount()
+    end
+    local claimed = nil
+    if total ~= nil and available ~= nil then claimed = total - available end
+    print("[ModMiscTool][Ghost] pool summary: total=" .. tostring(total)
+        .. " available=" .. tostring(available)
+        .. " claimed=" .. tostring(claimed))
+    return total, available, claimed
+end
+
 function OpenWorldBuilderTestPanel()
     local panelRoot = AttachPanelToInGame()
     panelRoot:SetHide(false)
@@ -1086,6 +1106,7 @@ function OpenWorldBuilderTestPanel()
 
     InitializeData()
     CloseOptionList()
+    ReportGhostPoolSummary()
     SetStatus(Locale.Lookup("LOC_MODMISC_WB_TEST_READY"))
 
     print("[ModMiscTool][WorldBuilderTest] panel state: hidden=" .. tostring(panelRoot:IsHidden())

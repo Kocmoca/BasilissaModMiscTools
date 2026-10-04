@@ -994,15 +994,20 @@ local m_GhostLastPollKey = nil
 -- 表里没有的尺寸名走 GHOST_TARGET_DEFAULT。
 -- 调这几个数字即可，不用碰数据库。
 -- ===========================================================================
+-- 数值取得比较满：请求值基本都会顶到**原版上限**，也就是在不改数据库的前提下
+-- 把幽灵池做到最大（池子 = 原版上限 − 玩家选择的城邦数）。
+-- 例：STANDARD 上限 18、玩家选 6 → 请求 18、池子 12。
+-- 授权者判断闪退与玩家数量无关（最初的加载失败是**弹窗报错**、不是闪退），
+-- 所以这里不再保守压量。要收一手就改这张表。
 local GHOST_TARGET_BY_MAP_SIZE = {
-	MAPSIZE_DUEL     = 2,
-	MAPSIZE_TINY     = 4,
-	MAPSIZE_SMALL    = 6,
-	MAPSIZE_STANDARD = 8,
-	MAPSIZE_LARGE    = 12,
-	MAPSIZE_HUGE     = 16,
+	MAPSIZE_DUEL     = 4,
+	MAPSIZE_TINY     = 8,
+	MAPSIZE_SMALL    = 12,
+	MAPSIZE_STANDARD = 16,
+	MAPSIZE_LARGE    = 20,
+	MAPSIZE_HUGE     = 24,
 }
-local GHOST_TARGET_DEFAULT = 6
+local GHOST_TARGET_DEFAULT = 16
 
 -- 当前地图尺寸的标识（"MAPSIZE_STANDARD" 之类）。
 -- MapConfiguration.GetValue("MapSize") 的值可能是字符串，也可能是 {Domain=, Value=} 表
