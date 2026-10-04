@@ -157,6 +157,9 @@ local GHOST_MAJOR_PLAYER_CUSTOM_DATA_KEY = "ModMiscToolMajorPlayerCount"
 local GHOST_FALLBACK_KEEP_CITY_STATES = 12
 -- 前端 hook 没记下人数时的兜底：按“1 个玩家”算边界
 local GHOST_FALLBACK_KEEP_MAJOR_PLAYERS = 1
+-- 当前幽灵 pass 挂在哪个事件上。改挂时机时**这一行和文件末尾的注册一起改**，
+-- 日志里会打出来，方便定位“这次跑的是哪种时机”。
+local GHOST_PASS_TRIGGER_NAME = "LoadGameViewStateDone"
 local m_GhostInitDone = false
 
 local function HandOffGhostCityStateCount()
@@ -185,32 +188,34 @@ local function HandOffGhostCityStateCount()
     end
 
     -- 一次判定搞定：id 大于 (主要文明数 + 城邦数 - 1) 的城邦槽位全部搬成幽灵
-    print("[ModMiscTool][Ghost] pass start trigger=LocalPlayerTurnBegin keepMajors="
-        .. tostring(savedMajors) .. " keepCityStates=" .. tostring(savedCount))
+    print("[ModMiscTool][Ghost] pass start trigger=" .. GHOST_PASS_TRIGGER_NAME
+        .. " keepMajors=" .. tostring(savedMajors)
+        .. " keepCityStates=" .. tostring(savedCount))
     script.InitializeGhostPlayers(savedCount, savedMajors)
 end
 
 -- ===========================================================================
--- 【时机】挂在 LocalPlayerTurnBegin，**不是** LoadGameViewStateDone
+-- 【时机】当前**仍挂在 LoadGameViewStateDone**（授权者要求先按现状测一轮再调）
 --
--- 授权者实机确认：加载失败是在加入幽灵机制之后才出现的 ⇒ 问题就出在这套机制。
--- 两个可疑点，先掐掉确定的那个 —— **时机**：
---   LoadGameViewStateDone 是**加载过渡阶段**，本项目此前就在这里踩过坑
---   （在同一个事件里循环给 20+ 个玩家换领袖/文明，开局直接挂，日志停在
---    `LoadScreen: OnLoadGameViewStateDone`，InGame UI 一点没加载）。
---   而幽灵 pass 要在这一个事件里对 ~50 个玩家各做一次 InitUnit + Kill(×3) ——
---   同一量级的引擎操作压在同一个时刻，小概率挂掉完全说得通（也解释了为什么是“小概率”）。
+-- 背景：授权者确认，加载失败是**加入幽灵机制之后**才出现的 ⇒ 问题出在这套机制。
+-- 可疑点之一是**时机** —— LoadGameViewStateDone 是加载过渡阶段，本项目此前就在
+-- 同一个事件上踩过坑（循环给 20+ 玩家换领袖/文明 → 开局直接挂，日志停在
+-- `LoadScreen: OnLoadGameViewStateDone`）。而幽灵 pass 要在这一个事件里对 ~50 个
+-- 玩家各做一次 InitUnit + Kill(×3)，同一量级的操作压在同一个时刻，小概率挂掉说得通。
 --
---   LocalPlayerTurnBegin（第 1 回合、本地玩家回合开始）是安全时机：
---   开局已经完成、AI 还没行动，城邦手里还是开拓者、尚未落地建城 ——
---   搬家逻辑与原来完全等价，但不再压在加载过渡上。
---   另一个可疑点（场上玩家过多、出生位置重叠）已经用 GhostPlayers_MapSizes.sql
---   按地图尺寸分档压过一轮；两条一起上，再看加载失败还出不出现。
+-- 【改法已备好，两行一起改】测完要调时：
+--     GHOST_PASS_TRIGGER_NAME = "LocalPlayerTurnBegin"        （上面的常量，只影响日志）
+--     Events.LocalPlayerTurnBegin.Add(HandOffGhostCityStateCount)   （文件末尾的注册）
+-- LocalPlayerTurnBegin（第 1 回合本地玩家回合开始）时开局已完成、AI 还没动、
+-- 城邦手里还是开拓者尚未建城 —— 搬家逻辑完全等价，但不再压在加载过渡上。
+-- 另一个可疑点（场上玩家过多、出生位置重叠）已由 GhostPlayers_MapSizes.sql
+-- 按地图尺寸分档压过一轮。
 --
--- 依赖：其他 mod 若在 LoadGameViewStateDone 就要用幽灵池，会拿到空池 —— 需要就
--- 改在 LocalPlayerTurnBegin 之后取，或先调 ModMiscToolScript.InitializeGhostPlayers。
+-- 注意：一旦改挂 LocalPlayerTurnBegin，其他 mod 若在 LoadGameViewStateDone 就要用
+-- 幽灵池会拿到空池 —— 需要就改在 LocalPlayerTurnBegin 之后取，或先自己调
+-- ModMiscToolScript.InitializeGhostPlayers。
 -- ===========================================================================
-Events.LocalPlayerTurnBegin.Add(HandOffGhostCityStateCount)
+Events.LoadGameViewStateDone.Add(HandOffGhostCityStateCount)
 
 -- ===========================================================================
 -- WriteCustomData / ReadCustomData 跨存档探针
