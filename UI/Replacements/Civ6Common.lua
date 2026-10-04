@@ -1113,12 +1113,17 @@ local function ModMiscToolGetMapSizeKey()
 	return nil, "raw=" .. tostring(raw) .. " 不等于任何候选（" .. table.concat(parts, " ") .. "）"
 end
 
--- 每个 context 各打一次：原来是一次性开关，结果只在 MainMenu 打过 ——
--- 而 MainMenu 里地图还没配置，读到的数字很可能是垃圾值。
--- 真正要看的“创建游戏”界面（地图已选好）从来没打过。
+-- 【开关】地图尺寸诊断：排查“尺寸识别/上限没生效”时打开。
+-- 曾经默认开着，但每个 context 会刷 30+ 行（整张 MapSizes 逐行打），
+-- 2026-10-04 确认尺寸识别与分档都正常后改回默认关闭。
+-- 打开方式：改成 true，重新打包；只在“创建游戏”界面里打。
+local MODMISC_MAPSIZE_DIAG_ENABLED = false
+
+-- 每个 context 各打一次（原来一次性开关只在 MainMenu 打过，而那里地图还没配置）
 local m_MapSizeDiagByContext = {}
 
 local function ModMiscToolDumpMapSizeDiagnostics()
+	if not MODMISC_MAPSIZE_DIAG_ENABLED then return end
 	local contextID = "?"
 	if ContextPtr ~= nil and ContextPtr.GetID ~= nil then
 		local ok, id = pcall(function() return ContextPtr:GetID() end)
