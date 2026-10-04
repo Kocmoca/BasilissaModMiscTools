@@ -307,6 +307,12 @@
 		<Row Tag="LOC_MODMISC_AUTOMATION_TEST_TURNS_UNLIMITED">
 			<Text>No limit</Text>
 		</Row>
+		<Row Tag="LOC_MODMISC_AUTOMATION_TEST_REPLAY_ASSETS">
+			<Text>Replay assets</Text>
+		</Row>
+		<Row Tag="LOC_MODMISC_AUTOMATION_TEST_REPLAY_ASSETS_DONE">
+			<Text>Replayed {1_Placed}/{2_Total} persistent asset placements</Text>
+		</Row>
 		<Row Tag="LOC_MODMISC_AUTOMATION_TEST_RESTORE_UI">
 			<Text>Restore UI</Text>
 		</Row>

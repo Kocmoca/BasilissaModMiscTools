@@ -123,6 +123,14 @@ RemoveAllData()        -- 清空整张存储（返回删掉的键数）
 | 切视角后点**城市 banner** → UI 全部消失 | `[原版缺陷，已给兜底]`。`InGame.lua` 的 `BulkHide` 是**引用计数**（`m_bulkHideTracker`）：某次 `BulkHide(true, x)` 的配对 `false` 没跑到（报错 / 上下文被顶掉），计数卡在 ≥1，`WorldViewControls / HUD / PartialScreens / Screens / TopLevelHUD` **五大组永久隐藏**。原版为此留了调试热键 **Shift+Alt+B**（`InGame.lua` “DEBUG: Force unhiding”）——**安卓没键盘，等于没有**。 |
 | 兜底 | 本 mod 提供 `ExposedMembers.ModMiscToolUI.RestoreInGameUI()`，把五大组强制 `SetHide(false)`（就是 BulkHide 内部做的同一件事，只是不碰那个跨 context 拿不到的计数器）；测试面板上有「**恢复 UI**」按钮。 |
 
+**资产预览与永久放置（2026-10-04 实机）**
+
+| 项 | 状态 | 说明 |
+|---|---|---|
+| `AssetPreview.Spoof*At` / `Clear*` / `Destroy*`（UI 层） | `[已验证可用]` | 实机：能在任意地块摆出城市/区域/建筑/地标/单位模型，也能按地块或整体清除。**纯视觉**，不改变游戏状态。 |
+| 预览能否随存档保留 | `[已验证失败]` | 预览不进存档 —— 重新读档后模型全部消失。 |
+| 本 mod 的永久放置（`UI/ModMiscAssetStore.lua`） | `[已验证可用]`（写入/读取链路） | 把**已解析好的 AssetPreview 调用**（`{fn, args}`）记进 CustomData。CustomData 随普通存档序列化、读档还原（第 21 条），开局由 `Support_UI` 重放一次。注意顺序：**先放置、再存档**（记的是存档那一刻的快照）。 |
+
 ## 4. WorldBuilder（地图编辑器）接口
 
 | # | 接口 / 方法 | 状态 | 证据与备注 |

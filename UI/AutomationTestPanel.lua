@@ -15,6 +15,7 @@
 include("InstanceManager")
 include("Civ6Common")  -- ReadCustomData / WriteCustomData（本 mod 的 replacement 版本）
 include("ModMiscStore")  -- 跨存档存储（存档名编码通道）：本面板的存储读写按钮用它
+include("ModMiscAssetStore")  -- 永久资产放置（记录落 CustomData，读档自动重放）
 print("[ModMiscTool][AutomationTest] panel loading build=" .. tostring(MODMISC_BUILD_TAG))
 
 -- ===========================================================================
@@ -822,43 +823,37 @@ end
 -- AssetPreview：摆放 / 清除
 -- ===========================================================================
 
-local function PlaceSelectedAsset(plotIndex)
-    if m_SelectedAssetEntry == nil then
-        SetError("PlaceAsset", "no asset selected")
-        return
-    end
+-- 把“选中的资产”解析成一次具体的 AssetPreview 调用：{ fn = 函数名, args = {…} }
+-- 之所以解析完再记（而不是记“选了哪个资产”），是为了读档重放时不必再查资产库，
+-- 也就不会因为索引变化放错东西。
+local function BuildSelectedAssetCall(plotIndex)
+    if m_SelectedAssetEntry == nil then return nil, nil, "no asset selected" end
     local plot = Map.GetPlotByIndex(plotIndex)
-    if plot == nil then
-        SetError("PlaceAsset", "plot is nil")
-        return
-    end
+    if plot == nil then return nil, nil, "plot is nil" end
+
     local x, y = plot:GetX(), plot:GetY()
     local entry = m_SelectedAssetEntry
     local category = entry.Key
-    local ok, err
 
     if category == "CITY" then
-        ok, err = pcall(AssetPreview.SpoofCityAt, x, y, entry.CivIndex, entry.EraIndex, 22)
+        return "SpoofCityAt", { x, y, entry.CivIndex, entry.EraIndex, 22 }
+
     elseif category == "DISTRICT_BASE" then
         local listOk, list = AssetCall("GetDistrictBaseList", entry.DistrictIndex)
         local props = nil
         if listOk and list ~= nil then
             for _, value in pairs(list) do props = value; break end
         end
-        if props == nil then
-            SetError("PlaceAsset", "no district base props")
-            return
-        end
-        ok, err = pcall(AssetPreview.SpoofDistrictBaseAt, x, y,
-            props.civ, props.era, props.appeal, 0, "Worked", entry.DistrictIndex, props.index)
+        if props == nil then return nil, nil, "no district base props" end
+        return "SpoofDistrictBaseAt",
+            { x, y, props.civ, props.era, props.appeal, 0, "Worked", entry.DistrictIndex, props.index }
+
     elseif category == "BUILDING" then
         local props = entry.Props
-        if props == nil then
-            SetError("PlaceAsset", "no building props")
-            return
-        end
-        ok, err = pcall(AssetPreview.SpoofBuildingAt, x, y,
-            props.civ, props.era, props.appeal, "Worked", entry.DistrictIndex, entry.BuildingHash)
+        if props == nil then return nil, nil, "no building props" end
+        return "SpoofBuildingAt",
+            { x, y, props.civ, props.era, props.appeal, "Worked", entry.DistrictIndex, entry.BuildingHash }
+
     elseif category == "LANDMARK" then
         local listOk, list = AssetCall("GetLandmarkAssetList", entry.LandmarkIndex)
         local props, resourceHash = nil, nil
@@ -871,30 +866,37 @@ local function PlaceSelectedAsset(plotIndex)
                 break
             end
         end
-        if props == nil then
-            SetError("PlaceAsset", "no landmark props")
-            return
-        end
-        ok, err = pcall(AssetPreview.SpoofLandmarkAt, x, y,
-            props.civ, props.era, props.appeal, resourceHash, "Worked", entry.LandmarkIndex, props.variant)
+        if props == nil then return nil, nil, "no landmark props" end
+        -- nil 换成 0：记录要序列化成一行字符串，数组里不能有空洞；
+        -- 0 表示“没有资源”，与原调用语义一致
+        return "SpoofLandmarkAt",
+            { x, y, props.civ, props.era, props.appeal, resourceHash or 0, "Worked",
+              entry.LandmarkIndex, props.variant or 0 }
+
     elseif category == "UNIT" then
-        local unitHash = entry.UnitHash
-        local cultureHash = entry.CultureHash or 0
-        if unitHash == nil then
-            SetError("PlaceAsset", "no unit hash")
-            return
-        end
-        ok, err = pcall(AssetPreview.SpoofUnitAt, x, y, cultureHash, unitHash)
-    else
-        SetError("PlaceAsset", "unknown asset category " .. tostring(category))
+        if entry.UnitHash == nil then return nil, nil, "no unit hash" end
+        return "SpoofUnitAt", { x, y, entry.CultureHash or 0, entry.UnitHash }
+    end
+
+    return nil, nil, "unknown asset category " .. tostring(category)
+end
+
+local function PlaceSelectedAsset(plotIndex)
+    local fnName, args, err = BuildSelectedAssetCall(plotIndex)
+    if fnName == nil then
+        SetError("PlaceAsset", err)
         return
     end
 
+    -- 永久放置：摆出来的同时把这次调用记进 CustomData（随存档保存），
+    -- 读档时 ModMiscAssetStore 会自动重放（见 UI/ModMiscAssetStore.lua）。
+    local ok, placeErr = ModMiscAssetStore.PlaceAndRecord(fnName, args)
     if not ok then
-        SetError("PlaceAsset", err)
-    else
-        SetResult("PlaceAsset", category .. " @" .. tostring(plotIndex))
+        SetError("PlaceAsset", placeErr)
+        return
     end
+    SetResult("PlaceAsset", fnName .. " @plot " .. tostring(plotIndex)
+        .. "（已记录 " .. tostring(ModMiscAssetStore.GetCount()) .. " 条）")
 end
 
 local function PlaceAsset()
@@ -925,6 +927,9 @@ local function ClearPlotAssetAt(plotIndex)
         if not ok2 then print("[ModMiscTool][AutomationTest] DestroyAt error: " .. tostring(err2)) end
     end
 
+    -- 记录也要删，否则读档重放会把它又摆回来
+    local removed = ModMiscAssetStore ~= nil and ModMiscAssetStore.RemoveAt(x, y) or 0
+    table.insert(results, "records=" .. tostring(removed))
     SetResult("ClearPlotAsset", table.concat(results, " "))
 end
 
@@ -953,7 +958,23 @@ local function ClearAllAssets()
         table.insert(results, action[1] .. "=" .. tostring(ok))
         if not ok then print("[ModMiscTool][AutomationTest] " .. action[1] .. " error: " .. tostring(err)) end
     end
+    -- 记录一并清空，否则读档时会被重放回来
+    if ModMiscAssetStore ~= nil then
+        table.insert(results, "records=" .. tostring(ModMiscAssetStore.ClearAllRecords()))
+    end
     SetResult("ClearAllAssets", table.concat(results, " "))
+end
+
+-- 手动重放（读档时已自动重放一次；这个是给“想立刻再看一眼”用的）
+local function ReplayAssets()
+    if ModMiscAssetStore == nil then
+        SetError("ReplayAssets", "ModMiscAssetStore 模块没加载")
+        return
+    end
+    ModMiscAssetStore.Load()
+    local placed = ModMiscAssetStore.RestoreAll()
+    SetResult("ReplayAssets", Locale.Lookup("LOC_MODMISC_AUTOMATION_TEST_REPLAY_ASSETS_DONE",
+        placed, ModMiscAssetStore.GetCount()))
 end
 
 
@@ -1031,6 +1052,9 @@ function OnInit()
         function() SafeCall("StopAutoplay", StopAutoplayAndReturn) end)
     Controls.AutomationTestLookAtCapital:RegisterCallback(Mouse.eLClick,
         function() SafeCall("LookAtCapital", LookAtSelectedCapital) end)
+
+    Controls.AutomationTestReplayAssets:RegisterCallback(Mouse.eLClick,
+        function() SafeCall("ReplayAssets", ReplayAssets) end)
 
     Controls.AutomationTestRestoreUI:RegisterCallback(Mouse.eLClick,
         function() SafeCall("RestoreUI", RestoreInGameUI) end)

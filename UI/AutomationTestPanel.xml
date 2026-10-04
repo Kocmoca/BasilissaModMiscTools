@@ -52,6 +52,9 @@
             <!-- UI 全消失时的急救：等价原版调试热键 Shift+Alt+B（安卓没键盘） -->
             <GridButton ID="AutomationTestRestoreUI" Anchor="L,T" Offset="310,314" Size="280,60"
                         Style="ButtonControl" FontSize="26" String="LOC_MODMISC_AUTOMATION_TEST_RESTORE_UI" />
+            <!-- 立即按记录重放一次永久放置（读档时本来会自动重放，这个是手动触发） -->
+            <GridButton ID="AutomationTestReplayAssets" Anchor="L,T" Offset="600,314" Size="280,60"
+                        Style="ButtonControl" FontSize="26" String="LOC_MODMISC_AUTOMATION_TEST_REPLAY_ASSETS" />
 
             <!-- 跨存档存储（ModMiscStore：把数据编进配置档的文件名，跨进程可读） -->
             <GridButton ID="AutomationTestStoreWrite" Anchor="L,T" Offset="20,382" Size="280,60"

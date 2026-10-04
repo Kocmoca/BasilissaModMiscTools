@@ -958,6 +958,49 @@ CanUnitTypeGetExp(unitIndex)
   这是这条通道的固有代价；`RemoveData` / `RemoveAllData` 可随时清理。
 * 存储档的名字是编码过的 hex，玩家在列表里看到的是乱码 —— 建议只存少量键值。
 
+------------------------------------------------------------------------------
+### 3.10 AssetPreview 资产预览 / 永久资产放置（ModMiscAssetStore）
+------------------------------------------------------------------------------
+
+#### 3.10.1 引擎自带的 AssetPreview（只影响画面，不进存档）
+
+`AssetPreview` 是引擎在 **UI 层**提供的全局对象，用来在任意地块上“摆”出资产模型
+（城市 / 区域底座 / 建筑 / 地标 / 单位）。它**纯视觉**：不改变游戏状态、不属于存档，
+**存档再读回来就没了**。原版自己也在用（`Automation_Profile.lua` 拿它铺满地图做跑分）。
+
+常用调用（全部 UI 层）：
+
+    AssetPreview.SpoofCityAt(x, y, civIndex, eraIndex, 22)
+    AssetPreview.SpoofDistrictBaseAt(x, y, civ, era, appeal, 0, "Worked", districtIndex, variantIndex)
+    AssetPreview.SpoofBuildingAt(x, y, civ, era, appeal, "Worked", districtIndex, buildingHash)
+    AssetPreview.SpoofLandmarkAt(x, y, civ, era, appeal, resourceHash, "Worked", landmarkIndex, variant)
+    AssetPreview.SpoofUnitAt(x, y, cultureHash, unitHash)
+
+    AssetPreview.ClearLandmarkAt(x, y)   AssetPreview.DestroyAt(x, y)
+    AssetPreview.ClearLandmarkSystem()   AssetPreview.ClearUnitSystem()   AssetPreview.DestroyAll()
+
+#### 3.10.2 本 mod 的永久放置（落入存档、读档自动重放）
+
+因为预览不进存档，本 mod 把**已经解析好的调用**记进 CustomData（随普通存档序列化、
+读档还原），开局时重放。记录的是 `{ fn = "SpoofCityAt", args = {…} }` 这种调用规格，
+而不是“选中了哪个资产”——这样读档时不必再查资产库，也不会因索引变化放错。
+
+接口（`ExposedMembers.ModMiscToolUI.*`）：
+
+    PlaceAssetPersistent(fnName, args)   放置 + 记录 + 落 CustomData（args 是数组 {x, y, …}）
+    RemovePersistentAssetsAt(x, y)       删掉该地块的记录（只动记录，不动画面）
+    ClearPersistentAssets()              清空记录（返回清掉的条数）
+    RestorePersistentAssets()            按记录重放（读档时已自动重放一次）
+    GetPersistentAssetCount()            记录条数
+    GetPersistentAssets()                记录副本
+
+注意：
+* **顺序很重要**：CustomData 记的是**存档那一刻**的快照 —— 要“永久”就得
+  **先放置、再存档**；存档之后再放的，读档时不会出现。
+* 重放只在 `Support_UI` 里触发一次（模块本身不挂事件，免得每个 context 各重放一遍）。
+* 测试面板上的「放置资产 / 清除地块资产 / 清除全部资产」已经接了这套，
+  另有「重放放置」按钮可手动触发一次重放。
+
 ==============================================================================
 ## 四、数据库表（供其他 mod 插入数据）
 ==============================================================================

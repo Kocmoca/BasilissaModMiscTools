@@ -2,6 +2,7 @@ include("ModTool_Support_Functions.lua")
 include("ModTool_Support_UI.lua")
 include("Civ6Common")   -- ReadCustomData：读取创建游戏时保存的城邦数量
 include("ModMiscStore") -- 跨存档存储（存档名编码通道）
+include("ModMiscAssetStore") -- 永久资产放置（读档自动重放）
 print("[ModMiscTool] Support_UI loaded build=" .. tostring(MODMISC_BUILD_TAG))
 
 local allUnitPromotions = {}
@@ -394,6 +395,15 @@ function Initialize()
 	end
 
 	RunStoreProbeInGame()
+
+	-- 永久资产放置：读档/开局时按记录重放一次
+	-- （放在 Support_UI 里只跑一次；模块本身不挂事件，免得每个 context 各重放一遍）
+	if ModMiscAssetStore ~= nil then
+		local ok, placed = pcall(ModMiscAssetStore.LoadAndRestore)
+		if not ok then
+			print("[ModMiscTool][AssetStore] 重放失败 -> " .. tostring(placed))
+		end
+	end
 
 	-- ===========================================================================
 	-- [跨存档探针·对局内] Options 那套存储，对局内 UI 能不能读、能不能写

@@ -100,6 +100,7 @@
         <ImportFiles id="Imports">
             <File>ModTool_DataStore.lua</File>
             <File>UI/ModMiscStore.lua</File>
+            <File>UI/ModMiscAssetStore.lua</File>
             <File>ModTool_Support_Functions.lua</File>
             <File>ModTool_Support_UI.lua</File>
             <File>ModTool_WorldBuilderAPI.lua</File>
@@ -208,6 +209,7 @@
         <File>UI/Replacements/Civ6Common.lua</File>
         <File>UI/FrontEnd_SaveProbe.lua</File>
         <File>UI/ModMiscStore.lua</File>
+        <File>UI/ModMiscAssetStore.lua</File>
         <!-- texts -->
         <File>Text.xml</File>
         <File>Text_CN.xml</File>
