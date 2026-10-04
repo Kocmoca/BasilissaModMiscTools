@@ -866,11 +866,32 @@ end
 -- ===========================================================================
 
 -- 构建标记：前端与 gameplay 是不同 context，各自带一份字面量
--- 2026-10-04-A：加入前端存读档探针的调用；B：探针默认关闭；C：测试期临时打开
+-- 2026-10-04-A：加入探针调用；B：探针默认关闭；C：测试期临时打开；D：实验结束关回 + io 探针
 -- （ModTool.lua 那份 gameplay 的标记未动）
-local MODMISC_HOOK_BUILD_TAG = "2026-10-04-C"
+local MODMISC_HOOK_BUILD_TAG = "2026-10-04-D"
 local GHOST_CITY_STATE_CUSTOM_DATA_KEY = "ModMiscToolCityStateCount"
 local GHOST_MAJOR_PLAYER_CUSTOM_DATA_KEY = "ModMiscToolMajorPlayerCount"
+
+-- ===========================================================================
+-- [能力探针] 这个 Lua 环境到底有没有 io / os 库？
+--
+-- 跨存档那条线已经查完：游戏自带的通道（CustomData 不落盘、配置档不带 CustomData、
+-- 对局内读配置档卡死）都走不通。剩下唯一没查的是「mod 自己往磁盘写文件」——
+-- 如果 io.open 存在且可写，那才可能有真正的跨存档存储。
+-- 这里只报类型，不写任何文件（零副作用）；下一步再决定要不要试写。
+-- ===========================================================================
+-- 放在构建标记之后：函数体里要读 MODMISC_HOOK_BUILD_TAG，写前面会解析成全局 nil
+local function ModMiscProbeIOLibrary()
+	local hasIO = (io ~= nil) and "y" or "n"
+	local hasOpen = (io ~= nil and io.open ~= nil) and "y" or "n"
+	local hasOS = (os ~= nil) and "y" or "n"
+	print("[ModMiscTool][IOProbe] front-end: io=" .. hasIO
+		.. " io.open=" .. hasOpen
+		.. " os=" .. hasOS
+		.. " (build=" .. tostring(MODMISC_HOOK_BUILD_TAG) .. ")")
+end
+
+ModMiscProbeIOLibrary()
 
 -- 幽灵池的槽位预算：MAX_PLAYERS(64) 减去野蛮人与自由城市两个固定槽位。
 -- 主要文明和城邦抢的是同一批槽位，所以给城邦预留 GHOST_RESERVED_MINOR_SLOTS 个，
@@ -964,10 +985,10 @@ local function ModMiscToolApplyGhostMajorPlayers()
 end
 
 -- ===========================================================================
--- 前端存档/读档探针（UI/FrontEnd_SaveProbe.lua）—— **测试期临时打开**
+-- 前端存档/读档探针（UI/FrontEnd_SaveProbe.lua）—— **默认关闭**
 --
--- 【当前状态：ON】为了跑「配置档能否把 CustomData 跨存档带回来」那组实验，
--- 由仓库侧直接改成 true（免得授权者再去改代码）。实验跑完就改回 false。
+-- 【当前状态：OFF】「配置档能否把 CustomData 跨存档带回来」那组实验已经跑完，
+-- 结论是**不能**（见 API_Verification_Status.md 第 39 条），所以按原决定关回去。
 --
 -- 探针做三件事：写 CustomData → 查存档列表 → 档在就强制读、不在就创建，
 -- 读档后补跑游戏菜单那套收尾（SetToPreGame + RegenerateSeeds + 清领袖/文明选择）。
@@ -985,7 +1006,7 @@ end
 -- 界面自己再 include 一次，日志里“setup hook installed”打两行就是这个原因），
 -- 所以探针用全局函数名做一次幂等，免得同一个 context 里塞进两份探针状态。
 -- ===========================================================================
-local MODMISC_FRONT_END_PROBE_ENABLED = true
+local MODMISC_FRONT_END_PROBE_ENABLED = false
 
 if MODMISC_FRONT_END_PROBE_ENABLED
 	and ModMiscFrontEndProbeRefresh == nil
