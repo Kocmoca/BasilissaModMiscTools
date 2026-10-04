@@ -866,9 +866,9 @@ end
 -- ===========================================================================
 
 -- 构建标记：前端与 gameplay 是不同 context，各自带一份字面量
--- 2026-10-04-A：加入探针调用；B：探针默认关闭；C：测试期临时打开；D：关回 + io 探针；E：UserOption 跨存档探针
+-- A：探针调用；B：探针默认关闭；C：测试期打开；D：关回 + io 探针；E：UserOption 探针；F：存档名存储探针
 -- （ModTool.lua 那份 gameplay 的标记未动）
-local MODMISC_HOOK_BUILD_TAG = "2026-10-04-E"
+local MODMISC_HOOK_BUILD_TAG = "2026-10-04-F"
 local GHOST_CITY_STATE_CUSTOM_DATA_KEY = "ModMiscToolCityStateCount"
 local GHOST_MAJOR_PLAYER_CUSTOM_DATA_KEY = "ModMiscToolMajorPlayerCount"
 
@@ -1081,6 +1081,14 @@ if MODMISC_FRONT_END_PROBE_ENABLED
 	include("FrontEnd_SaveProbe")
 end
 
+-- 跨存档存储探针（UI/FrontEnd_StoreProbe.lua）：把 payload 编进「配置档的名字」，
+-- 下一轮从存档列表读回来。它就是“利用普通存档”那条路的最小实现。
+-- 与上面那个探针不同，这个**默认开着**（只多一个小档，副作用小，且是当前唯一活路）；
+-- 结论出来后再决定去留。
+if ModMiscStoreProbeRefresh == nil and ModMiscToolIsGameSetupContext() then
+	include("FrontEnd_StoreProbe")
+end
+
 -- [已验证失败] Events.SystemUpdateUI 在创建游戏界面根本不触发（只分辨率变化/恢复 UI/触摸输入），
 -- hook 会完全静默；因此轮询只能用 ContextPtr 的刷新回调。
 -- 创建游戏界面里 SystemUpdateUI 只在分辨率变化时触发，轮询要用 ContextPtr 的刷新回调
@@ -1094,6 +1102,9 @@ local function ModMiscToolGhostRefresh(delta)
 	-- 探针在隐藏时也要跑：它靠“隐藏→显示”的那一刻判定新一轮（内部自己判界面）
 	if ModMiscFrontEndProbeRefresh ~= nil then
 		ModMiscFrontEndProbeRefresh()
+	end
+	if ModMiscStoreProbeRefresh ~= nil then
+		ModMiscStoreProbeRefresh()
 	end
 	ContextPtr:RequestRefresh()
 end

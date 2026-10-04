@@ -51,6 +51,14 @@
             </Properties>
             <File>UI/FrontEnd_SaveProbe.lua</File>
         </ImportFiles>
+        <!-- 跨存档存储探针：把 payload 编进「配置档的名字」，下一轮从存档列表读回来。
+             这是“利用普通存档”那条路的最小实现；默认开启，结论出来后再定去留。 -->
+        <ImportFiles id="FrontEndStoreProbe">
+            <Properties>
+                <LoadOrder>10000</LoadOrder>
+            </Properties>
+            <File>UI/FrontEnd_StoreProbe.lua</File>
+        </ImportFiles>
     </FrontEndActions>
     <InGameActions>
         <UpdateDatabase id="Base">
@@ -197,6 +205,7 @@
         <File>UI/ButtonAdjust_PHONE.lua</File>
         <File>UI/Replacements/Civ6Common.lua</File>
         <File>UI/FrontEnd_SaveProbe.lua</File>
+        <File>UI/FrontEnd_StoreProbe.lua</File>
         <!-- texts -->
         <File>Text.xml</File>
         <File>Text_CN.xml</File>
