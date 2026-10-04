@@ -27,9 +27,10 @@
 -- ===========================================================================
 
 local MODMISC_STORE_PREFIX = "ModMiscStore~"
-local MODMISC_STORE_BUILD_TAG = "2026-10-04-C"
--- 自检：每轮写一份 ms=… payload 并读回上一轮的（验证通道还活着）。测试期开着。
-local MODMISC_STORE_SELFTEST = true
+local MODMISC_STORE_BUILD_TAG = "2026-10-04-D"
+-- 自检：每轮写一份 ms=… payload 并读回上一轮的（验证通道还活着）。
+-- 通道已验证完毕（2026-10-04），关掉 —— 正式用起来它就是噪音键。
+local MODMISC_STORE_SELFTEST = false
 -- 值长度上限（hex 后翻倍，文件名总长别顶到系统上限）
 local MODMISC_STORE_MAX_VALUE_BYTES = 120
 -- 早期探测阶段留下的档：扫到就顺手删掉，免得一直在列表里当“非存储档”碍眼
@@ -354,6 +355,23 @@ function ModMiscStore.Save(key, value)
 
     Log("已请求写入 [" .. tostring(key) .. "] = [" .. text .. "]")
     return true
+end
+
+-- 删除一个键（连同它的档）
+function ModMiscStore.Remove(key)
+    if key == nil then return false end
+    local name = tostring(key)
+    local entry = m_Entries[name]
+    m_Data[name] = nil
+    m_Entries[name] = nil
+    if entry == nil then
+        Log("Remove [" .. name .. "]：没找到这个键的档（可能还没扫描过）")
+        return false
+    end
+    if UI == nil or UI.DeleteSavedGame == nil then return false end
+    local ok, err = pcall(UI.DeleteSavedGame, entry)
+    Log(ok and ("已删除 [" .. name .. "]") or ("删除 [" .. name .. "] 失败 -> " .. tostring(err)))
+    return ok
 end
 
 -- ===========================================================================

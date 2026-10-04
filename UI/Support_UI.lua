@@ -432,5 +432,20 @@ ExposedMembers.ModMiscToolUI.RunCrossSaveProbeUI = RunCrossSaveProbeUI
 	-- 跨存档数据存取（UI 侧）：写 CustomData，**写完要再存一次档**才落盘
 	ExposedMembers.ModMiscToolUI.SetCustomData = SetModMiscCustomData
 	ExposedMembers.ModMiscToolUI.GetCustomData = GetModMiscCustomData
+
+	-- 跨存档存储（存档名编码通道，已实机验证）：给别的 mod 直接用的接口。
+	-- 用法：RefreshData() → OnDataReady 回调里 GetData(key)；
+	--       SaveData(key, value) 异步落盘（内部先写新档、SaveComplete 后删旧档）。
+	-- 数据在 UI 层（前端与对局内 UI 都能用）；gameplay 侧拿不到，需要就经 ExposedMembers 转。
+	if ModMiscStore ~= nil then
+		ExposedMembers.ModMiscToolUI.SaveData = ModMiscStore.Save
+		ExposedMembers.ModMiscToolUI.GetData = ModMiscStore.Get
+		ExposedMembers.ModMiscToolUI.GetAllData = ModMiscStore.GetAll
+		ExposedMembers.ModMiscToolUI.RemoveData = ModMiscStore.Remove
+		ExposedMembers.ModMiscToolUI.RefreshData = ModMiscStore.Refresh
+		ExposedMembers.ModMiscToolUI.IsDataReady = ModMiscStore.IsReady
+		ExposedMembers.ModMiscToolUI.OnDataReady = ModMiscStore.OnReady
+		ExposedMembers.ModMiscToolUI.StoreGetBuildTag = function() return ModMiscStore.BuildTag end
+	end
 end
 Events.LoadGameViewStateDone.Add(Initialize)

@@ -307,6 +307,18 @@
 		<Row Tag="LOC_MODMISC_AUTOMATION_TEST_TURNS_UNLIMITED">
 			<Text>No limit</Text>
 		</Row>
+		<Row Tag="LOC_MODMISC_AUTOMATION_TEST_STORE_WRITE">
+			<Text>Store write</Text>
+		</Row>
+		<Row Tag="LOC_MODMISC_AUTOMATION_TEST_STORE_READ">
+			<Text>Store read</Text>
+		</Row>
+		<Row Tag="LOC_MODMISC_AUTOMATION_TEST_STORE_CLEAR">
+			<Text>Store clear</Text>
+		</Row>
+		<Row Tag="LOC_MODMISC_AUTOMATION_TEST_STORE_CONTENT">
+			<Text>Cross-save store: {1_List}</Text>
+		</Row>
 		<Row Tag="LOC_MODMISC_AUTOMATION_TEST_VIEW_PLAYER">
 			<Text>View Selected Player</Text>
 		</Row>

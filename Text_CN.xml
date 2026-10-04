@@ -307,6 +307,18 @@
 		<Replace Tag="LOC_MODMISC_AUTOMATION_TEST_TURNS_UNLIMITED" Language="zh_Hans_CN">
 			<Text>不限回合</Text>
 		</Replace>
+		<Replace Tag="LOC_MODMISC_AUTOMATION_TEST_STORE_WRITE" Language="zh_Hans_CN">
+			<Text>存储写入</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_AUTOMATION_TEST_STORE_READ" Language="zh_Hans_CN">
+			<Text>存储读取</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_AUTOMATION_TEST_STORE_CLEAR" Language="zh_Hans_CN">
+			<Text>存储清空</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_AUTOMATION_TEST_STORE_CONTENT" Language="zh_Hans_CN">
+			<Text>跨存档存储：{1_List}</Text>
+		</Replace>
 		<Replace Tag="LOC_MODMISC_AUTOMATION_TEST_VIEW_PLAYER" Language="zh_Hans_CN">
 			<Text>切到选中玩家视角</Text>
 		</Replace>

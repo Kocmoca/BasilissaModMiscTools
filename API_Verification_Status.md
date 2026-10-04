@@ -80,6 +80,25 @@
 | **B′** | `io` 库（mod 自己写文件） | `[已验证失败]` | 实机 `[IOProbe] io=n io.open=n os=y` —— **安卓端 Lua 没有 io 库**，这条路直接断。 |
 | **A′** | `Options.SetUserOption` 存自定义键 | `[已验证失败]` | 实机：`写入失败 -> [ModMiscTool] CrossSaveProbe is not a registered option.` 引擎会校验选项是否注册；而注册表在引擎内部（`PlayByCloudNotifyRemind` 这类键在**全部数据文件里都搜不到声明**），mod 注册不了新选项 ⇒ 不通。<br>顺带发现：Civ6 里 **`pcall` 挡不住日志** —— 被捕获的错误照样打 `Runtime Error` + traceback。 |
 
+**跨存档存储的对外接口（`UI/ModMiscStore.lua`，已实机验证）**
+
+```lua
+-- 本 mod 内直接调 ModMiscStore.*；外部 mod 走 ExposedMembers.ModMiscToolUI.*
+RefreshData()          -- 扫存档列表（异步）
+IsDataReady()          -- 首次扫描是否完成
+OnDataReady(fn)        -- 扫描完成时回调（已就绪则立刻调用）
+SaveData(key, value)   -- 写；值 ≤ 120 字节；先写新档、SaveComplete 后再删同 key 旧档
+GetData(key)           -- 读（没存过 → nil）
+GetAllData()           -- 整张表（副本）
+RemoveData(key)        -- 删一个键及其档
+```
+
+* 前端与**对局内 UI** 都能读写（各自的 context 各持一份内存表，跨 context 走 `ExposedMembers`）。
+* gameplay 层拿不到（`Network.SaveGame` / `UI.QuerySaveGameList` 都是 UI 接口）。
+* 实机证据：写一轮 → 杀进程 → 下一轮读回 payload **逐字一致**；
+  对局内写入同样落盘（`ingame=ig=1;t=1791113603;r=755564` 跨进程读回）。
+* 测试面板上有对应按钮：存储写入 / 存储读取 / 存储清空（键 `panel`），便于就地验证。
+
 ## 4. WorldBuilder（地图编辑器）接口
 
 | # | 接口 / 方法 | 状态 | 证据与备注 |

@@ -14,6 +14,7 @@
 
 include("InstanceManager")
 include("Civ6Common")  -- ReadCustomData / WriteCustomData（本 mod 的 replacement 版本）
+include("ModMiscStore")  -- 跨存档存储（存档名编码通道）：本面板的存储读写按钮用它
 print("[ModMiscTool][AutomationTest] panel loading build=" .. tostring(MODMISC_BUILD_TAG))
 
 -- ===========================================================================
@@ -692,6 +693,58 @@ end
 -- ===========================================================================
 
 -- ===========================================================================
+-- 跨存档存储：写 / 读 / 清（用 ModMiscStore 那套「存档名编码」通道）
+--
+-- 读是异步的（扫存档列表 → LuaEvents 回结果），所以结果在 OnDataReady 回调里输出。
+-- 写入的 payload 带 t/r，跨进程重启后能凭这串判断“读回来的是不是上一轮写的那份”。
+-- ===========================================================================
+local STORE_PANEL_KEY = "panel"
+local STORE_TEST_PAYLOAD_PREFIX = "panel=1"
+
+local function FormatStoreContents()
+    local pairs_text = {}
+    for key, value in pairs(ModMiscStore.GetAll()) do
+        table.insert(pairs_text, tostring(key) .. "=" .. tostring(value))
+    end
+    table.sort(pairs_text)
+    if #pairs_text == 0 then return "(空)" end
+    return table.concat(pairs_text, " | ")
+end
+
+local function StoreWrite()
+    if ModMiscStore == nil then
+        SetError("StoreWrite", "ModMiscStore 模块没加载")
+        return
+    end
+    local payload = STORE_TEST_PAYLOAD_PREFIX .. ";t=" .. tostring(os.time())
+        .. ";r=" .. tostring(math.random(100000, 999999))
+    if ModMiscStore.Save(STORE_PANEL_KEY, payload) then
+        SetResult("StoreWrite", STORE_PANEL_KEY .. "=" .. payload)
+    end
+end
+
+local function StoreRead()
+    if ModMiscStore == nil then
+        SetError("StoreRead", "ModMiscStore 模块没加载")
+        return
+    end
+    ModMiscStore.OnReady(function()
+        SetResult("StoreRead", Locale.Lookup("LOC_MODMISC_AUTOMATION_TEST_STORE_CONTENT",
+            FormatStoreContents()))
+    end)
+    ModMiscStore.Refresh()
+end
+
+local function StoreClear()
+    if ModMiscStore == nil then
+        SetError("StoreClear", "ModMiscStore 模块没加载")
+        return
+    end
+    ModMiscStore.Remove(STORE_PANEL_KEY)
+    SetResult("StoreClear", STORE_PANEL_KEY)
+end
+
+-- ===========================================================================
 -- AssetPreview：摆放 / 清除
 -- ===========================================================================
 
@@ -904,6 +957,13 @@ function OnInit()
         function() SafeCall("StopAutoplay", StopAutoplayAndReturn) end)
     Controls.AutomationTestLookAtCapital:RegisterCallback(Mouse.eLClick,
         function() SafeCall("LookAtCapital", LookAtSelectedCapital) end)
+
+    Controls.AutomationTestStoreWrite:RegisterCallback(Mouse.eLClick,
+        function() SafeCall("StoreWrite", StoreWrite) end)
+    Controls.AutomationTestStoreRead:RegisterCallback(Mouse.eLClick,
+        function() SafeCall("StoreRead", StoreRead) end)
+    Controls.AutomationTestStoreClear:RegisterCallback(Mouse.eLClick,
+        function() SafeCall("StoreClear", StoreClear) end)
 
     -- 旧的存/读档与 CustomData 探针按钮已全部移除（原因见上方 [已移除] 注释）
     Controls.AutomationTestPlaceAsset:RegisterCallback(Mouse.eLClick,
