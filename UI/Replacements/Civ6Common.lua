@@ -1033,6 +1033,86 @@ end
 -- 这里把三种候选写法的返回值（类型 + 内容）一并打出来，下次照实修即可。
 -- 只在前端“创建游戏”界面里、值变化时打一次，不刷屏。
 -- ===========================================================================
+-- 当前地图尺寸的标识（"MAPSIZE_HUGE" 之类）。
+--
+-- 实测（2026-10-04 诊断探针）：
+--   MapConfiguration.GetValue("MapSize")  -> nil
+--   GameConfiguration.GetValue("MapSize") -> nil
+--   MapConfiguration.GetMapSize()         -> **数字**（-601637951），是尺寸名的哈希
+-- 所以先用字符串来源试；拿不到就用 GetMapSize() 的哈希去和六个尺寸名的哈希比对 ——
+-- `DB.MakeHash` 用的是引擎自己的哈希，能对上就没问题。
+local GHOST_MAP_SIZE_TEXT_BY_KEY = {
+	MAPSIZE_DUEL     = "MAPSIZE_DUEL",
+	MAPSIZE_TINY     = "MAPSIZE_TINY",
+	MAPSIZE_SMALL    = "MAPSIZE_SMALL",
+	MAPSIZE_STANDARD = "MAPSIZE_STANDARD",
+	MAPSIZE_LARGE    = "MAPSIZE_LARGE",
+	MAPSIZE_HUGE     = "MAPSIZE_HUGE",
+}
+
+-- 把各种形态的“地图尺寸”值规范成 MAPSIZE_XXX：
+--   * 字符串且含 "MAPSIZE_" → 直接用
+--   * 表（GameSetupLogic 里是 p.Value.Domain / p.Value.Value）→ 取 .Value / .MapSizeType
+--   * 其它 → 认不出，返回 nil
+local function ModMiscToolNormalizeMapSizeKey(value)
+	if value == nil then return nil end
+	if type(value) == "table" then
+		value = value.Value or value.MapSizeType or value.MapSize
+	end
+	if value == nil then return nil end
+	local text = tostring(value)
+	if string.find(text, "MAPSIZE_") ~= nil then return text end
+	return nil
+end
+
+-- 返回：key, 诊断信息（认不出时给出原始哈希与六个候选哈希，便于事后比对）
+local function ModMiscToolGetMapSizeKey()
+	-- ① 字符串来源
+	local candidates = {
+		function()
+			if MapConfiguration == nil or MapConfiguration.GetValue == nil then return nil end
+			return MapConfiguration.GetValue("MapSize")
+		end,
+		function()
+			if GameConfiguration == nil or GameConfiguration.GetValue == nil then return nil end
+			return GameConfiguration.GetValue("MapSize")
+		end,
+	}
+	for _, getter in ipairs(candidates) do
+		local ok, value = pcall(getter)
+		if ok then
+			local key = ModMiscToolNormalizeMapSizeKey(value)
+			if key ~= nil then return key, "string" end
+		end
+	end
+
+	-- ② 哈希来源：MapConfiguration.GetMapSize()
+	if MapConfiguration == nil or MapConfiguration.GetMapSize == nil then
+		return nil, "no GetMapSize"
+	end
+	local ok, raw = pcall(function() return MapConfiguration.GetMapSize() end)
+	if not ok or raw == nil then
+		return nil, "GetMapSize 取不到"
+	end
+
+	if DB == nil or DB.MakeHash == nil then
+		return nil, "raw=" .. tostring(raw) .. "（DB.MakeHash 不可用，无法比对）"
+	end
+	local hashes = {}
+	for key, text in pairs(GHOST_MAP_SIZE_TEXT_BY_KEY) do
+		local hashOk, hash = pcall(function() return DB.MakeHash(text) end)
+		if hashOk then
+			hashes[key] = hash
+			if hash == raw then return key, "hash" end
+		end
+	end
+	local parts = {}
+	for key, hash in pairs(hashes) do
+		table.insert(parts, key .. "=" .. tostring(hash))
+	end
+	return nil, "raw=" .. tostring(raw) .. " 不等于任何候选（" .. table.concat(parts, " ") .. "）"
+end
+
 -- 每个 context 各打一次：原来是一次性开关，结果只在 MainMenu 打过 ——
 -- 而 MainMenu 里地图还没配置，读到的数字很可能是垃圾值。
 -- 真正要看的“创建游戏”界面（地图已选好）从来没打过。
@@ -1124,86 +1204,6 @@ local function ModMiscToolDumpMapSizeDiagnostics()
 	end
 end
 
--- 当前地图尺寸的标识（"MAPSIZE_HUGE" 之类）。
---
--- 实测（2026-10-04 诊断探针）：
---   MapConfiguration.GetValue("MapSize")  -> nil
---   GameConfiguration.GetValue("MapSize") -> nil
---   MapConfiguration.GetMapSize()         -> **数字**（-601637951），是尺寸名的哈希
--- 所以先用字符串来源试；拿不到就用 GetMapSize() 的哈希去和六个尺寸名的哈希比对 ——
--- `DB.MakeHash` 用的是引擎自己的哈希，能对上就没问题。
-local GHOST_MAP_SIZE_TEXT_BY_KEY = {
-	MAPSIZE_DUEL     = "MAPSIZE_DUEL",
-	MAPSIZE_TINY     = "MAPSIZE_TINY",
-	MAPSIZE_SMALL    = "MAPSIZE_SMALL",
-	MAPSIZE_STANDARD = "MAPSIZE_STANDARD",
-	MAPSIZE_LARGE    = "MAPSIZE_LARGE",
-	MAPSIZE_HUGE     = "MAPSIZE_HUGE",
-}
-
--- 把各种形态的“地图尺寸”值规范成 MAPSIZE_XXX：
---   * 字符串且含 "MAPSIZE_" → 直接用
---   * 表（GameSetupLogic 里是 p.Value.Domain / p.Value.Value）→ 取 .Value / .MapSizeType
---   * 其它 → 认不出，返回 nil
-local function ModMiscToolNormalizeMapSizeKey(value)
-	if value == nil then return nil end
-	if type(value) == "table" then
-		value = value.Value or value.MapSizeType or value.MapSize
-	end
-	if value == nil then return nil end
-	local text = tostring(value)
-	if string.find(text, "MAPSIZE_") ~= nil then return text end
-	return nil
-end
-
--- 返回：key, 诊断信息（认不出时给出原始哈希与六个候选哈希，便于事后比对）
-local function ModMiscToolGetMapSizeKey()
-	-- ① 字符串来源
-	local candidates = {
-		function()
-			if MapConfiguration == nil or MapConfiguration.GetValue == nil then return nil end
-			return MapConfiguration.GetValue("MapSize")
-		end,
-		function()
-			if GameConfiguration == nil or GameConfiguration.GetValue == nil then return nil end
-			return GameConfiguration.GetValue("MapSize")
-		end,
-	}
-	for _, getter in ipairs(candidates) do
-		local ok, value = pcall(getter)
-		if ok then
-			local key = ModMiscToolNormalizeMapSizeKey(value)
-			if key ~= nil then return key, "string" end
-		end
-	end
-
-	-- ② 哈希来源：MapConfiguration.GetMapSize()
-	if MapConfiguration == nil or MapConfiguration.GetMapSize == nil then
-		return nil, "no GetMapSize"
-	end
-	local ok, raw = pcall(function() return MapConfiguration.GetMapSize() end)
-	if not ok or raw == nil then
-		return nil, "GetMapSize 取不到"
-	end
-
-	if DB == nil or DB.MakeHash == nil then
-		return nil, "raw=" .. tostring(raw) .. "（DB.MakeHash 不可用，无法比对）"
-	end
-	local hashes = {}
-	for key, text in pairs(GHOST_MAP_SIZE_TEXT_BY_KEY) do
-		local hashOk, hash = pcall(function() return DB.MakeHash(text) end)
-		if hashOk then
-			hashes[key] = hash
-			if hash == raw then return key, "hash" end
-		end
-	end
-	local parts = {}
-	for key, hash in pairs(hashes) do
-		table.insert(parts, key .. "=" .. tostring(hash))
-	end
-	return nil, "raw=" .. tostring(raw) .. " 不等于任何候选（" .. table.concat(parts, " ") .. "）"
-end
-
 local function ModMiscToolApplyGhostCityStates()
 	if not ModMiscToolIsGameSetupContext() then return end
 
@@ -1218,7 +1218,10 @@ local function ModMiscToolApplyGhostCityStates()
 			.. " maxMinor=" .. tostring(maxCityStates))
 	end
 
-	ModMiscToolDumpMapSizeDiagnostics()
+	-- 诊断用 pcall 兜住：它是观察工具，绝不能因为自身报错把主逻辑带崩
+	-- （2026-10-04 就栽过一次：诊断里前向引用了一个后声明的 local，
+	--   pairs(nil) 报错冒泡，导致整个“设置 CITY_STATE_COUNT”被跳过）
+	pcall(ModMiscToolDumpMapSizeDiagnostics)
 
 	if current == nil or maxCityStates == nil then return end
 	-- current <= 0 时不处理：避免在参数还没载入时把 0 当成“玩家选择”记下来
