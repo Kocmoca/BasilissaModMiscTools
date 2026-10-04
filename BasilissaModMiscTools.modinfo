@@ -29,25 +29,10 @@
             <File>Text.xml</File>
             <File>Text_CN.xml</File>
         </UpdateText>
-        <!-- 城邦上限：MapSizes.MaxCityStates 是引擎创建城邦玩家的天花板，
-             只靠 Lua 设 CITY_STATE_COUNT 顶不上去（实测会被原版值卡住）。
-             两条一起上：
-               * XML（Replace，六个标准尺寸）—— 与同目录那个有效的 Options.xml 同族写法，
-                 LoadOrder 拉高，确保排在基础 Configuration 数据之后；
-               * SQL（UPDATE，全部 Domain 兜底）—— 覆盖 Earth/Balance/自定义地图脚本，
-                 它们各有自己的 Domain，XML 里列不全。
-             实测记录：单独用 SQL 那条**没生效**（诊断探针打出来全是原版值），
-             所以 XML 是主力，SQL 只兜底。 -->
-        <UpdateDatabase id="GhostPlayersMapSizesXml">
-            <Properties>
-                <LoadOrder>1000</LoadOrder>
-            </Properties>
-            <File>GhostPlayers_MapSizes.xml</File>
-        </UpdateDatabase>
+        <!-- 幽灵玩家池需要城邦槽位：只抬高上限（配置数据库）
+             —— 沿用老版方法（前端 UpdateDatabase + SQL，不设 LoadOrder），
+             XML 那条（Replace）已撤回：前端与对局内是两套环境，配置数据库这边按老写法来。 -->
         <UpdateDatabase id="GhostPlayersMapSizes">
-            <Properties>
-                <LoadOrder>1001</LoadOrder>
-            </Properties>
             <File>GhostPlayers_MapSizes.sql</File>
         </UpdateDatabase>
         <!-- 创建游戏界面：拉满城邦数量并用 WriteCustomData 记下玩家原本的选择 -->
@@ -194,7 +179,6 @@
     <Files>
         <!-- sql -->
         <File>ExpansiveUnitBuild.sql</File>
-        <File>GhostPlayers_MapSizes.xml</File>
         <File>GhostPlayers_MapSizes.sql</File>
         <File>SupportData.sql</File>
         <!-- scripts -->
