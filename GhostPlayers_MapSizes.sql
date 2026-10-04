@@ -21,7 +21,12 @@
 -- 注意：vanillaMax 会被本文件改掉，所以那行显示的是**改后**的天花板。
 -- ===========================================================================
 
--- 城邦上限：按尺寸分档
+-- 【第一枪用与旧版同形的写法】先把所有尺寸的上限整体抬到 62 ——
+-- 这条不依赖 MapSizeType（旧版就是这么写的，实测有效），保证天花板一定抬得起来。
+UPDATE MapSizes SET MaxCityStates = 62 WHERE MaxCityStates < 62;
+
+-- 再按尺寸往下收：小图不给那么多（下面几条依赖 MapSizeType 能对上；
+-- 万一对不上，最坏结果只是小图也拿 62，而不是上限抬不起来）。
 UPDATE MapSizes SET MaxCityStates = 16 WHERE MapSizeType = 'MAPSIZE_DUEL';      -- 原版 6
 UPDATE MapSizes SET MaxCityStates = 28 WHERE MapSizeType = 'MAPSIZE_TINY';      -- 原版 10
 UPDATE MapSizes SET MaxCityStates = 40 WHERE MapSizeType = 'MAPSIZE_SMALL';     -- 原版 14

@@ -1000,6 +1000,76 @@ local GHOST_CITY_STATE_CAP_BY_MAP_SIZE = {
 }
 local GHOST_CITY_STATE_HARD_LIMIT = 62
 
+-- ===========================================================================
+-- [诊断] 把 MapSizes 的真实内容 + 三种“取地图尺寸”的写法都打出来
+--
+-- 背景：按 MapSizeType 分档抬上限的 SQL **实测没生效**（三个尺寸全是原版值），
+-- 而数据库报错不会进 Lua.log —— 所以只能让 mod 自己把真东西读出来看。
+-- mapSize=nil 说明 MapConfiguration.GetValue("MapSize") 不是我们以为的形态，
+-- 这里把三种候选写法的返回值（类型 + 内容）一并打出来，下次照实修即可。
+-- 只在前端“创建游戏”界面里、值变化时打一次，不刷屏。
+-- ===========================================================================
+local m_MapSizeDiagDone = false
+
+local function ModMiscToolDumpMapSizeDiagnostics()
+	if m_MapSizeDiagDone then return end
+	m_MapSizeDiagDone = true
+
+	local function Describe(label, getter)
+		local ok, value = pcall(getter)
+		if not ok then
+			print("[ModMiscTool][MapSizeDiag] " .. label .. " -> 调用失败: " .. tostring(value))
+			return
+		end
+		local kind = type(value)
+		local text = tostring(value)
+		if kind == "table" then
+			local parts = {}
+			for k, v in pairs(value) do
+				table.insert(parts, tostring(k) .. "=" .. tostring(v))
+			end
+			text = "{" .. table.concat(parts, ", ") .. "}"
+		end
+		print("[ModMiscTool][MapSizeDiag] " .. label .. " -> " .. kind .. " : " .. text)
+	end
+
+	Describe("MapConfiguration.GetValue(\"MapSize\")", function()
+		return MapConfiguration.GetValue("MapSize")
+	end)
+	Describe("GameConfiguration.GetValue(\"MapSize\")", function()
+		return GameConfiguration.GetValue("MapSize")
+	end)
+	Describe("MapConfiguration.GetMapSize()", function()
+		return MapConfiguration.GetMapSize()
+	end)
+	Describe("MapConfiguration.GetMaxMinorPlayers()", function()
+		return MapConfiguration.GetMaxMinorPlayers()
+	end)
+	Describe("MapConfiguration.GetMaxMajorPlayers()", function()
+		return MapConfiguration.GetMaxMajorPlayers()
+	end)
+
+	-- 数据库里到底存了什么：把 MapSizes 逐行打出来（只看城邦/玩家上限两个关键列）
+	if DB == nil or DB.ConfigurationQuery == nil then
+		print("[ModMiscTool][MapSizeDiag] DB.ConfigurationQuery 不可用")
+		return
+	end
+	local ok, rows = pcall(function()
+		return DB.ConfigurationQuery("SELECT Domain, MapSizeType, MaxPlayers, MaxCityStates FROM MapSizes")
+	end)
+	if not ok or rows == nil then
+		print("[ModMiscTool][MapSizeDiag] 查询 MapSizes 失败: " .. tostring(rows))
+		return
+	end
+	print("[ModMiscTool][MapSizeDiag] MapSizes 共 " .. tostring(#rows) .. " 行：")
+	for _, row in ipairs(rows) do
+		print("[ModMiscTool][MapSizeDiag]   domain=" .. tostring(row.Domain)
+			.. " type=" .. tostring(row.MapSizeType)
+			.. " maxPlayers=" .. tostring(row.MaxPlayers)
+			.. " maxCityStates=" .. tostring(row.MaxCityStates))
+	end
+end
+
 -- 当前地图尺寸的标识（"MAPSIZE_STANDARD" 之类）。
 -- MapConfiguration.GetValue("MapSize") 的值可能是字符串，也可能是 {Domain=, Value=} 表
 -- （GameSetupLogic 里就是按 p.Value.Domain / p.Value.Value 去查 MapSizes 的），两种都认。
@@ -1028,6 +1098,8 @@ local function ModMiscToolApplyGhostCityStates()
 		print("[ModMiscTool][Ghost] poll: CITY_STATE_COUNT=" .. tostring(current)
 			.. " maxMinor=" .. tostring(maxCityStates))
 	end
+
+	ModMiscToolDumpMapSizeDiagnostics()
 
 	if current == nil or maxCityStates == nil then return end
 	-- current <= 0 时不处理：避免在参数还没载入时把 0 当成“玩家选择”记下来
