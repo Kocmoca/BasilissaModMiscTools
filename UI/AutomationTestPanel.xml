@@ -75,6 +75,10 @@
             <GridButton ID="AutomationTestAssetIndexButton" Anchor="L,T" Offset="200,518" Size="660,56"
                         Style="ButtonControl" FontSize="26" String="" />
 
+            <!-- 前端（ScenarioSetup）配置档：对局内能否读它 -->
+            <GridButton ID="AutomationTestLoadConfig" Anchor="L,T" Offset="20,718" Size="280,48"
+                        Style="ButtonControl" FontSize="24" String="LOC_MODMISC_AUTOMATION_TEST_LOAD_CONFIG" />
+
             <GridButton ID="AutomationTestPlaceAsset" Anchor="L,T" Offset="20,586" Size="280,60"
                         Style="ButtonControl" FontSize="26" String="LOC_MODMISC_AUTOMATION_TEST_ASSET_PLACE" />
             <GridButton ID="AutomationTestClearPlotAsset" Anchor="L,T" Offset="310,586" Size="280,60"

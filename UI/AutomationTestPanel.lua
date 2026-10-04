@@ -33,6 +33,8 @@ local MAX_ASSET_ENTRIES = 240
 local SAVE_NAME = "ModMiscAutomationTest"
 local CUSTOM_DATA_KEY = "ModMiscAutomationCrossSaveProbe"
 local LOCAL_PARAM_KEY = "ModMiscAutomationProbePayload"
+-- 前端探针（UI/FrontEnd_ScenarioProbe.lua）产出的“配置档”文件名，两边必须一致
+local FE_CONFIG_SAVE_NAME = "ModMiscScenarioProbe"
 
 local m_Registered = false
 local m_SelectedPlayerIndex = nil
@@ -794,6 +796,49 @@ local function LoadGameFromFixedSlot()
     end
 end
 
+-- ===========================================================================
+-- 前端配置档：对局内能不能读它
+--
+-- 与“后台读档”唯一的区别是存档表里带 FileType = GAME_CONFIGURATION ——
+-- 也就是 ScenarioSetup 探针（UI/FrontEnd_ScenarioProbe.lua）在前端产出的那种档。
+-- 照抄 LoadGameMenu.OnLoadYes 对配置档的处理：**不** LeaveGame。
+-- ===========================================================================
+local function LoadFrontEndConfigInGame()
+    if Network == nil or Network.LoadGame == nil then
+        SetError("LoadConfig", "Network.LoadGame is nil")
+        return
+    end
+
+    local saveType = SaveTypes.SINGLE_PLAYER
+    if Network.GetGameConfigurationSaveType ~= nil then
+        local typeOk, configuredType = pcall(function()
+            return Network.GetGameConfigurationSaveType()
+        end)
+        if typeOk and configuredType ~= nil then saveType = configuredType end
+    end
+
+    local loadFile = {
+        Name = FE_CONFIG_SAVE_NAME,
+        Location = SaveLocations.LOCAL_STORAGE,
+        Type = saveType,
+        FileType = SaveFileTypes.GAME_CONFIGURATION,
+        Directory = SaveDirectories.DEFAULT,
+    }
+
+    local ok, result = pcall(function()
+        return Network.LoadGame(loadFile, ServerType.SERVER_TYPE_NONE)
+    end)
+    if not ok then
+        SetError("LoadConfig", result)
+        return
+    end
+    if result == false then
+        SetError("LoadConfig", "Network.LoadGame returned false")
+    else
+        SetOutput(Locale.Lookup("LOC_MODMISC_AUTOMATION_TEST_LOAD_CONFIG_REQUESTED", FE_CONFIG_SAVE_NAME))
+    end
+end
+
 local function BuildProbePayload()
     local turn = 0
     local ok, turnValue = pcall(function() return Game.GetCurrentGameTurn() end)
@@ -1064,6 +1109,8 @@ function OnInit()
         function() SafeCall("SaveGame", SaveGameToFixedSlot, "SaveGame") end)
     Controls.AutomationTestLoadGame:RegisterCallback(Mouse.eLClick,
         function() SafeCall("LoadGame", LoadGameFromFixedSlot) end)
+    Controls.AutomationTestLoadConfig:RegisterCallback(Mouse.eLClick,
+        function() SafeCall("LoadConfig", LoadFrontEndConfigInGame) end)
     Controls.AutomationTestProbeWrite:RegisterCallback(Mouse.eLClick,
         function() SafeCall("ProbeWrite", WriteProbe, "ProbeWrite") end)
     Controls.AutomationTestProbeRead:RegisterCallback(Mouse.eLClick,

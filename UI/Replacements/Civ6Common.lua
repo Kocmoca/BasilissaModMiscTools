@@ -961,6 +961,18 @@ local function ModMiscToolApplyGhostMajorPlayers()
 		.. " hidden=" .. tostring(hidden) .. ")")
 end
 
+-- 前端存档/读档探针（UI/FrontEnd_ScenarioProbe.lua）：只认“创建场景”（ScenarioSetup）
+-- 上下文，别的界面自己会 return。它不自带 UI、只打日志，所以复用下面这条刷新回调；
+-- **不要**再给它单独 SetRefreshHandler —— 一个上下文只有一条刷新回调，
+-- 再设一次会把幽灵那边的顶掉。
+--
+-- 本文件在创建游戏/创建场景里会被执行两次（PlayerSetupLogic 里 include 一次、
+-- 界面自己再 include 一次，日志里“setup hook installed”打两行就是这个原因），
+-- 所以探针用全局函数名做一次幂等，免得同一个 context 里塞进两份探针状态。
+if ModMiscScenarioProbeRefresh == nil and ModMiscToolIsGameSetupContext() then
+	include("FrontEnd_ScenarioProbe")
+end
+
 -- [已验证失败] Events.SystemUpdateUI 在创建游戏界面根本不触发（只分辨率变化/恢复 UI/触摸输入），
 -- hook 会完全静默；因此轮询只能用 ContextPtr 的刷新回调。
 -- 创建游戏界面里 SystemUpdateUI 只在分辨率变化时触发，轮询要用 ContextPtr 的刷新回调
@@ -970,6 +982,10 @@ local function ModMiscToolGhostRefresh(delta)
 	if not ContextPtr:IsHidden() then
 		ModMiscToolApplyGhostCityStates()
 		ModMiscToolApplyGhostMajorPlayers()
+	end
+	-- 探针在隐藏时也要跑：它靠“隐藏→显示”的那一刻判定新一轮（内部自己判界面）
+	if ModMiscScenarioProbeRefresh ~= nil then
+		ModMiscScenarioProbeRefresh()
 	end
 	ContextPtr:RequestRefresh()
 end
