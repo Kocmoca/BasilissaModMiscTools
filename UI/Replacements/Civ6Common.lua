@@ -981,24 +981,44 @@ end
 local m_GhostLastPollKey = nil
 
 -- ===========================================================================
--- 城邦上限：数据库是天花板，这里是可选的运行时**安全阀**
+-- 城邦数量策略：**按地图尺寸，唯一来源就是这张表**
 --
--- 【分工】`GhostPlayers_MapSizes.sql` 抬高 `MapSizes.MaxCityStates` —— 那是引擎创建
--- 城邦玩家的**天花板**（同时决定创建游戏界面能选多少）。实测只靠 Lua 设
--- CITY_STATE_COUNT 是顶不上去的：引擎仍按原版值（HUGE=24）创建。
--- 所以本 hook 的请求值默认就取数据库天花板；下面这张表只在你想**单独压低**某个尺寸、
--- 又不想重打数据库时用 —— 写一个比天花板更小的数即可，留空则完全跟随数据库。
+-- 分工（2026-10-04 授权者定）：数据库（GhostPlayers_MapSizes.sql）只负责把天花板
+-- 拉满到 62；**每个尺寸具体请求多少城邦玩家，全部由这张表决定**。
+-- 调策略只改这里，不用重打数据库，也不依赖 SQL 能不能对上尺寸列。
 --
 -- 【幽灵池】池子 = 请求的城邦数 − 玩家自己选择的城邦数。
--- 例：HUGE 天花板 62、玩家选 6 → 请求 62 → 开局后 56 个城邦被搬到地图外当幽灵。
+-- 例：HUGE 配 62、玩家选 6 → 请求 62 → 开局后 56 个城邦被搬到地图外当幽灵。
 --
 -- 【硬上限】62 = MAX_PLAYERS(64) − 野蛮人 − 自由城市两个固定槽位。
+-- 请求值最终会被夹到 min(表里的值, 数据库天花板, 62)，并且不会低于玩家自己的选择。
 -- ===========================================================================
-local GHOST_CITY_STATE_CAP_BY_MAP_SIZE = {
-	-- 留空/不写 = 用数据库天花板。需要单独收某个尺寸时这样写：
-	-- MAPSIZE_STANDARD = 40,
+local GHOST_CITY_STATE_BY_MAP_SIZE = {
+	MAPSIZE_DUEL     = 16,
+	MAPSIZE_TINY     = 28,
+	MAPSIZE_SMALL    = 40,
+	MAPSIZE_STANDARD = 52,
+	MAPSIZE_LARGE    = 62,
+	MAPSIZE_HUGE     = 62,
 }
+-- 尺寸名认不出时的兜底（宁可保守；诊断日志会把真实取值打出来，照实补表即可）
+local GHOST_CITY_STATE_DEFAULT = 40
 local GHOST_CITY_STATE_HARD_LIMIT = 62
+
+-- 把各种形态的“地图尺寸”值规范成 MAPSIZE_XXX：
+--   * 字符串且含 "MAPSIZE_" → 直接用
+--   * 表（GameSetupLogic 里是 p.Value.Domain / p.Value.Value）→ 取 .Value / .MapSizeType
+--   * 其它（例如地图文件名）→ 认不出，返回 nil
+local function ModMiscToolNormalizeMapSizeKey(value)
+	if value == nil then return nil end
+	if type(value) == "table" then
+		value = value.Value or value.MapSizeType or value.MapSize
+	end
+	if value == nil then return nil end
+	local text = tostring(value)
+	if string.find(text, "MAPSIZE_") ~= nil then return text end
+	return nil
+end
 
 -- ===========================================================================
 -- [诊断] 把 MapSizes 的真实内容 + 三种“取地图尺寸”的写法都打出来
@@ -1070,19 +1090,34 @@ local function ModMiscToolDumpMapSizeDiagnostics()
 	end
 end
 
--- 当前地图尺寸的标识（"MAPSIZE_STANDARD" 之类）。
--- MapConfiguration.GetValue("MapSize") 的值可能是字符串，也可能是 {Domain=, Value=} 表
--- （GameSetupLogic 里就是按 p.Value.Domain / p.Value.Value 去查 MapSizes 的），两种都认。
+-- 当前地图尺寸的标识（"MAPSIZE_HUGE" 之类）。
+-- 依次试三种来源（实测 MapConfiguration.GetValue("MapSize") 返回 nil、
+-- 用法可能因版本而异，所以多试几个并把结果打进诊断日志）：
+--   ① MapConfiguration.GetValue("MapSize")  ② GameConfiguration.GetValue("MapSize")
+--   ③ MapConfiguration.GetMapSize()
 local function ModMiscToolGetMapSizeKey()
-	if MapConfiguration == nil or MapConfiguration.GetValue == nil then return nil end
-	local ok, value = pcall(function() return MapConfiguration.GetValue("MapSize") end)
-	if not ok or value == nil then return nil end
-	if type(value) == "table" then
-		if value.Value ~= nil then return tostring(value.Value) end
-		if value.MapSizeType ~= nil then return tostring(value.MapSizeType) end
-		return nil
+	local candidates = {
+		function()
+			if MapConfiguration == nil or MapConfiguration.GetValue == nil then return nil end
+			return MapConfiguration.GetValue("MapSize")
+		end,
+		function()
+			if GameConfiguration == nil or GameConfiguration.GetValue == nil then return nil end
+			return GameConfiguration.GetValue("MapSize")
+		end,
+		function()
+			if MapConfiguration == nil or MapConfiguration.GetMapSize == nil then return nil end
+			return MapConfiguration.GetMapSize()
+		end,
+	}
+	for _, getter in ipairs(candidates) do
+		local ok, value = pcall(getter)
+		if ok then
+			local key = ModMiscToolNormalizeMapSizeKey(value)
+			if key ~= nil then return key end
+		end
 	end
-	return tostring(value)
+	return nil
 end
 
 local function ModMiscToolApplyGhostCityStates()
@@ -1105,21 +1140,24 @@ local function ModMiscToolApplyGhostCityStates()
 	-- current <= 0 时不处理：避免在参数还没载入时把 0 当成“玩家选择”记下来
 	if current <= 0 or maxCityStates <= 0 or current >= maxCityStates then return end
 
-	-- 请求值 = 数据库天花板（= maxCityStates），可被安全阀压低
+	-- 请求值 = 按地图尺寸查表（唯一策略来源），再受数据库天花板与硬上限夹取
 	local mapSizeKey = ModMiscToolGetMapSizeKey()
-	local target = maxCityStates
-	local capOverride = GHOST_CITY_STATE_CAP_BY_MAP_SIZE[mapSizeKey]
-	if capOverride ~= nil and capOverride < target then target = capOverride end
+	local target = GHOST_CITY_STATE_BY_MAP_SIZE[mapSizeKey]
+	if target == nil then
+		target = GHOST_CITY_STATE_DEFAULT
+	end
+	if target > maxCityStates then target = maxCityStates end
 	if target > GHOST_CITY_STATE_HARD_LIMIT then target = GHOST_CITY_STATE_HARD_LIMIT end
 	if target <= current then return end
 
 	WriteCustomData(GHOST_CITY_STATE_CUSTOM_DATA_KEY, current)
 	GameConfiguration.SetValue("CITY_STATE_COUNT", target)
+	local tableValue = GHOST_CITY_STATE_BY_MAP_SIZE[mapSizeKey]
 	print("[ModMiscTool][Ghost] city states -> " .. tostring(target)
 		.. " (player choice " .. tostring(current) .. " saved"
 		.. " | mapSize=" .. tostring(mapSizeKey)
+		.. " tableValue=" .. tostring(tableValue)
 		.. " dbCeiling=" .. tostring(maxCityStates)
-		.. (capOverride ~= nil and (" capOverride=" .. tostring(capOverride)) or "")
 		.. " -> 幽灵池 " .. tostring(target - current) .. ")")
 end
 
