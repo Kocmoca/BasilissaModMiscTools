@@ -708,7 +708,9 @@ local function FormatStoreContents()
     end
     table.sort(pairs_text)
     if #pairs_text == 0 then return "(空)" end
-    return table.concat(pairs_text, " | ")
+    -- 分隔符不要用 "|"：实测 Locale.Lookup 的参数里出现 "|" 会把后面的内容整段吃掉
+    -- （面板上只显示第一项，看起来像“读回来的和写进去的不一样”）。
+    return table.concat(pairs_text, ", ")
 end
 
 local function StoreWrite()
@@ -723,16 +725,23 @@ local function StoreWrite()
     end
 end
 
+local function ShowStoreContents(actionName)
+    local contents = FormatStoreContents()
+    -- 原始内容也打进日志：万一文案渲染再出幺蛾子，日志里还能看到全量
+    print("[ModMiscTool][AutomationTest] " .. actionName .. " raw: " .. contents)
+    SetResult(actionName, Locale.Lookup("LOC_MODMISC_AUTOMATION_TEST_STORE_CONTENT", contents))
+end
+
 local function StoreRead()
     if ModMiscStore == nil then
         SetError("StoreRead", "ModMiscStore 模块没加载")
         return
     end
-    ModMiscStore.OnReady(function()
-        SetResult("StoreRead", Locale.Lookup("LOC_MODMISC_AUTOMATION_TEST_STORE_CONTENT",
-            FormatStoreContents()))
+    -- 用 Refresh(onDone)：扫完这一遍再显示。
+    -- （别用 OnReady + Refresh —— 已就绪时 OnReady 会立刻回调，显示的是上一次的旧数据）
+    ModMiscStore.Refresh(function()
+        ShowStoreContents("StoreRead")
     end)
-    ModMiscStore.Refresh()
 end
 
 local function StoreClear()
@@ -741,7 +750,10 @@ local function StoreClear()
         return
     end
     ModMiscStore.Remove(STORE_PANEL_KEY)
-    SetResult("StoreClear", STORE_PANEL_KEY)
+    -- 删完立刻重扫一遍再显示：否则面板上看到的还是删之前的内容，像是“清空没生效”
+    ModMiscStore.Refresh(function()
+        ShowStoreContents("StoreClear")
+    end)
 end
 
 -- ===========================================================================

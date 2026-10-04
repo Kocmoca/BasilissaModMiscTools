@@ -866,9 +866,9 @@ end
 -- ===========================================================================
 
 -- 构建标记：前端与 gameplay 是不同 context，各自带一份字面量
--- A…E 见历史；F：存储探针；G：封装成模块；H：键值清单+遗留档清理；I：暴露 ExposedMembers 接口
+-- A…E 见历史；F：存储探针；G：封装成模块；H：键值清单+遗留档清理；I：暴露接口；J：修外来查询污染
 -- （ModTool.lua 那份 gameplay 的标记未动）
-local MODMISC_HOOK_BUILD_TAG = "2026-10-04-I"
+local MODMISC_HOOK_BUILD_TAG = "2026-10-04-J"
 local GHOST_CITY_STATE_CUSTOM_DATA_KEY = "ModMiscToolCityStateCount"
 local GHOST_MAJOR_PLAYER_CUSTOM_DATA_KEY = "ModMiscToolMajorPlayerCount"
 

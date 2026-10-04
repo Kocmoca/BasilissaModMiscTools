@@ -27,7 +27,7 @@
 -- ===========================================================================
 
 local MODMISC_STORE_PREFIX = "ModMiscStore~"
-local MODMISC_STORE_BUILD_TAG = "2026-10-04-D"
+local MODMISC_STORE_BUILD_TAG = "2026-10-04-E"
 -- 自检：每轮写一份 ms=… payload 并读回上一轮的（验证通道还活着）。
 -- 通道已验证完毕（2026-10-04），关掉 —— 正式用起来它就是噪音键。
 local MODMISC_STORE_SELFTEST = false
@@ -47,6 +47,8 @@ local m_PendingDelete = {}
 
 local m_RefreshRequestId = nil
 local m_Refreshing = false
+-- 本次扫描完成后要回调的函数（Refresh(onDone) 用）——一次性
+local m_RefreshCallbacks = {}
 local m_Ready = false
 local m_ReadyCallbacks = {}
 
@@ -149,9 +151,13 @@ local function GetEntryTimestamp(entry)
 end
 
 local function OnStoreQueryResults(fileList, requestId)
-    if requestId ~= nil and m_RefreshRequestId ~= nil and requestId ~= m_RefreshRequestId then
-        return
-    end
+    -- 【必须严格对号】LuaEvents.FileListQueryResults 是**全局广播**：游戏自己的存档菜单
+    -- 每次查存档列表（快速存档 / 自动存档 / 载入游戏）也会发这个事件。
+    -- 实测过一次事故：主菜单查“继续游戏”时把 quicksave/autosave 列表送到这里，
+    -- 被当成我们的扫描结果 → 内存表被清空（键值：(空)）。
+    -- 所以只接受“就是我们这次发的那个请求号”，而且处理完立刻退订。
+    if m_RefreshRequestId == nil or requestId ~= m_RefreshRequestId then return end
+    LuaEvents.FileListQueryResults.Remove(OnStoreQueryResults)
     m_Refreshing = false
 
     m_Data = {}
@@ -239,14 +245,26 @@ local function OnStoreQueryResults(fileList, requestId)
 
     if UI ~= nil and UI.CloseFileListQuery ~= nil and m_RefreshRequestId ~= nil then
         pcall(function() UI.CloseFileListQuery(m_RefreshRequestId) end)
-        m_RefreshRequestId = nil
     end
+    m_RefreshRequestId = nil
 
     NotifyReady()
+
+    -- 本次扫描的完成回调（Refresh(onDone)）
+    local callbacks = m_RefreshCallbacks
+    m_RefreshCallbacks = {}
+    for _, callback in ipairs(callbacks) do
+        pcall(callback)
+    end
     if MODMISC_STORE_SELFTEST then ModMiscStore.RunSelfTest() end
 end
 
-function ModMiscStore.Refresh()
+-- onDone：本次扫描完成后回调一次（比 OnReady 精确 —— OnReady 已就绪时会立刻触发，
+-- 拿到的可能是上一次扫描的旧数据）
+function ModMiscStore.Refresh(onDone)
+    if onDone ~= nil then
+        table.insert(m_RefreshCallbacks, onDone)
+    end
     if m_Refreshing then return false end
     if UI == nil or UI.QuerySaveGameList == nil or LuaEvents == nil
         or LuaEvents.FileListQueryResults == nil or SaveLocationOptions == nil then
