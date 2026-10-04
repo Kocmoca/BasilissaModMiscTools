@@ -316,8 +316,11 @@
 		<Row Tag="LOC_MODMISC_AUTOMATION_TEST_STORE_CLEAR">
 			<Text>Store clear</Text>
 		</Row>
-		<Row Tag="LOC_MODMISC_AUTOMATION_TEST_STORE_CONTENT">
-			<Text>Cross-save store: {1_List}</Text>
+		<Row Tag="LOC_MODMISC_AUTOMATION_TEST_STORE_HEADER">
+			<Text>Cross-save store ({1_Count} keys):</Text>
+		</Row>
+		<Row Tag="LOC_MODMISC_AUTOMATION_TEST_STORE_SUMMARY">
+			<Text>Cross-save store: {1_Action} done, {2_Count} keys (tap Messages above for details)</Text>
 		</Row>
 		<Row Tag="LOC_MODMISC_AUTOMATION_TEST_VIEW_PLAYER">
 			<Text>View Selected Player</Text>

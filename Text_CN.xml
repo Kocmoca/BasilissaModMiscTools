@@ -316,8 +316,11 @@
 		<Replace Tag="LOC_MODMISC_AUTOMATION_TEST_STORE_CLEAR" Language="zh_Hans_CN">
 			<Text>存储清空</Text>
 		</Replace>
-		<Replace Tag="LOC_MODMISC_AUTOMATION_TEST_STORE_CONTENT" Language="zh_Hans_CN">
-			<Text>跨存档存储：{1_List}</Text>
+		<Replace Tag="LOC_MODMISC_AUTOMATION_TEST_STORE_HEADER" Language="zh_Hans_CN">
+			<Text>跨存档存储（{1_Count} 个键）：</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_AUTOMATION_TEST_STORE_SUMMARY" Language="zh_Hans_CN">
+			<Text>跨存档存储：{1_Action} 完成，共 {2_Count} 个键（点上方消息栏看详情）</Text>
 		</Replace>
 		<Replace Tag="LOC_MODMISC_AUTOMATION_TEST_VIEW_PLAYER" Language="zh_Hans_CN">
 			<Text>切到选中玩家视角</Text>

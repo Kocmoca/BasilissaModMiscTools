@@ -41,23 +41,40 @@ local m_OpenSelectorKey = nil
 local m_OptionIM = nil
 
 local m_Messages = {}
-local MESSAGE_HISTORY_MAX = 30
+local MESSAGE_HISTORY_MAX = 8
 
 -- ===========================================================================
 -- 日志 / 提示
 -- ===========================================================================
 
+-- SetStatus 必须定义在 SetOutputDetail / SetOutput 之前 —— 它们都调它，
+-- 而 Lua 5.1 里 local function 不前置声明的话，函数体内的引用会被解析成全局（运行时 nil）。
 local function SetStatus(text)
     Controls.AutomationTestStatus:SetText(tostring(text or ""))
 end
 
-local function SetOutput(text)
+-- 只有详情没有本地化包装时用这个：detailText 直接进消息窗口与日志（可含换行），
+-- shortStatus 放状态行（32px 单行标签，长文本会被截断）。
+local function SetOutputDetail(detailText, shortStatus)
+    local message = tostring(detailText or "")
+    table.insert(m_Messages, message)
+    while #m_Messages > MESSAGE_HISTORY_MAX do
+        table.remove(m_Messages, 1)
+    end
+    SetStatus(shortStatus ~= nil and shortStatus or message)
+    Controls.AutomationTestMessageText:SetText(table.concat(m_Messages, "\n"))
+    print("[ModMiscTool][AutomationTest] " .. message:gsub("\n", " | "))
+end
+
+-- shortStatus：状态行只显示这一行（那是个 32px 高的单行标签，长文本会被截断）；
+-- 完整内容进消息窗口（多行）与日志。
+local function SetOutput(text, shortStatus)
     local message = tostring(text or "")
     table.insert(m_Messages, message)
     while #m_Messages > MESSAGE_HISTORY_MAX do
         table.remove(m_Messages, 1)
     end
-    SetStatus(message)
+    SetStatus(shortStatus ~= nil and shortStatus or message)
     Controls.AutomationTestMessageText:SetText(table.concat(m_Messages, "\n"))
     print("[ModMiscTool][AutomationTest] " .. message)
 end
@@ -701,16 +718,21 @@ end
 local STORE_PANEL_KEY = "panel"
 local STORE_TEST_PAYLOAD_PREFIX = "panel=1"
 
+-- 键值清单：每条一行（消息窗口会换行显示，比一长串逗号好读得多）。
+-- 分隔符别用 "|"：实测 Locale.Lookup 的参数里出现 "|" 会把后面整段吃掉。
 local function FormatStoreContents()
     local pairs_text = {}
     for key, value in pairs(ModMiscStore.GetAll()) do
-        table.insert(pairs_text, tostring(key) .. "=" .. tostring(value))
+        table.insert(pairs_text, "  " .. tostring(key) .. " = " .. tostring(value))
     end
     table.sort(pairs_text)
-    if #pairs_text == 0 then return "(空)" end
-    -- 分隔符不要用 "|"：实测 Locale.Lookup 的参数里出现 "|" 会把后面的内容整段吃掉
-    -- （面板上只显示第一项，看起来像“读回来的和写进去的不一样”）。
-    return table.concat(pairs_text, ", ")
+    return table.concat(pairs_text, "\n")
+end
+
+local function CountStoreKeys()
+    local count = 0
+    for _ in pairs(ModMiscStore.GetAll()) do count = count + 1 end
+    return count
 end
 
 local function StoreWrite()
@@ -727,9 +749,13 @@ end
 
 local function ShowStoreContents(actionName)
     local contents = FormatStoreContents()
-    -- 原始内容也打进日志：万一文案渲染再出幺蛾子，日志里还能看到全量
-    print("[ModMiscTool][AutomationTest] " .. actionName .. " raw: " .. contents)
-    SetResult(actionName, Locale.Lookup("LOC_MODMISC_AUTOMATION_TEST_STORE_CONTENT", contents))
+    local keyCount = CountStoreKeys()
+    -- 表头走 LOC；清单是代码拼的（键值不是用户文案），换行由 Lua 给出 ——
+    -- 不要把带换行的串塞进 Locale.Lookup 的参数里，那一层对特殊字符的处理不可靠
+    -- （已经栽过一次：参数里的 "|" 会把后面整段吃掉）。
+    local header = Locale.Lookup("LOC_MODMISC_AUTOMATION_TEST_STORE_HEADER", keyCount)
+    SetOutputDetail(header .. (keyCount > 0 and ("\n" .. contents) or ""),
+        Locale.Lookup("LOC_MODMISC_AUTOMATION_TEST_STORE_SUMMARY", actionName, keyCount))
 end
 
 local function StoreRead()
