@@ -980,6 +980,45 @@ end
 
 local m_GhostLastPollKey = nil
 
+-- ===========================================================================
+-- 幽灵玩家目标数量：**按地图尺寸、纯 Lua 配置**
+--
+-- 为什么不改数据库：以前靠 SQL 抬 MapSizes.MaxCityStates/MaxPlayers 来换幽灵池，
+-- 结果引擎在地图生成阶段要塞下远超原版容量的玩家 —— 授权者实机出现加载失败/闪退，
+-- 已确认与幽灵机制相关。改成**不动数据库**：上限就是原版各尺寸的值
+-- （城邦 6/10/14/18/22/24），只决定“请求多少个城邦玩家”。
+--
+-- 语义：目标幽灵数 = 希望在玩家保留的城邦之外**额外**空出来的槽位数量。
+--   请求值 = 玩家选择 + 目标幽灵数，再受原版上限夹取。
+--   例：STANDARD（原版上限 18）、玩家选 6、目标 8 → 请求 14 → 幽灵池 8。
+-- 表里没有的尺寸名走 GHOST_TARGET_DEFAULT。
+-- 调这几个数字即可，不用碰数据库。
+-- ===========================================================================
+local GHOST_TARGET_BY_MAP_SIZE = {
+	MAPSIZE_DUEL     = 2,
+	MAPSIZE_TINY     = 4,
+	MAPSIZE_SMALL    = 6,
+	MAPSIZE_STANDARD = 8,
+	MAPSIZE_LARGE    = 12,
+	MAPSIZE_HUGE     = 16,
+}
+local GHOST_TARGET_DEFAULT = 6
+
+-- 当前地图尺寸的标识（"MAPSIZE_STANDARD" 之类）。
+-- MapConfiguration.GetValue("MapSize") 的值可能是字符串，也可能是 {Domain=, Value=} 表
+-- （GameSetupLogic 里就是按 p.Value.Domain / p.Value.Value 去查 MapSizes 的），两种都认。
+local function ModMiscToolGetMapSizeKey()
+	if MapConfiguration == nil or MapConfiguration.GetValue == nil then return nil end
+	local ok, value = pcall(function() return MapConfiguration.GetValue("MapSize") end)
+	if not ok or value == nil then return nil end
+	if type(value) == "table" then
+		if value.Value ~= nil then return tostring(value.Value) end
+		if value.MapSizeType ~= nil then return tostring(value.MapSizeType) end
+		return nil
+	end
+	return tostring(value)
+end
+
 local function ModMiscToolApplyGhostCityStates()
 	if not ModMiscToolIsGameSetupContext() then return end
 
@@ -998,10 +1037,24 @@ local function ModMiscToolApplyGhostCityStates()
 	-- current <= 0 时不处理：避免在参数还没载入时把 0 当成“玩家选择”记下来
 	if current <= 0 or maxCityStates <= 0 or current >= maxCityStates then return end
 
+	-- 目标：玩家选择 + 该地图尺寸的幽灵目标数，但不超过原版上限
+	local mapSizeKey = ModMiscToolGetMapSizeKey()
+	local ghostTarget = GHOST_TARGET_BY_MAP_SIZE[mapSizeKey]
+	if ghostTarget == nil then
+		ghostTarget = GHOST_TARGET_DEFAULT
+	end
+	local requested = current + ghostTarget
+	if requested > maxCityStates then requested = maxCityStates end
+	if requested <= current then return end
+
 	WriteCustomData(GHOST_CITY_STATE_CUSTOM_DATA_KEY, current)
-	GameConfiguration.SetValue("CITY_STATE_COUNT", maxCityStates)
-	print("[ModMiscTool][Ghost] city states -> max " .. tostring(maxCityStates)
-		.. " (player choice " .. tostring(current) .. " saved)")
+	GameConfiguration.SetValue("CITY_STATE_COUNT", requested)
+	print("[ModMiscTool][Ghost] city states -> " .. tostring(requested)
+		.. " (player choice " .. tostring(current) .. " saved"
+		.. " | mapSize=" .. tostring(mapSizeKey)
+		.. " ghostTarget=" .. tostring(ghostTarget)
+		.. " vanillaMax=" .. tostring(maxCityStates)
+		.. " -> pool " .. tostring(requested - current) .. ")")
 end
 
 -- 主要文明同理：把参与玩家数抬到“预算内允许的上限”，并记下玩家原本选择的数量。

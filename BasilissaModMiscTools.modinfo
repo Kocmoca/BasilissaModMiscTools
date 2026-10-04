@@ -29,10 +29,6 @@
             <File>Text.xml</File>
             <File>Text_CN.xml</File>
         </UpdateText>
-        <!-- 幽灵玩家池需要城邦槽位：只抬高上限（配置数据库） -->
-        <UpdateDatabase id="GhostPlayersMapSizes">
-            <File>GhostPlayers_MapSizes.sql</File>
-        </UpdateDatabase>
         <!-- 创建游戏界面：拉满城邦数量并用 WriteCustomData 记下玩家原本的选择 -->
         <ImportFiles id="FrontEndUIReplacements">
             <Properties>
@@ -183,7 +179,6 @@
         <File>ModTool_Support_UI.lua</File>
         <File>ModTool_WorldBuilderAPI.lua</File>
         <File>ModTool_GhostPlayers.lua</File>
-        <File>GhostPlayers_MapSizes.sql</File>
         <File>GhostPlayers_Options.xml</File>
         <File>GhostPlayers_CityStates.sql</File>
         <File>GhostPlayers_CityStateIcons.xml</File>
