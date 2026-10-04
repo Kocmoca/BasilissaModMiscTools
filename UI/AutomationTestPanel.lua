@@ -8,6 +8,8 @@
 --   2. Network.SaveGame / Network.LoadGame：游戏内存档、读档
 --   3. CustomData 探针 + 后台存档：验证 ReadCustomData 是否能随存档回来
 --   4. AssetPreview：选择资产、放到指定地块、清除地块/全部资产
+--   5. 对局内创建新局 / 换地图：ScenarioSetup 的 HostGame 调用、RestartGame 对照、退主菜单
+--      （接口与判定协议见 UI/ModMiscCreateGame.lua）
 --
 -- 所有接口调用都包在 pcall 里；错误显示在“提示信息”小窗，同时 print 到 Lua.log。
 -- ===========================================================================
@@ -16,6 +18,7 @@ include("InstanceManager")
 include("Civ6Common")  -- ReadCustomData / WriteCustomData（本 mod 的 replacement 版本）
 include("ModMiscStore")  -- 跨存档存储（存档名编码通道）：本面板的存储读写按钮用它
 include("ModMiscAssetStore")  -- 永久资产放置（记录落 CustomData，读档自动重放）
+include("ModMiscCreateGame")  -- 对局内「创建新局 / 换地图」验证（含开局探针的判定逻辑）
 print("[ModMiscTool][AutomationTest] panel loading build=" .. tostring(MODMISC_BUILD_TAG))
 
 -- ===========================================================================
@@ -40,6 +43,10 @@ local m_SelectedAssetCategoryKey = "CITY"
 local m_SelectedAssetEntry = nil
 local m_OpenSelectorKey = nil
 local m_OptionIM = nil
+local m_SelectedMapScript = nil    -- 目标地图脚本条目（创建新局 / 换地图用）
+local m_MapScriptEntries = nil     -- 地图清单缓存（探测按钮会清掉重查）
+local m_MapScriptSource = nil      -- 清单来源：database / fallback（探测结果里显示）
+local m_SavePending = false        -- 「切换前存档」的 SaveComplete 监听是否已挂
 
 local m_Messages = {}
 local MESSAGE_HISTORY_MAX = 8
@@ -444,11 +451,64 @@ local function BuildAssetEntries(categoryKey)
 end
 
 -- ===========================================================================
+-- 目标地图清单（创建新局 / 换地图用）
+--
+-- 清单来自 ModMiscCreateGame.ListMapScripts()：优先查配置库的 Maps 表（含 DLC/资料片），
+-- 查不到才用模块内置的兜底表。这里缓存一份，点「探测」会清掉重查。
+-- ===========================================================================
+
+local function BuildMapScriptEntries()
+    if m_MapScriptEntries == nil then
+        if ModMiscCreateGame == nil then return {} end
+        local entries, source = ModMiscCreateGame.ListMapScripts()
+        m_MapScriptEntries = entries
+        m_MapScriptSource = source
+    end
+    return m_MapScriptEntries
+end
+
+-- 按文件名找回清单里的那一条（注意定义顺序：RefreshMapScriptEntries 会用它，
+-- Lua 5.1 里 local function 不前置声明的话，函数体内的引用会被解析成全局 nil）
+local function FindMapScriptEntry(mapFile)
+    if mapFile == nil then return nil end
+    for _, entry in ipairs(BuildMapScriptEntries()) do
+        if entry.File == mapFile then return entry end
+    end
+    return nil
+end
+
+-- 重新查一遍清单，并把当前选中的那条重新指到新表里（换过 DLC 之后点「探测」用）
+local function RefreshMapScriptEntries()
+    local previousFile = m_SelectedMapScript ~= nil and m_SelectedMapScript.File or nil
+    m_MapScriptEntries = nil
+    m_MapScriptSource = nil
+    local entries = BuildMapScriptEntries()
+    m_SelectedMapScript = FindMapScriptEntry(previousFile)
+    return entries
+end
+
+-- 默认选“当前这一局用的地图脚本”；读不到就退到清单第一项
+local function SelectFirstMapScriptIfNeeded()
+    if m_SelectedMapScript ~= nil then return end
+    local entries = BuildMapScriptEntries()
+    if entries == nil or #entries == 0 then return end
+
+    local current = nil
+    if ModMiscCreateGame ~= nil then
+        current = ModMiscCreateGame.GetCurrentMapScript()
+    end
+    m_SelectedMapScript = FindMapScriptEntry(current)
+    if m_SelectedMapScript == nil then
+        m_SelectedMapScript = entries[1]
+    end
+end
+
+-- ===========================================================================
 -- 选择器：点击按钮 → 面板内展开列表 → 选中收起
 -- ===========================================================================
 
 local m_Selectors = {}
-local m_SelectorOrder = { "player", "turns", "assetCategory", "assetIndex" }
+local m_SelectorOrder = { "player", "turns", "assetCategory", "assetIndex", "mapScript" }
 
 local function CloseOptionList()
     Controls.AutomationTestOptionPanel:SetHide(true)
@@ -498,11 +558,20 @@ local function OpenOptionList(key)
 
     local button = selector.button
     local optionX = button:GetOffsetX()
-    local optionY = button:GetOffsetY() + button:GetSizeY() + OPTION_PANEL_GAP
+    local buttonY = button:GetOffsetY()
     local optionWidth = button:GetSizeX()
-    local available = Controls.AutomationTestRoot:GetSizeY() - optionY - 20
+    -- 下方放不下就改向上展开（面板底部的选择器，例如「目标地图」，下方只剩一两行）
+    local roomBelow = Controls.AutomationTestRoot:GetSizeY() - (buttonY + button:GetSizeY()) - 20
+    local roomAbove = buttonY - OPTION_PANEL_GAP - 10
     local wanted = #entries * (OPTION_ENTRY_HEIGHT + OPTION_ENTRY_PADDING) + 16
-    local optionHeight = math.min(wanted, math.max(100, available))
+    local openUpward = (roomBelow < wanted) and (roomAbove > roomBelow)
+    local room = openUpward and roomAbove or roomBelow
+    local optionHeight = math.min(wanted, math.max(100, room))
+    local optionY = buttonY + button:GetSizeY() + OPTION_PANEL_GAP
+    if openUpward then
+        optionY = buttonY - optionHeight - OPTION_PANEL_GAP
+    end
+    if optionY < 10 then optionY = 10 end
 
     local optionPanel = Controls.AutomationTestOptionPanel
     optionPanel:SetSizeVal(optionWidth, optionHeight)
@@ -601,6 +670,25 @@ local function BuildSelectors()
             end,
             isSelected = function(entry) return entry == m_SelectedAssetEntry end,
             onSelect = function(entry) m_SelectedAssetEntry = entry end,
+        },
+        mapScript = {
+            button = Controls.AutomationCreateGameMapButton,
+            getEntries = BuildMapScriptEntries,
+            getEntryText = function(entry)
+                -- 配置库给的是本地化名时把文件名一起显示出来（SetScript 要的是文件名）
+                if entry.Text == nil or entry.Text == entry.File then return entry.File end
+                return entry.Text .. " (" .. entry.File .. ")"
+            end,
+            getLabel = function()
+                if m_SelectedMapScript == nil then
+                    return Locale.Lookup("LOC_MODMISC_CREATEGAME_MAP_NOT_SELECTED")
+                end
+                return m_SelectedMapScript.Text
+            end,
+            isSelected = function(entry)
+                return m_SelectedMapScript ~= nil and entry.File == m_SelectedMapScript.File
+            end,
+            onSelect = function(entry) m_SelectedMapScript = entry end,
         },
     }
 end
@@ -979,6 +1067,129 @@ end
 
 
 -- ===========================================================================
+-- 创建新局 / 换地图（对局内）
+--
+-- 验证目标：ScenarioSetup.OnStartButton() 的普通分支
+--     Events.SetGameEntryMethod("Scenario Start");
+--     Network.HostGame(ServerType.SERVER_TYPE_NONE);
+-- 能不能在**对局内**调用。接口、判定协议（CustomData 标记）与风险说明见
+-- UI/ModMiscCreateGame.lua；本面板只把入口按风险从低到高摆出来，并在调用前
+-- 先把「即将调用 …」写进消息窗口与 Lua.log —— 进程要是没了，日志最后一行就是它。
+-- ===========================================================================
+
+local function RequireCreateGameModule(actionName)
+    if ModMiscCreateGame == nil then
+        SetError(actionName, "ModMiscCreateGame 模块没加载（ImportFiles 里缺 UI/ModMiscCreateGame.lua？）")
+        return false
+    end
+    return true
+end
+
+local function ProbeCreateGame()
+    if not RequireCreateGameModule("CreateGameProbe") then return end
+    local ok, report = pcall(ModMiscCreateGame.DescribeContext)
+    if not ok then
+        SetError("CreateGameProbe", report)
+        return
+    end
+
+    -- 探测是唯一会重新查地图清单的地方（换了 DLC 之后点一下就能刷新）
+    local maps = RefreshMapScriptEntries()
+
+    local detail = Locale.Lookup("LOC_MODMISC_CREATEGAME_PROBE_HEADER") .. "\n"
+        .. tostring(report) .. "\n"
+        .. Locale.Lookup("LOC_MODMISC_CREATEGAME_PROBE_MAPS", #maps, tostring(m_MapScriptSource))
+    SetOutputDetail(detail, Locale.Lookup("LOC_MODMISC_CREATEGAME_PROBE_SHORT"), true)
+end
+
+local function ArmCreateGameMarker()
+    if not RequireCreateGameModule("ArmMarker") then return end
+    local ok, payload, err = pcall(ModMiscCreateGame.ArmMarker, "manual")
+    if not ok then
+        SetError("ArmMarker", payload)
+        return
+    end
+    if payload == nil then
+        SetError("ArmMarker", err)
+        return
+    end
+    SetOutputDetail(Locale.Lookup("LOC_MODMISC_CREATEGAME_ARMED") .. "\n  " .. tostring(payload),
+        Locale.Lookup("LOC_MODMISC_CREATEGAME_ARMED_SHORT"), true)
+end
+
+local function ApplySelectedMapScript()
+    if not RequireCreateGameModule("ApplyMapScript") then return end
+    local mapFile = m_SelectedMapScript ~= nil and m_SelectedMapScript.File or nil
+    if mapFile == nil then
+        mapFile = ModMiscCreateGame.GetCurrentMapScript()
+    end
+    if mapFile == nil then
+        SetError("ApplyMapScript", "no map script selected")
+        return
+    end
+
+    local ok, applied, detail = pcall(ModMiscCreateGame.ApplyMapScript, mapFile)
+    if not ok then
+        SetError("ApplyMapScript", applied)
+        return
+    end
+    local headerKey = applied and "LOC_MODMISC_CREATEGAME_APPLY_OK" or "LOC_MODMISC_CREATEGAME_APPLY_FAIL"
+    local shortKey = applied and "LOC_MODMISC_CREATEGAME_APPLY_SHORT_OK" or "LOC_MODMISC_CREATEGAME_APPLY_SHORT_FAIL"
+    SetOutputDetail(Locale.Lookup(headerKey) .. "\n" .. tostring(detail),
+        Locale.Lookup(shortKey), true)
+end
+
+local function SaveBeforeSwitch()
+    if not RequireCreateGameModule("SaveBeforeSwitch") then return end
+    local ok, saved, detail = pcall(ModMiscCreateGame.SaveBeforeSwitch)
+    if not ok then
+        SetError("SaveBeforeSwitch", saved)
+        return
+    end
+    if not saved then
+        SetError("SaveBeforeSwitch", detail)
+        return
+    end
+
+    -- 落盘是异步的：挂一次性监听，SaveComplete 回来后把回执写进消息窗口
+    if not m_SavePending and Events.SaveComplete ~= nil then
+        m_SavePending = true
+        local handler = nil
+        handler = function(...)
+            Events.SaveComplete.Remove(handler)
+            m_SavePending = false
+            local saveResult = ...
+            SetOutputDetail(Locale.Lookup("LOC_MODMISC_CREATEGAME_SAVE_DONE", tostring(saveResult)),
+                Locale.Lookup("LOC_MODMISC_CREATEGAME_SAVE_DONE_SHORT"), true)
+        end
+        Events.SaveComplete.Add(handler)
+    end
+
+    SetOutputDetail(Locale.Lookup("LOC_MODMISC_CREATEGAME_SAVE_ISSUED", tostring(detail)),
+        Locale.Lookup("LOC_MODMISC_CREATEGAME_SAVE_ISSUED_SHORT"), true)
+end
+
+local function RunCreateGameAction(actionName, label, call)
+    if not RequireCreateGameModule(actionName) then return end
+
+    -- 先打「即将调用」：调用要是把进程干掉了，面板与 Lua.log 的最后一行就是这条
+    SetOutputDetail(Locale.Lookup("LOC_MODMISC_CREATEGAME_CALLING", label),
+        Locale.Lookup("LOC_MODMISC_CREATEGAME_CALLING_SHORT"), true)
+
+    local ok, called, detail = pcall(call)
+    if not ok then
+        SetError(actionName, called)
+        return
+    end
+    if not called then
+        SetError(actionName, detail)
+        return
+    end
+    SetOutputDetail(Locale.Lookup("LOC_MODMISC_CREATEGAME_RETURNED", label) .. "\n" .. tostring(detail),
+        Locale.Lookup("LOC_MODMISC_CREATEGAME_RETURNED_SHORT"), true)
+end
+
+-- ===========================================================================
 -- 面板打开 / 关闭 / 侧栏入口
 -- ===========================================================================
 
@@ -995,6 +1206,7 @@ end
 function OpenAutomationTestPanel()
     local panelRoot = AttachPanelToInGame()
     SelectFirstPlayerIfNeeded()
+    SelectFirstMapScriptIfNeeded()
     RefreshSelectorButtons()
     panelRoot:SetHide(false)
     CloseOptionList()
@@ -1073,6 +1285,37 @@ function OnInit()
         function() SafeCall("ClearPlotAsset", ClearPlotAsset) end)
     Controls.AutomationTestClearAllAssets:RegisterCallback(Mouse.eLClick,
         function() SafeCall("ClearAllAssets", ClearAllAssets) end)
+
+    -- 创建新局 / 换地图：按风险从低到高
+    Controls.AutomationCreateGameMapButton:RegisterCallback(Mouse.eLClick,
+        function() ToggleOptionList("mapScript") end)
+    Controls.AutomationCreateGameProbe:RegisterCallback(Mouse.eLClick,
+        function() SafeCall("CreateGameProbe", ProbeCreateGame) end)
+    Controls.AutomationCreateGameApplyMap:RegisterCallback(Mouse.eLClick,
+        function() SafeCall("ApplyMapScript", ApplySelectedMapScript) end)
+    Controls.AutomationCreateGameArmMarker:RegisterCallback(Mouse.eLClick,
+        function() SafeCall("ArmMarker", ArmCreateGameMarker) end)
+    Controls.AutomationCreateGameSave:RegisterCallback(Mouse.eLClick,
+        function() SafeCall("SaveBeforeSwitch", SaveBeforeSwitch) end)
+    Controls.AutomationCreateGameRestart:RegisterCallback(Mouse.eLClick,
+        function() SafeCall("RestartGameInGame", function()
+            RunCreateGameAction("RestartGameInGame", "Network.RestartGame()", function()
+                return ModMiscCreateGame.RestartGame()
+            end)
+        end) end)
+    Controls.AutomationCreateGameHost:RegisterCallback(Mouse.eLClick,
+        function() SafeCall("HostGameInGame", function()
+            RunCreateGameAction("HostGameInGame",
+                "ScenarioSetup: Network.HostGame(SERVER_TYPE_NONE)", function()
+                    return ModMiscCreateGame.HostGame()
+                end)
+        end) end)
+    Controls.AutomationCreateGameExit:RegisterCallback(Mouse.eLClick,
+        function() SafeCall("ExitToMainMenu", function()
+            RunCreateGameAction("ExitToMainMenu", "Events.ExitToMainMenu()", function()
+                return ModMiscCreateGame.ExitToMainMenu()
+            end)
+        end) end)
 end
 
 function OnLoadGameViewStateDone()

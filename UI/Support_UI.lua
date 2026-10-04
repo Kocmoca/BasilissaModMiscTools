@@ -3,6 +3,7 @@ include("ModTool_Support_UI.lua")
 include("Civ6Common")   -- ReadCustomData：读取创建游戏时保存的城邦数量
 include("ModMiscStore") -- 跨存档存储（存档名编码通道）
 include("ModMiscAssetStore") -- 永久资产放置（读档自动重放）
+include("ModMiscCreateGame") -- 对局内「创建新局 / 换地图」验证（开局探针 + 面板入口）
 print("[ModMiscTool] Support_UI loaded build=" .. tostring(MODMISC_BUILD_TAG))
 
 local allUnitPromotions = {}
@@ -430,6 +431,16 @@ function Initialize()
 		end
 	end
 
+	-- 创建新局 / 换地图：开局探针（每次进游戏一次）。
+	-- 判定「上一轮按钮调用之后进的是哪一局」——标记在 = 还在原局或读回了旧档，
+	-- 标记没了 = 新局（CustomData 不跨新局）。结论看 Lua.log 的 [ModMiscTool][CreateGame] 行。
+	if ModMiscCreateGame ~= nil then
+		local ok, err = pcall(ModMiscCreateGame.ReportAfterCreateInGame)
+		if not ok then
+			print("[ModMiscTool][CreateGame] 开局探针失败 -> " .. tostring(err))
+		end
+	end
+
 
 	-- 跨存档探针：启动流程只跑这一次，结论看 Lua.log 里的 [ModMiscTool][Probe] 行
 	m_ProbeLoadIndex = m_ProbeLoadIndex + 1
@@ -457,6 +468,28 @@ ExposedMembers.ModMiscToolUI.RunCrossSaveProbeUI = RunCrossSaveProbeUI
 	-- 跨存档数据存取（UI 侧）：写 CustomData，**写完要再存一次档**才落盘
 	ExposedMembers.ModMiscToolUI.SetCustomData = SetModMiscCustomData
 	ExposedMembers.ModMiscToolUI.GetCustomData = GetModMiscCustomData
+
+	-- 对局内「创建新局 / 换地图」（UI 层）：接口与日志判定见 UI/ModMiscCreateGame.lua
+	if ModMiscCreateGame ~= nil then
+		ExposedMembers.ModMiscToolUI.CreateGame = ModMiscCreateGame
+		ExposedMembers.ModMiscToolUI.DescribeCreateGameContext = ModMiscCreateGame.DescribeContext
+		ExposedMembers.ModMiscToolUI.GetCurrentMapScript = ModMiscCreateGame.GetCurrentMapScript
+		ExposedMembers.ModMiscToolUI.ListMapScripts = ModMiscCreateGame.ListMapScripts
+		ExposedMembers.ModMiscToolUI.ApplyMapScript = ModMiscCreateGame.ApplyMapScript
+		ExposedMembers.ModMiscToolUI.ArmCreateGameMarker = ModMiscCreateGame.ArmMarker
+		ExposedMembers.ModMiscToolUI.HostGameInGame = ModMiscCreateGame.HostGame
+		ExposedMembers.ModMiscToolUI.RestartGameInGame = ModMiscCreateGame.RestartGame
+	end
+
+	-- 永久资产放置（API_Documentation.txt 3.10.2 里写的对外名字，实现是 ModMiscAssetStore）
+	if ModMiscAssetStore ~= nil then
+		ExposedMembers.ModMiscToolUI.PlaceAssetPersistent = ModMiscAssetStore.PlaceAndRecord
+		ExposedMembers.ModMiscToolUI.RemovePersistentAssetsAt = ModMiscAssetStore.RemoveAt
+		ExposedMembers.ModMiscToolUI.ClearPersistentAssets = ModMiscAssetStore.ClearAllRecords
+		ExposedMembers.ModMiscToolUI.RestorePersistentAssets = ModMiscAssetStore.RestoreAll
+		ExposedMembers.ModMiscToolUI.GetPersistentAssetCount = ModMiscAssetStore.GetCount
+		ExposedMembers.ModMiscToolUI.GetPersistentAssets = ModMiscAssetStore.GetAll
+	end
 
 	-- 跨存档存储（存档名编码通道，已实机验证）：给别的 mod 直接用的接口。
 	-- 用法：RefreshData() → OnDataReady 回调里 GetData(key)；

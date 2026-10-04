@@ -1025,6 +1025,11 @@ local function ModMiscToolGetMapSizeKey()
 	return nil, "raw=" .. tostring(raw) .. " 不等于任何候选（" .. table.concat(parts, " ") .. "）"
 end
 
+-- 取地图尺寸的逻辑**只此一份**：这里是 local function，别的文件用不到，
+-- 所以显式导出成全局给其它模块复用（例：UI/ModMiscCreateGame.lua 的指纹要用它读尺寸）。
+-- 需要在别处再用一次时请调这个全局，不要在别的文件里重写一遍哈希比对。
+ModMiscToolResolveMapSizeKey = ModMiscToolGetMapSizeKey
+
 -- 【开关】地图尺寸诊断：排查“尺寸识别/上限没生效”时打开。
 -- 曾经默认开着，但每个 context 会刷 30+ 行（整张 MapSizes 逐行打），
 -- 2026-10-04 确认尺寸识别与分档都正常后改回默认关闭。

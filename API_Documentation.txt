@@ -1001,6 +1001,81 @@ CanUnitTypeGetExp(unitIndex)
 * 测试面板上的「放置资产 / 清除地块资产 / 清除全部资产」已经接了这套，
   另有「重放放置」按钮可手动触发一次重放。
 
+------------------------------------------------------------------------------
+### 3.11 对局内创建新局 / 换地图（ModMiscCreateGame）
+------------------------------------------------------------------------------
+
+**用途**：在**对局内**判断/执行“按新的地图配置重开一局”，用来模拟游戏中切换地图。
+封装的是 ScenarioSetup 开始按钮那句调用（`Base/Assets/UI/FrontEnd/ScenarioSetup.lua:728`）：
+
+    Events.SetGameEntryMethod("Scenario Start");
+    Network.HostGame(ServerType.SERVER_TYPE_NONE);
+
+ScenarioSetup 是前端上下文、对局内没有它，所以这里是**照抄这两行**从对局内发出。
+配套还有引擎自带的 `Network.RestartGame()`（对局内重开的官方路径）作对照，
+以及 `Events.ExitToMainMenu()` 兜底路径。
+
+#### 3.11.1 本 mod 内直接调（`UI/ModMiscCreateGame.lua`）
+
+    ModMiscCreateGame.DescribeContext()            只读探测：接口可用性 + 当前指纹 + 改图路径
+                                                   返回多行文本（同时 print 到 Lua.log）
+    ModMiscCreateGame.DescribeFingerprint()        当前局指纹：turn/script/size/grid/players
+    ModMiscCreateGame.ListMapScripts()             地图脚本清单（查配置库 Maps 表；失败用内置表）
+    ModMiscCreateGame.GetCurrentMapScript()        当前地图脚本（返回 file, 读法名）
+    ModMiscCreateGame.ApplyMapScript(file)         改地图配置 + 立即回读（返回 ok, 明细）
+    ModMiscCreateGame.ArmMarker(action)            写「切换前快照」到 CustomData（返回 payload）
+    ModMiscCreateGame.ReadMarker() / ClearMarker() 读 / 清 标记
+    ModMiscCreateGame.SaveBeforeSwitch()           切换前存档（普通单机档，异步）
+    ModMiscCreateGame.RestartGame()                Network.RestartGame（对照组）
+    ModMiscCreateGame.HostGame()                   ScenarioSetup 等价调用（验证目标）
+    ModMiscCreateGame.ExitToMainMenu()             退回前端
+    ModMiscCreateGame.ReportAfterCreateInGame()    开局探针（由 Support_UI.Initialize 调一次）
+
+#### 3.11.2 其它 mod 可用（`ExposedMembers.ModMiscToolUI.*`）
+
+    CreateGame                    整个模块表（要用没单独列出的接口时取它）
+    DescribeCreateGameContext()   同 DescribeContext
+    GetCurrentMapScript()         当前地图脚本文件名
+    ListMapScripts()              地图脚本清单
+    ApplyMapScript(file)          改地图配置 + 回读
+    ArmCreateGameMarker(action)   写「切换前快照」
+    HostGameInGame()              对局内 HostGame（验证目标）
+    RestartGameInGame()           对局内 RestartGame
+
+⚠️ 这些是 **UI 层**接口（`Network.*` / `MapConfiguration` / `GameConfiguration` 都在 UI 上下文）。
+gameplay 侧要换图，走 `ExposedMembers.ModMiscToolScript.WorldBuilderAPI.SetMapValue("MapScript", file)`
+（地图编辑器那条路，见 3.9 一节的 WorldBuilder 接口）。
+
+#### 3.11.3 证据链（怎么判断调用之后到底进了哪一局）
+
+`ArmMarker` 把「调用前的快照」写进 CustomData；CustomData **随局随档、新局不继承**
+（已验证），于是：
+
+* 标记**读不到** → 现在这局是**新建的**；
+* 标记**读得到** → 还是原来那局（调用是空操作），或读回了存档之后的旧档；
+* 新局指纹里的 `script=` / `grid=` 和目标值一致 → **换图成功**；还是原值 → 建了新局但没换图。
+
+结论全部打在 Lua.log，前缀 `[ModMiscTool][CreateGame]`，涉及的关键行：
+
+    api: …                   各接口是否存在（y/n）
+    routes: …                改图四条路径的可用性
+    now: turn=…;script=…;size=…;grid=…;players=…
+    marker armed: [act=…;nonce=…;t=…;…]
+    即将调用 … / 调用已返回（没卡死）
+    after-create: VERDICT=new-game | marker-present
+
+#### 3.11.4 注意
+
+* 三个入口（`RestartGame` / `HostGame` / `ExitToMainMenu`）都会**把当前局顶掉或直接重开**，
+  想保住进度先点「切换前存档」（普通档，档名 `ModMiscCreateGame~switch-backup`）；
+* 对局内改配置是**直接写配置对象**，绕过了前端 SetupParameters 的参数系统，
+  所以前端那套“游戏已开始不可改”的限制在这里不适用 —— 但**写了算不算数要实测**
+  （RestartGame 用的是“开局前那份配置”，可能忽略对局内的改动；HostGame 读当前配置）；
+* 引擎自带的 Automation 明确要求 `HostGame` 站在主菜单才能用
+  （`Automation_StandardTests.lua:489`）⇒ 对局内直调很可能不被支持，
+  失败也在预期之内，届时退回「退主菜单再建」这条路；
+* 每次进游戏（新局 / 读档）都会打一行开局探针结论，属正常日志，不是报错。
+
 ==============================================================================
 ## 四、数据库表（供其他 mod 插入数据）
 ==============================================================================

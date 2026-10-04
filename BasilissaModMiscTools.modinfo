@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<Mod id="a1b2c3d4-5e6f-7a8b-9c0d-1e2f3a4b5c6d" version="1.54">
+<Mod id="a1b2c3d4-5e6f-7a8b-9c0d-1e2f3a4b5c6d" version="1.55">
     <Properties>
         <Name>Basilissa Mod Misc Tools</Name>
         <Description>LOC_MODMISC_MOD_DESCRIPTION</Description>
@@ -103,6 +103,7 @@
             <File>ModTool_DataStore.lua</File>
             <File>UI/ModMiscStore.lua</File>
             <File>UI/ModMiscAssetStore.lua</File>
+            <File>UI/ModMiscCreateGame.lua</File>
             <File>ModTool_Support_Functions.lua</File>
             <File>ModTool_Support_UI.lua</File>
             <File>ModTool_WorldBuilderAPI.lua</File>
@@ -135,8 +136,9 @@
             </Properties>
             <File>UI/LeftSideBar.xml</File>
         </AddUserInterfaces>
-        <!-- Automation 调试面板：**默认不注册**（授权者 2026-10-04 决定；它的实验项目都已收尾）。
-             代码与文案都留着，需要时把下面这段 AddUserInterfaces 加回来即可：
+        <!-- Automation 调试面板：**本轮重新注册**（2026-10-05，验证「对局内创建新局 / 换地图」；
+             授权者指定把测试入口加在这个面板里）。验证完要收起来时，把这段注释掉即可：
+             它的实验项目早就收尾，留着不影响对局，只是左侧栏多一个入口。 -->
         <AddUserInterfaces id="AutomationTestPanel">
             <Properties>
                 <Context>InGame</Context>
@@ -144,7 +146,6 @@
             </Properties>
             <File>UI/AutomationTestPanel.xml</File>
         </AddUserInterfaces>
-        -->
         <!-- WorldBuilder 测试面板：**默认不注册**（发布版收起来；调试幽灵池时很实用）。
              它带玩家列表，能直接看出哪些槽位是幽灵；功能同时也通过 API 暴露给其它 mod
              （ExposedMembers.ModMiscToolScript.* 与 ExposedMembers.ModMiscToolUI.*）。
@@ -215,6 +216,7 @@
         <File>UI/FrontEnd_SaveProbe.lua</File>
         <File>UI/ModMiscStore.lua</File>
         <File>UI/ModMiscAssetStore.lua</File>
+        <File>UI/ModMiscCreateGame.lua</File>
         <!-- texts -->
         <File>Text.xml</File>
         <File>Text_CN.xml</File>

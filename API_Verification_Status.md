@@ -353,3 +353,73 @@ end
 4. 打开城邦选择器拖数量滑块，数值是否被弹回（对应 11.3）；
 5. 进游戏后城邦数量是否确实**多于**玩家选择的数量（安卓实测是 36，PC 待测）。
 
+---
+
+## 12. 对局内创建新局 / 换地图（2026-10-05，**待实机**）
+
+**动机**：如果能**在对局内**调起 ScenarioSetup 那套「创建游戏」，再配上已验证的对局内读档
+（第 38 条），就能模拟“游戏中切换地图”：切图前先存档 → 就地按新地图建一局 →（要回去就）读档。
+
+**验证入口**：Automation 测试面板（本轮**重新注册**，见 modinfo）底部新增的
+「创建新局 / 换地图」区；接口封装与判定协议全在 `UI/ModMiscCreateGame.lua`。
+
+### 12.1 静态核对（都来自游戏自带代码，不是推断）
+
+| # | 事实 | 出处 | 对本次验证的意义 |
+|---|---|---|---|
+| a | `Network.RestartGame()` 是引擎自带的**对局内**重开，注释写着「Start a fresh game using the existing game configuration.」 | `Base/Assets/UI/Menus/InGameTopOptionsMenu.lua:78` | 对局内建新局有官方路径，拿它当对照组 |
+| b | 该按钮的可用条件是 `not GameConfiguration.IsAnyMultiplayer()`（热座还要“不是读来的档”），并且 `WorldBuilder` 激活时禁用 | 同上 `:316~:323`、`:378` | 单机普通局应当可重开；面板日志会打出这几个门槛值 |
+| c | `GameConfiguration` 在**对局内 UI 上下文**可用（同一文件在读 `IsAnyMultiplayer` / `GetGameSpeedType` / `IsSavedGame`） | 同上 `:316`、`:439~:447` | 配置对象本身不是问题 |
+| d | `MapConfiguration` 在**对局内代码里一个调用点都没有** | 全仓库 grep（只有 FrontEnd / Automation 在用） | 可用性未知 ⇒ 必须靠面板探测（这是换图能不能成立的关键） |
+| e | 引擎自己的 Automation 要求 HostGame 必须站在主菜单：「We must be at the Main Menu to do this test」，不在就 `Events.ExitToMainMenu()` | `Automation_StandardTests.lua:489`、`Automation_DailySmokeTest.lua:96` | 对局内直调 `HostGame` **大概率不被支持**；验证它就是为了把结论钉死 |
+| f | 配置键：`Map` 组 `MAP_SCRIPT`（值是**地图脚本文件名**，如 `Pangaea.lua`）/ `MAP_SIZE`；`Game` 组 `RULESET` / `GAME_HANDICAP` / `GAME_SPEED_TYPE` / `CITY_STATE_COUNT` | `Base/Assets/Configuration/Data/SetupParameters.xml:5/9/15/18/21/23` | 面板「应用地图配置」写的就是这几个键 |
+| g | 地图清单（含 DLC/资料片）在前端的来源是 Configuration 库 `Maps` 表：`SELECT File, Image, StaticMap from Maps where Domain = ?` | `AdvancedSetup.lua:182` | 面板用它生成「目标地图」下拉；对局内查不到就用模块内置兜底表 |
+| h | 前端参数系统对“游戏已开始”的限制（`ChangeableAfterGameStart` / `GAMESTATE_PREGAME`）只在 `SetupParameters:Config_CanWriteParameter` 里 | `SetupParameters.lua:535`、`:1505` | 面板是**直接写配置对象**、绕过参数系统 ⇒ 这套拦截不适用，能不能写只能实测 |
+
+### 12.2 待实机验证的条目
+
+| # | 接口 / 方法 | 状态 | 备注与判定 |
+|---|---|---|---|
+| 40 | 对局内 `MapConfiguration` 及其 `SetScript` / `SetValue("MAP_SCRIPT")` | `[未验证]` | 探测行 `api: MapConfiguration=y MapConfiguration.SetScript=y …`（`y/y` = 可用）。**这是换图能否成立的关键**：若为 `n`，换图只能退回「改配置走 WorldBuilder 那条（gameplay 侧）」或「退主菜单再建」。 |
+| 41 | 对局内写地图配置并回读生效 | `[未验证]` | 面板「应用地图配置」→ `applied=true`（回读值 = 目标值）。模块会依次试 4 条路径并逐条记 `routes[...]`：`MapConfiguration.SetScript` / `MapConfiguration.SetValue` / `GameConfiguration.SetValue` / `WorldBuilder.ConfigurationManager():SetMapValue`。 |
+| 42 | 对局内 `Network.RestartGame()` | `[未验证]` | 对照组（引擎自带）。日志 `即将调用 Network.RestartGame()` → `调用已返回` → 若真重开，接着出现 `after-create: VERDICT=new-game`。 |
+| 43 | **对局内 `Events.SetGameEntryMethod` + `Network.HostGame(ServerType.SERVER_TYPE_NONE)`**（ScenarioSetup.OnStartButton 的普通分支） | `[未验证]` | **本次验证目标**。判定同上：返回后还在原局 = 空操作；出现 `VERDICT=new-game` = 真建出了新局；日志断在“即将调用” = 引擎挂了（看 tombstone）。 |
+| 44 | 对局内 `Events.ExitToMainMenu()` | `[未验证]` | 兜底路径：退回前端后，用前端那套已验证的创建流程照样能换图（代价是绕一圈）。 |
+| 45 | 对局内普通存档（`Network.SaveGame{Type=SINGLE_PLAYER, FileType=GAME_STATE}`） | `[未验证]` | 「切换前存档」按钮。前端配置档（第 32 条）与对局内配置档写入都已验证；普通档这条**没单独验过**，面板会等 `Events.SaveComplete` 回执。 |
+| 46 | 对局内改的配置**会不会被新局采用** | `[未验证]` | RestartGame 的注释说它用的是「游戏最开始之前的那份配置」（TTP 34989）⇒ 可能**忽略**对局内改的地图；HostGame 走的是当前配置对象 ⇒ 应当采纳。两组指纹一比就知道：新局 `now: …script=<目标图>` = 换图成功，`script=<原图>` = 建了新局但没换图。 |
+
+### 12.3 面板操作顺序（按风险从低到高）
+
+1. **探测创建接口** —— 只读，安全。把 `api:` / `routes:` / `now:` 三行记下来；
+2. **目标地图**（下拉）选一张与当前不同的图，例如 `Pangaea.lua`；
+3. **应用地图配置** —— 看 `applied=true/false` 与 `routes[...]`，这一步不动当前局；
+4. **写切换标记**（可选，手动路径用：想用游戏自带的「重新开始 / 载入游戏」菜单测同一套判定时先点它）；
+5. **切换前存档** —— 想再回到这一局就点（等 `SaveComplete` 回执）；
+6. **重开新局**（`Network.RestartGame`）—— 对照组；
+7. **HostGame 建新局**（验证目标，等价 ScenarioSetup 的开始按钮）；
+8. **退回主菜单** —— 兜底路径。
+
+> 想换回旧地图 / 旧进度：走游戏自己的「载入游戏」菜单读那个 `ModMiscCreateGame~switch-backup` 档
+> （对局内直调 `Network.LoadGame` 已验证可用，但会顶掉当前局，所以面板不提供按钮，见第 38 条）。
+
+### 12.4 Lua.log 判定表（前缀 `[ModMiscTool][CreateGame]`）
+
+| 日志表现 | 结论 |
+|---|---|
+| 最后一行是 `即将调用 …`，之后什么都没有 | 调用把进程干掉了；取 tombstone 看 backtrace（参考第 13c 条的 SIGSEGV 排查法） |
+| `即将调用 …` 后跟 `调用已返回（没卡死）；现在是：…`，但之后没有 `LoadScreen` / 开局探针 | 调用是**空操作**：引擎接受了调用但没建新局 |
+| 出现 `after-create: VERDICT=new-game` | **新局建出来了**（CustomData 不跨新局 ⇒ 标记读不到） |
+| 出现 `after-create: VERDICT=marker-present` | 没进新局：要么还在原来那一局，要么是读回了「存档之后」的旧档 |
+| 新局的 `now: …script=<目标图>…` | 对局内改的地图配置**被采纳** ⇒ 换图成功 |
+| 新局的 `now: …script=<原图>…` | 建了新局但用的还是旧地图配置（对应第 46 条） |
+
+**证据链怎么连起来的**：`ArmMarker` 先把「切换前快照」（act/nonce/turn/script/size/grid/players）
+写进 CustomData；而 CustomData 是**随局随档**的（第 21/39 条），新局不继承 ⇒
+“标记读不到”就是“这是个全新的局”的直接证据；再拿新局的指纹和快照里的 script/grid 一比，
+就知道地图到底换没换。整个过程只依赖 Lua.log，不需要面板一直开着。
+
+### 12.5 收尾（验证完要做的两件事）
+
+1. modinfo 里 `<AddUserInterfaces id="AutomationTestPanel">` **重新注释掉**（发布版不收调试面板，
+   这正是 1.54 时的决定）；
+2. 把本节 40~46 行的 `[未验证]` 按实机结果改成 `[已验证可用]` / `[已验证失败]` 并补证据。

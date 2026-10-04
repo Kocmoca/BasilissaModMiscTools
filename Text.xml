@@ -415,5 +415,85 @@
 		<Row Tag="LOC_MODMISC_AUTOMATION_TEST_READY">
 			<Text>Automation test panel ready.</Text>
 		</Row>
+		<!-- 创建新局 / 换地图（对局内）：Automation 面板新增区 -->
+		<Row Tag="LOC_MODMISC_CREATEGAME_MAP_TARGET">
+			<Text>Target Map</Text>
+		</Row>
+		<Row Tag="LOC_MODMISC_CREATEGAME_MAP_NOT_SELECTED">
+			<Text>No target map selected</Text>
+		</Row>
+		<Row Tag="LOC_MODMISC_CREATEGAME_PROBE">
+			<Text>Probe create-game APIs</Text>
+		</Row>
+		<Row Tag="LOC_MODMISC_CREATEGAME_APPLY_MAP">
+			<Text>Apply map config</Text>
+		</Row>
+		<Row Tag="LOC_MODMISC_CREATEGAME_ARM_MARKER">
+			<Text>Arm marker</Text>
+		</Row>
+		<Row Tag="LOC_MODMISC_CREATEGAME_SAVE">
+			<Text>Save before switch</Text>
+		</Row>
+		<Row Tag="LOC_MODMISC_CREATEGAME_RESTART">
+			<Text>RestartGame</Text>
+		</Row>
+		<Row Tag="LOC_MODMISC_CREATEGAME_HOST">
+			<Text>HostGame (new game)</Text>
+		</Row>
+		<Row Tag="LOC_MODMISC_CREATEGAME_EXIT">
+			<Text>Exit to main menu</Text>
+		</Row>
+		<Row Tag="LOC_MODMISC_CREATEGAME_PROBE_HEADER">
+			<Text>Create-game probe in game (log prefix [ModMiscTool][CreateGame]):</Text>
+		</Row>
+		<Row Tag="LOC_MODMISC_CREATEGAME_PROBE_SHORT">
+			<Text>Create-game probe done</Text>
+		</Row>
+		<Row Tag="LOC_MODMISC_CREATEGAME_PROBE_MAPS">
+			<Text>map scripts: {1_Count} (source: {2_Source})</Text>
+		</Row>
+		<Row Tag="LOC_MODMISC_CREATEGAME_APPLY_OK">
+			<Text>Map config applied (readback matches the target)</Text>
+		</Row>
+		<Row Tag="LOC_MODMISC_CREATEGAME_APPLY_FAIL">
+			<Text>Map config NOT applied (readback is still the old value)</Text>
+		</Row>
+		<Row Tag="LOC_MODMISC_CREATEGAME_APPLY_SHORT_OK">
+			<Text>map config applied</Text>
+		</Row>
+		<Row Tag="LOC_MODMISC_CREATEGAME_APPLY_SHORT_FAIL">
+			<Text>map config failed</Text>
+		</Row>
+		<Row Tag="LOC_MODMISC_CREATEGAME_ARMED">
+			<Text>Marker written (before-switch snapshot):</Text>
+		</Row>
+		<Row Tag="LOC_MODMISC_CREATEGAME_ARMED_SHORT">
+			<Text>marker written</Text>
+		</Row>
+		<Row Tag="LOC_MODMISC_CREATEGAME_SAVE_ISSUED">
+			<Text>Save requested: {1_Name} (waiting for SaveComplete)</Text>
+		</Row>
+		<Row Tag="LOC_MODMISC_CREATEGAME_SAVE_ISSUED_SHORT">
+			<Text>save requested</Text>
+		</Row>
+		<Row Tag="LOC_MODMISC_CREATEGAME_SAVE_DONE">
+			<Text>SaveComplete: {1_Result}</Text>
+		</Row>
+		<Row Tag="LOC_MODMISC_CREATEGAME_SAVE_DONE_SHORT">
+			<Text>save complete</Text>
+		</Row>
+		<Row Tag="LOC_MODMISC_CREATEGAME_CALLING">
+			<Text>Calling {1_Action} ... (if the log stops here, the engine died)</Text>
+		</Row>
+		<Row Tag="LOC_MODMISC_CREATEGAME_CALLING_SHORT">
+			<Text>calling {1_Action}</Text>
+		</Row>
+		<Row Tag="LOC_MODMISC_CREATEGAME_RETURNED">
+			<Text>{1_Action} returned (no crash):</Text>
+		</Row>
+		<Row Tag="LOC_MODMISC_CREATEGAME_RETURNED_SHORT">
+			<Text>{1_Action} returned</Text>
+		</Row>
 </BaseGameText>
+
 </GameData>
