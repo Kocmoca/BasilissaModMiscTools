@@ -981,33 +981,24 @@ end
 local m_GhostLastPollKey = nil
 
 -- ===========================================================================
--- 城邦最大数量：**按地图尺寸、纯 Lua 配置**
+-- 城邦上限：数据库是天花板，这里是可选的运行时**安全阀**
 --
--- 【语义要说准】这张表配的是**城邦最大数量**（请求创建多少个城邦玩家），
--- 不是“幽灵玩家数量”。两者关系是：
---     幽灵池 = 城邦最大数量 − 玩家自己选择的城邦数
--- 例：某尺寸配 18、玩家选 6 → 请求 18 → 开局后 12 个城邦被搬到地图外当幽灵。
--- （之前我把它命名/注释成“幽灵目标数”再叠加上去，语义重复且对不上，已改正。）
+-- 【分工】`GhostPlayers_MapSizes.sql` 抬高 `MapSizes.MaxCityStates` —— 那是引擎创建
+-- 城邦玩家的**天花板**（同时决定创建游戏界面能选多少）。实测只靠 Lua 设
+-- CITY_STATE_COUNT 是顶不上去的：引擎仍按原版值（HUGE=24）创建。
+-- 所以本 hook 的请求值默认就取数据库天花板；下面这张表只在你想**单独压低**某个尺寸、
+-- 又不想重打数据库时用 —— 写一个比天花板更小的数即可，留空则完全跟随数据库。
 --
--- 【为什么不改数据库】以前靠 SQL 抬 MapSizes.MaxCityStates/MaxPlayers 换幽灵池，
--- 结果引擎在地图生成阶段要塞下远超原版容量的玩家，出现加载失败。现在**不动数据库**，
--- 上限完全由这张表决定（请求值不再夹到原版上限）。
+-- 【幽灵池】池子 = 请求的城邦数 − 玩家自己选择的城邦数。
+-- 例：HUGE 天花板 62、玩家选 6 → 请求 62 → 开局后 56 个城邦被搬到地图外当幽灵。
 --
--- 【上限】引擎侧硬上限 62 = MAX_PLAYERS(64) − 野蛮人 − 自由城市；
--- 实际能创建多少还受“数据库里的城邦文明条数”限制（复制城邦那个功能就是为了把它做大）。
--- 授权者结论：大地图/巨大地图可以吃满最高档 62；小图按原版量级给，别把图塞爆。
+-- 【硬上限】62 = MAX_PLAYERS(64) − 野蛮人 − 自由城市两个固定槽位。
 -- ===========================================================================
-local GHOST_MAX_CITY_STATES_BY_MAP_SIZE = {
-	MAPSIZE_DUEL     = 6,    -- 原版城邦上限 6
-	MAPSIZE_TINY     = 10,   -- 原版 10
-	MAPSIZE_SMALL    = 14,   -- 原版 14
-	MAPSIZE_STANDARD = 18,   -- 原版 18
-	MAPSIZE_LARGE    = 62,   -- 吃满硬上限
-	MAPSIZE_HUGE     = 62,   -- 吃满硬上限
+local GHOST_CITY_STATE_CAP_BY_MAP_SIZE = {
+	-- 留空/不写 = 用数据库天花板。需要单独收某个尺寸时这样写：
+	-- MAPSIZE_STANDARD = 40,
 }
-local GHOST_MAX_CITY_STATES_DEFAULT = 18
--- 引擎硬上限：MAX_PLAYERS(64) − 野蛮人 − 自由城市
-local GHOST_MAX_CITY_STATES_HARD_LIMIT = 62
+local GHOST_CITY_STATE_HARD_LIMIT = 62
 
 -- 当前地图尺寸的标识（"MAPSIZE_STANDARD" 之类）。
 -- MapConfiguration.GetValue("MapSize") 的值可能是字符串，也可能是 {Domain=, Value=} 表
@@ -1042,17 +1033,12 @@ local function ModMiscToolApplyGhostCityStates()
 	-- current <= 0 时不处理：避免在参数还没载入时把 0 当成“玩家选择”记下来
 	if current <= 0 or maxCityStates <= 0 or current >= maxCityStates then return end
 
-	-- 按地图尺寸取“城邦最大数量”，直接设为请求值
-	-- （不夹到原版上限 —— 授权者结论：大地图/巨大地图吃满 62；只受引擎硬上限与
-	--   “不低于玩家自己的选择”两条约束）
+	-- 请求值 = 数据库天花板（= maxCityStates），可被安全阀压低
 	local mapSizeKey = ModMiscToolGetMapSizeKey()
-	local target = GHOST_MAX_CITY_STATES_BY_MAP_SIZE[mapSizeKey]
-	if target == nil then
-		target = GHOST_MAX_CITY_STATES_DEFAULT
-	end
-	if target > GHOST_MAX_CITY_STATES_HARD_LIMIT then
-		target = GHOST_MAX_CITY_STATES_HARD_LIMIT
-	end
+	local target = maxCityStates
+	local capOverride = GHOST_CITY_STATE_CAP_BY_MAP_SIZE[mapSizeKey]
+	if capOverride ~= nil and capOverride < target then target = capOverride end
+	if target > GHOST_CITY_STATE_HARD_LIMIT then target = GHOST_CITY_STATE_HARD_LIMIT end
 	if target <= current then return end
 
 	WriteCustomData(GHOST_CITY_STATE_CUSTOM_DATA_KEY, current)
@@ -1060,8 +1046,8 @@ local function ModMiscToolApplyGhostCityStates()
 	print("[ModMiscTool][Ghost] city states -> " .. tostring(target)
 		.. " (player choice " .. tostring(current) .. " saved"
 		.. " | mapSize=" .. tostring(mapSizeKey)
-		.. " maxCityStates=" .. tostring(target)
-		.. " vanillaMax=" .. tostring(maxCityStates)
+		.. " dbCeiling=" .. tostring(maxCityStates)
+		.. (capOverride ~= nil and (" capOverride=" .. tostring(capOverride)) or "")
 		.. " -> 幽灵池 " .. tostring(target - current) .. ")")
 end
 

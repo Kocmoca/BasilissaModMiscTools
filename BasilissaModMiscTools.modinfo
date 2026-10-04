@@ -29,6 +29,11 @@
             <File>Text.xml</File>
             <File>Text_CN.xml</File>
         </UpdateText>
+        <!-- 城邦上限（按地图尺寸分档抬高）：MapSizes.MaxCityStates 是引擎创建城邦玩家的
+             天花板，只靠 Lua 设 CITY_STATE_COUNT 顶不上去（实测会被原版值卡住）。 -->
+        <UpdateDatabase id="GhostPlayersMapSizes">
+            <File>GhostPlayers_MapSizes.sql</File>
+        </UpdateDatabase>
         <!-- 创建游戏界面：拉满城邦数量并用 WriteCustomData 记下玩家原本的选择 -->
         <ImportFiles id="FrontEndUIReplacements">
             <Properties>
@@ -92,6 +97,7 @@
             </Properties>
             <File>ModTool.lua</File>
             <File>ExtensiveUnitBuild.lua</File>
+        <File>GhostPlayers_MapSizes.sql</File>
         </AddGameplayScripts>
         <ImportFiles id="Imports">
             <File>ModTool_DataStore.lua</File>
