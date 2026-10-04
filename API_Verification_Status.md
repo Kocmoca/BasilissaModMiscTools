@@ -77,6 +77,8 @@
 | **B** `io.open` 写自己的文件 | 若 Lua 环境带 io 库，直接写数据文件最干净（位置可用 `UI.GetSaveLocationPath()` 定位） | `[IOProbe]` 待实机 |
 | **C** 存档名编码 | 写：`Network.SaveGame{Name=…}`（对局内后台存档是静默的，已验证）；读：`UI.QuerySaveGameList` 的 `Name`（不需读档、前后端都能用，已验证）。**这就是“利用普通存档”那条路**。 | 纯原版可行，代价：污染存档列表；文件名禁 `%` 与 `" < > \| / \ * ? :` 及控制字符；一个 payload 一个文件 |
 | **D** 存档元数据注入 | ❌ 排除：`EnabledMods` / `RequiredMods` / `SavedByVersion` / `TunerActive` 等字段全由引擎填；`UI.GetSaveGameMetaData()` 只能读“正在加载的那个档”，没有任意档读取接口 | — |
+| **B′** | `io` 库（mod 自己写文件） | `[已验证失败]` | 实机 `[IOProbe] io=n io.open=n os=y` —— **安卓端 Lua 没有 io 库**，这条路直接断。 |
+| **A′** | `Options.SetUserOption` 存自定义键 | `[已验证失败]` | 实机：`写入失败 -> [ModMiscTool] CrossSaveProbe is not a registered option.` 引擎会校验选项是否注册；而注册表在引擎内部（`PlayByCloudNotifyRemind` 这类键在**全部数据文件里都搜不到声明**），mod 注册不了新选项 ⇒ 不通。<br>顺带发现：Civ6 里 **`pcall` 挡不住日志** —— 被捕获的错误照样打 `Runtime Error` + traceback。 |
 
 ## 4. WorldBuilder（地图编辑器）接口
 
