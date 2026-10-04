@@ -27,11 +27,15 @@
 -- ===========================================================================
 
 local MODMISC_STORE_PREFIX = "ModMiscStore~"
-local MODMISC_STORE_BUILD_TAG = "2026-10-04-A"
+local MODMISC_STORE_BUILD_TAG = "2026-10-04-B"
 -- 自检：每轮写一份 ms=… payload 并读回上一轮的（验证通道还活着）。测试期开着。
 local MODMISC_STORE_SELFTEST = true
 -- 值长度上限（hex 后翻倍，文件名总长别顶到系统上限）
 local MODMISC_STORE_MAX_VALUE_BYTES = 120
+-- 早期探测阶段留下的档：扫到就顺手删掉，免得一直在列表里当“非存储档”碍眼
+--   ModMiscFrontEndProbe —— 前端存读档探针写过的那种配置档（探针已默认关闭）
+--   形如 ModMiscStore~<单段hex> —— 本模块改版前的老格式（没有 key/value 两段）
+local MODMISC_STORE_LEGACY_NAME = "ModMiscFrontEndProbe"
 
 -- 本进程已解码到的数据
 local m_Data = {}
@@ -145,6 +149,7 @@ local function OnStoreQueryResults(fileList, requestId)
     m_Entries = {}
     local decodedCount = 0
     local otherNames = {}
+    local legacyEntries = {}
     if fileList ~= nil then
         for _, entry in ipairs(fileList) do
             if entry ~= nil and entry.Name ~= nil then
@@ -155,6 +160,13 @@ local function OnStoreQueryResults(fileList, requestId)
                     decodedCount = decodedCount + 1
                 else
                     table.insert(otherNames, tostring(entry.Name))
+                    -- 本模块前缀但解不出来 = 老格式或坏档；外加已知的旧探针档，一并清理
+                    local shortName = StripExtension(entry.Name)
+                    if shortName ~= nil
+                        and (shortName:sub(1, #MODMISC_STORE_PREFIX) == MODMISC_STORE_PREFIX
+                             or shortName == MODMISC_STORE_LEGACY_NAME) then
+                        table.insert(legacyEntries, { name = shortName, entry = entry })
+                    end
                 end
             end
         end
@@ -165,6 +177,23 @@ local function OnStoreQueryResults(fileList, requestId)
     Log("扫描完成 build=" .. MODMISC_STORE_BUILD_TAG
         .. "：解出 " .. tostring(decodedCount) .. " 个键"
         .. "；非存储档=[" .. listing .. "]")
+
+    -- 把解出来的键值全打出来：一轮日志就能看清存储里到底有什么
+    local pairs_text = {}
+    for key, value in pairs(m_Data) do
+        table.insert(pairs_text, tostring(key) .. "=" .. tostring(value))
+    end
+    table.sort(pairs_text)
+    Log("  键值：" .. (#pairs_text > 0 and table.concat(pairs_text, " | ") or "(空)"))
+
+    -- 清理遗留档
+    if UI ~= nil and UI.DeleteSavedGame ~= nil then
+        for _, item in ipairs(legacyEntries) do
+            local ok = pcall(UI.DeleteSavedGame, item.entry)
+            Log(ok and ("已清理遗留档 [" .. item.name .. "]")
+                or ("清理遗留档 [" .. item.name .. "] 失败"))
+        end
+    end
 
     if UI ~= nil and UI.CloseFileListQuery ~= nil and m_RefreshRequestId ~= nil then
         pcall(function() UI.CloseFileListQuery(m_RefreshRequestId) end)
