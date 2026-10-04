@@ -46,19 +46,13 @@
             <GridButton ID="AutomationTestStopView" Anchor="L,T" Offset="600,246" Size="280,60"
                         Style="ButtonControl" FontSize="26" String="LOC_MODMISC_AUTOMATION_TEST_STOP_VIEW" />
 
-            <!-- 镜头 / 网络存读档 -->
+            <!-- 镜头 -->
             <GridButton ID="AutomationTestLookAtCapital" Anchor="L,T" Offset="20,314" Size="280,60"
                         Style="ButtonControl" FontSize="26" String="LOC_MODMISC_AUTOMATION_TEST_LOOK_CAPITAL" />
-            <GridButton ID="AutomationTestSaveGame" Anchor="L,T" Offset="310,314" Size="280,60"
-                        Style="ButtonControl" FontSize="26" String="LOC_MODMISC_AUTOMATION_TEST_SAVE" />
 
-            <!-- CustomData 探针 -->
-            <GridButton ID="AutomationTestProbeWrite" Anchor="L,T" Offset="20,382" Size="280,60"
-                        Style="ButtonControl" FontSize="26" String="LOC_MODMISC_AUTOMATION_TEST_PROBE_WRITE" />
-            <GridButton ID="AutomationTestProbeRead" Anchor="L,T" Offset="310,382" Size="280,60"
-                        Style="ButtonControl" FontSize="26" String="LOC_MODMISC_AUTOMATION_TEST_PROBE_READ" />
-            <GridButton ID="AutomationTestProbeSave" Anchor="L,T" Offset="600,382" Size="280,60"
-                        Style="ButtonControl" FontSize="26" String="LOC_MODMISC_AUTOMATION_TEST_PROBE_SAVE" />
+            <!-- 旧的后台存档 / CustomData 探针按钮已移除（会干扰跨存档存储的测试）；
+                 现在只保留视角、镜头与 AssetPreview 相关按钮。
+                 跨存档数据走 UI/ModMiscStore.lua。 -->
 
             <!-- AssetPreview 选择与放置 -->
             <Label ID="AutomationTestAssetCategoryLabel" Anchor="L,T" Offset="20,450" Size="170,56"

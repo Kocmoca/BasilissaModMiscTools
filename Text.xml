@@ -319,18 +319,6 @@
 		<Row Tag="LOC_MODMISC_AUTOMATION_TEST_LOOK_CAPITAL">
 			<Text>Look at Selected Capital</Text>
 		</Row>
-		<Row Tag="LOC_MODMISC_AUTOMATION_TEST_SAVE">
-			<Text>Background Save</Text>
-		</Row>
-		<Row Tag="LOC_MODMISC_AUTOMATION_TEST_PROBE_WRITE">
-			<Text>Write CustomData Probe</Text>
-		</Row>
-		<Row Tag="LOC_MODMISC_AUTOMATION_TEST_PROBE_READ">
-			<Text>Read CustomData Probe</Text>
-		</Row>
-		<Row Tag="LOC_MODMISC_AUTOMATION_TEST_PROBE_SAVE">
-			<Text>Probe + Save</Text>
-		</Row>
 		<Row Tag="LOC_MODMISC_AUTOMATION_TEST_ASSET_TYPE">
 			<Text>Asset Type</Text>
 		</Row>
@@ -375,21 +363,6 @@
 		</Row>
 		<Row Tag="LOC_MODMISC_AUTOMATION_TEST_PICK_CLEAR_PLOT">
 			<Text>Pick a plot to clear assets from.</Text>
-		</Row>
-		<Row Tag="LOC_MODMISC_AUTOMATION_TEST_SAVE_COMPLETE">
-			<Text>Background save complete: {1_Name}</Text>
-		</Row>
-		<Row Tag="LOC_MODMISC_AUTOMATION_TEST_SAVE_REQUESTED">
-			<Text>Background save requested: {1_Name}</Text>
-		</Row>
-		<Row Tag="LOC_MODMISC_AUTOMATION_TEST_PROBE_EMPTY">
-			<Text>CustomData probe is empty. local={1_Local}</Text>
-		</Row>
-		<Row Tag="LOC_MODMISC_AUTOMATION_TEST_PROBE_VALUE">
-			<Text>CustomData={1_Value}; local={2_Local}; match={3_Match}</Text>
-		</Row>
-		<Row Tag="LOC_MODMISC_AUTOMATION_TEST_PROBE_AFTER_LOAD">
-			<Text>After load, CustomData probe = {1_Value}</Text>
 		</Row>
 		<Row Tag="LOC_MODMISC_AUTOMATION_TEST_ASSET_NOT_SELECTED">
 			<Text>Select an asset...</Text>

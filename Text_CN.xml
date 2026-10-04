@@ -319,18 +319,6 @@
 		<Replace Tag="LOC_MODMISC_AUTOMATION_TEST_LOOK_CAPITAL" Language="zh_Hans_CN">
 			<Text>看选中玩家首都</Text>
 		</Replace>
-		<Replace Tag="LOC_MODMISC_AUTOMATION_TEST_SAVE" Language="zh_Hans_CN">
-			<Text>后台存档</Text>
-		</Replace>
-		<Replace Tag="LOC_MODMISC_AUTOMATION_TEST_PROBE_WRITE" Language="zh_Hans_CN">
-			<Text>写入 CustomData 探针</Text>
-		</Replace>
-		<Replace Tag="LOC_MODMISC_AUTOMATION_TEST_PROBE_READ" Language="zh_Hans_CN">
-			<Text>读取 CustomData 探针</Text>
-		</Replace>
-		<Replace Tag="LOC_MODMISC_AUTOMATION_TEST_PROBE_SAVE" Language="zh_Hans_CN">
-			<Text>写探针并存档</Text>
-		</Replace>
 		<Replace Tag="LOC_MODMISC_AUTOMATION_TEST_ASSET_TYPE" Language="zh_Hans_CN">
 			<Text>资产类型</Text>
 		</Replace>
@@ -375,21 +363,6 @@
 		</Replace>
 		<Replace Tag="LOC_MODMISC_AUTOMATION_TEST_PICK_CLEAR_PLOT" Language="zh_Hans_CN">
 			<Text>请选择要清除资产的地块。</Text>
-		</Replace>
-		<Replace Tag="LOC_MODMISC_AUTOMATION_TEST_SAVE_COMPLETE" Language="zh_Hans_CN">
-			<Text>后台存档完成：{1_Name}</Text>
-		</Replace>
-		<Replace Tag="LOC_MODMISC_AUTOMATION_TEST_SAVE_REQUESTED" Language="zh_Hans_CN">
-			<Text>已请求后台存档：{1_Name}</Text>
-		</Replace>
-		<Replace Tag="LOC_MODMISC_AUTOMATION_TEST_PROBE_EMPTY" Language="zh_Hans_CN">
-			<Text>CustomData 探针为空。local={1_Local}</Text>
-		</Replace>
-		<Replace Tag="LOC_MODMISC_AUTOMATION_TEST_PROBE_VALUE" Language="zh_Hans_CN">
-			<Text>CustomData={1_Value}；local={2_Local}；match={3_Match}</Text>
-		</Replace>
-		<Replace Tag="LOC_MODMISC_AUTOMATION_TEST_PROBE_AFTER_LOAD" Language="zh_Hans_CN">
-			<Text>读档后 CustomData 探针 = {1_Value}</Text>
 		</Replace>
 		<Replace Tag="LOC_MODMISC_AUTOMATION_TEST_ASSET_NOT_SELECTED" Language="zh_Hans_CN">
 			<Text>请选择资产……</Text>

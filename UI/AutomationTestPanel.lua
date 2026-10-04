@@ -30,9 +30,6 @@ local PLACE_RANGE = 6
 local MAX_PLACE_PLOTS = 120
 local MAX_ASSET_ENTRIES = 240
 
-local SAVE_NAME = "ModMiscAutomationTest"
-local CUSTOM_DATA_KEY = "ModMiscAutomationCrossSaveProbe"
-local LOCAL_PARAM_KEY = "ModMiscAutomationProbePayload"
 
 local m_Registered = false
 local m_SelectedPlayerIndex = nil
@@ -41,7 +38,6 @@ local m_SelectedAssetCategoryKey = "CITY"
 local m_SelectedAssetEntry = nil
 local m_OpenSelectorKey = nil
 local m_OptionIM = nil
-local m_SavePending = false
 
 local m_Messages = {}
 local MESSAGE_HISTORY_MAX = 30
@@ -682,138 +678,18 @@ local function LookAtSelectedCapital()
 end
 
 -- ===========================================================================
--- 存档 / 读档 / CustomData 探针
+-- 旧实验的存/读档与 CustomData 探针已全部移除（见下方 [已移除] 说明）
 -- ===========================================================================
 
-local function GetSaveTypeSafe()
-    if Network ~= nil and Network.GetGameConfigurationSaveType ~= nil then
-        local ok, saveType = pcall(Network.GetGameConfigurationSaveType)
-        if ok and saveType ~= nil then return saveType end
-    end
-    return SaveTypes.SINGLE_PLAYER
-end
-
-local function WriteCustomDataSafe(key, value)
-    if WriteCustomData ~= nil then
-        return pcall(WriteCustomData, key, value)
-    end
-    return pcall(function()
-        local parameters = UI.GetGameParameters():Add("CustomData")
-        if parameters == nil then error("CustomData parameters unavailable") end
-        parameters:Remove(key)
-        local data = parameters:Add(key)
-        data:AppendValue(value)
-    end)
-end
-
-local function ReadCustomDataSafe(key)
-    if ReadCustomData ~= nil then
-        return pcall(ReadCustomData, key)
-    end
-    return pcall(function()
-        local parameters = UI.GetGameParameters():Get("CustomData")
-        if parameters == nil then return nil end
-        local values = parameters:Get(key)
-        if values == nil or values:GetCount() == 0 then return nil end
-        local result = {}
-        for i = 1, values:GetCount() do
-            table.insert(result, values:GetValueAt(i - 1))
-        end
-        return unpack(result)
-    end)
-end
-
-local function OnSaveComplete()
-    Events.SaveComplete.Remove(OnSaveComplete)
-    m_SavePending = false
-    SetOutput(Locale.Lookup("LOC_MODMISC_AUTOMATION_TEST_SAVE_COMPLETE", SAVE_NAME))
-end
-
-local function SaveGameToFixedSlot(actionName)
-    if Network == nil or Network.SaveGame == nil then
-        SetError(actionName, "Network.SaveGame is nil")
-        return false
-    end
-
-    local saveGame = {
-        Name = SAVE_NAME,
-        Location = SaveLocations.LOCAL_STORAGE,
-        Type = GetSaveTypeSafe(),
-        IsAutosave = false,
-        IsQuicksave = false,
-        Directory = SaveDirectories.DEFAULT,
-    }
-
-    Events.SaveComplete.Remove(OnSaveComplete)
-    Events.SaveComplete.Add(OnSaveComplete)
-    m_SavePending = true
-
-    local ok, err = pcall(Network.SaveGame, saveGame)
-    if not ok then
-        Events.SaveComplete.Remove(OnSaveComplete)
-        m_SavePending = false
-        SetError(actionName, err)
-        return false
-    end
-
-    SetOutput(Locale.Lookup("LOC_MODMISC_AUTOMATION_TEST_SAVE_REQUESTED", SAVE_NAME))
-    return true
-end
-
 -- ===========================================================================
--- [已移除] 对局内读档入口（2026-10-04，授权者决定）
+-- [已移除] 对局内的存/读档入口（2026-10-04，授权者决定：这些旧实验按键会干扰后续测试）
 --   * 读配置档（FileType=GAME_CONFIGURATION）：**直接卡死**，见 API_Verification_Status.md 第 36 条。
---   * 读普通存档（SaveTypes.SINGLE_PLAYER）：本身能读（LoadScreen + 整局重载），但属于**显式读档**、
---     会把当前局顶掉，工具面板不再提供这个入口 —— 要读档走游戏自己的「载入游戏」菜单。
--- 对应的按钮 AutomationTestLoadGame / AutomationTestLoadConfig 也已从 XML 里删除。
--- 保留：后台存档（SaveGameToFixedSlot）与探针相关按钮 —— 那是“对局内写数据”那条线要用的。
+--   * 读普通存档（SaveTypes.SINGLE_PLAYER）：能读（LoadScreen + 整局重载），但属于**显式读档**、
+--     会把当前局顶掉 —— 要读档走游戏自己的「载入游戏」菜单。
+--   * 后台存档 / 探针存档 / 探针读写：CustomData 那批实验已经收尾（第 21、39 条），一并撤掉。
+-- 跨存档数据现在只走 UI/ModMiscStore.lua（存档名编码通道，已实机验证）。
+-- 需要复现旧实验时从 git 历史取（本文件在提交 b3b1b2a / 本提交 都有完整版本）。
 -- ===========================================================================
-
-local function BuildProbePayload()
-    local turn = 0
-    local ok, turnValue = pcall(function() return Game.GetCurrentGameTurn() end)
-    if ok and turnValue ~= nil then turn = turnValue end
-    return string.format("t=%d;turn=%d;r=%d", os.time(), turn, math.random(100000, 999999))
-end
-
-local function WriteProbe(actionName)
-    local payload = BuildProbePayload()
-    local ok, err = WriteCustomDataSafe(CUSTOM_DATA_KEY, payload)
-    if not ok then
-        SetError(actionName, err)
-        return false
-    end
-    if Automation ~= nil and Automation.SetLocalParameter ~= nil then
-        pcall(Automation.SetLocalParameter, LOCAL_PARAM_KEY, payload)
-    end
-    SetResult(actionName, payload)
-    return true
-end
-
-local function ReadProbe(actionName)
-    local ok, value = ReadCustomDataSafe(CUSTOM_DATA_KEY)
-    if not ok then
-        SetError(actionName, value)
-        return
-    end
-    local localValue = nil
-    if Automation ~= nil and Automation.GetLocalParameter ~= nil then
-        local localOk, result = pcall(Automation.GetLocalParameter, LOCAL_PARAM_KEY, nil)
-        if localOk then localValue = result end
-    end
-    if value == nil then
-        SetOutput(Locale.Lookup("LOC_MODMISC_AUTOMATION_TEST_PROBE_EMPTY", tostring(localValue)))
-    else
-        SetOutput(Locale.Lookup("LOC_MODMISC_AUTOMATION_TEST_PROBE_VALUE",
-            tostring(value), tostring(localValue), tostring(value == localValue)))
-    end
-end
-
-local function ProbeSave()
-    if WriteProbe("ProbeSave") then
-        SaveGameToFixedSlot("ProbeSave")
-    end
-end
 
 -- ===========================================================================
 -- AssetPreview：摆放 / 清除
@@ -953,12 +829,6 @@ local function ClearAllAssets()
     SetResult("ClearAllAssets", table.concat(results, " "))
 end
 
-local function ShowProbeAfterLoad()
-    local ok, value = ReadCustomDataSafe(CUSTOM_DATA_KEY)
-    if ok and value ~= nil then
-        SetOutput(Locale.Lookup("LOC_MODMISC_AUTOMATION_TEST_PROBE_AFTER_LOAD", tostring(value)))
-    end
-end
 
 -- ===========================================================================
 -- 面板打开 / 关闭 / 侧栏入口
@@ -1035,17 +905,7 @@ function OnInit()
     Controls.AutomationTestLookAtCapital:RegisterCallback(Mouse.eLClick,
         function() SafeCall("LookAtCapital", LookAtSelectedCapital) end)
 
-    Controls.AutomationTestSaveGame:RegisterCallback(Mouse.eLClick,
-        function() SafeCall("SaveGame", SaveGameToFixedSlot, "SaveGame") end)
-    -- 对局内读档入口（普通存档 / 配置档）已按授权者决定移除，连同 XML 里的
-    -- AutomationTestLoadGame / AutomationTestLoadConfig 两个按钮 —— 原因见文件上方那段注释。
-    Controls.AutomationTestProbeWrite:RegisterCallback(Mouse.eLClick,
-        function() SafeCall("ProbeWrite", WriteProbe, "ProbeWrite") end)
-    Controls.AutomationTestProbeRead:RegisterCallback(Mouse.eLClick,
-        function() SafeCall("ProbeRead", ReadProbe, "ProbeRead") end)
-    Controls.AutomationTestProbeSave:RegisterCallback(Mouse.eLClick,
-        function() SafeCall("ProbeSave", ProbeSave) end)
-
+    -- 旧的存/读档与 CustomData 探针按钮已全部移除（原因见上方 [已移除] 注释）
     Controls.AutomationTestPlaceAsset:RegisterCallback(Mouse.eLClick,
         function() SafeCall("PlaceAsset", PlaceAsset) end)
     Controls.AutomationTestClearPlotAsset:RegisterCallback(Mouse.eLClick,
@@ -1057,7 +917,6 @@ end
 function OnLoadGameViewStateDone()
     AttachPanelToInGame()
     TryRegisterAutomationTestButton()
-    ShowProbeAfterLoad()
 end
 
 Events.LoadGameViewStateDone.Add(OnLoadGameViewStateDone)
