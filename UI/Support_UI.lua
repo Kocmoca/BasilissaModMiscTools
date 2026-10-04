@@ -319,6 +319,38 @@ end
 
 -- 探针只在启动函数里跑一次（每次进入游戏一次）：先读、读不到就写
 
+-- ===========================================================================
+-- 恢复游戏内 UI（等价于原版的调试热键 Shift+Alt+B，安卓没键盘所以做成接口）
+--
+-- 背景：InGame.lua 的 BulkHide 是**引用计数**（m_bulkHideTracker）——
+-- 某个界面调了 BulkHide(true, x) 之后，配对的 BulkHide(false, x) 没跑到
+-- （报错 / 上下文被顶掉），计数就卡在 >=1，于是
+-- WorldViewControls / HUD / PartialScreens / Screens / TopLevelHUD **五大组永久隐藏**，
+-- 表现就是“UI 全部消失”。原版为此留了 Shift+Alt+B 强制恢复。
+--
+-- 这里不碰那个 local 计数器（跨 context 也碰不到），只把这五组强制显示回来，
+-- 让玩家立刻能继续操作。返回被恢复的组名列表。
+-- ===========================================================================
+local INGAME_BULK_HIDE_GROUPS = {
+	"WorldViewControls", "HUD", "PartialScreens", "Screens", "TopLevelHUD",
+}
+
+function RestoreInGameUI()
+	local restored = {}
+	for _, group in ipairs(INGAME_BULK_HIDE_GROUPS) do
+		local control = ContextPtr:LookUpControl("/InGame/" .. group)
+		if control == nil then
+			print("[ModMiscTool][RestoreUI] 找不到 /InGame/" .. group)
+		elseif control:IsHidden() then
+			control:SetHide(false)
+			table.insert(restored, group)
+		end
+	end
+	print("[ModMiscTool][RestoreUI] 已恢复：" ..
+		(#restored > 0 and table.concat(restored, ",") or "(没有隐藏的组)"))
+	return restored
+end
+
 function Initialize()
 	InitializeAllUnitPromotions()
 

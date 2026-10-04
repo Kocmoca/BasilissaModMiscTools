@@ -715,6 +715,31 @@ end
 -- ===========================================================================
 
 -- ===========================================================================
+-- 恢复 UI：等价于原版调试热键 Shift+Alt+B（安卓没键盘）
+--
+-- 切视角（AutoplayManager）后点城市 banner，偶尔会让引擎那套引用计数的 BulkHide
+-- 卡在“隐藏”态 —— 五大组一起消失。原版留了 Shift+Alt+B 兜底，这里给它一个按钮。
+-- 实现放在 UI/Support_UI.lua 并挂到 ExposedMembers，其他 mod 也能直接用。
+-- ===========================================================================
+local function RestoreInGameUI()
+    local api = ExposedMembers ~= nil and ExposedMembers.ModMiscToolUI or nil
+    if api == nil or api.RestoreInGameUI == nil then
+        SetError("RestoreUI", "ExposedMembers.ModMiscToolUI.RestoreInGameUI 不可用")
+        return
+    end
+    local ok, restored = pcall(api.RestoreInGameUI)
+    if not ok then
+        SetError("RestoreUI", restored)
+        return
+    end
+    local listing = "(没有隐藏的组)"
+    if restored ~= nil and #restored > 0 then
+        listing = table.concat(restored, ", ")
+    end
+    SetResult("RestoreUI", listing)
+end
+
+-- ===========================================================================
 -- 跨存档存储：写 / 读 / 清（用 ModMiscStore 那套「存档名编码」通道）
 --
 -- 读是异步的（扫存档列表 → LuaEvents 回结果），所以结果在 OnDataReady 回调里输出。
@@ -1006,6 +1031,9 @@ function OnInit()
         function() SafeCall("StopAutoplay", StopAutoplayAndReturn) end)
     Controls.AutomationTestLookAtCapital:RegisterCallback(Mouse.eLClick,
         function() SafeCall("LookAtCapital", LookAtSelectedCapital) end)
+
+    Controls.AutomationTestRestoreUI:RegisterCallback(Mouse.eLClick,
+        function() SafeCall("RestoreUI", RestoreInGameUI) end)
 
     Controls.AutomationTestStoreWrite:RegisterCallback(Mouse.eLClick,
         function() SafeCall("StoreWrite", StoreWrite) end)

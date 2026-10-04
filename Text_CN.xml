@@ -307,6 +307,9 @@
 		<Replace Tag="LOC_MODMISC_AUTOMATION_TEST_TURNS_UNLIMITED" Language="zh_Hans_CN">
 			<Text>不限回合</Text>
 		</Replace>
+		<Replace Tag="LOC_MODMISC_AUTOMATION_TEST_RESTORE_UI" Language="zh_Hans_CN">
+			<Text>恢复 UI</Text>
+		</Replace>
 		<Replace Tag="LOC_MODMISC_AUTOMATION_TEST_STORE_WRITE" Language="zh_Hans_CN">
 			<Text>存储写入</Text>
 		</Replace>

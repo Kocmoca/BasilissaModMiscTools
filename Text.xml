@@ -307,6 +307,9 @@
 		<Row Tag="LOC_MODMISC_AUTOMATION_TEST_TURNS_UNLIMITED">
 			<Text>No limit</Text>
 		</Row>
+		<Row Tag="LOC_MODMISC_AUTOMATION_TEST_RESTORE_UI">
+			<Text>Restore UI</Text>
+		</Row>
 		<Row Tag="LOC_MODMISC_AUTOMATION_TEST_STORE_WRITE">
 			<Text>Store write</Text>
 		</Row>

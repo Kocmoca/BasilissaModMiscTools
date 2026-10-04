@@ -115,6 +115,14 @@ RemoveAllData()        -- 清空整张存储（返回删掉的键数）
 | 面板读回来「和写进去的不一样」、清空后「看着没变化」 | **`Locale.Lookup` 的参数里出现 `\|` 会把后面内容整段吃掉**：分隔符用了 `" \| "`，面板只显示第一项。数据其实是对的（`panel=…` 原样读回、`已删除 [panel]` 也真删了） | 分隔符换成 `", "`；同时把全量内容 `print` 进日志兜底 |
 | 连按两次「存储读取」显示旧数据 | `OnReady` + `Refresh()` 的写法：已就绪时 `OnReady` 立刻回调，拿的是上一次扫描的表 | 改用 `Refresh(onDone)`，只在**本次**扫描完成后回调；清空后也自动重扫再显示 |
 
+**观察者视角（AutoplayManager）与 UI 消失（2026-10-04 实机 + 源码核对）**
+
+| 项 | 结论 |
+|---|---|
+| `AutoplayManager.SetObserveAsPlayer(id)` + `SetActive(true)` | `[部分可用]` —— 只能**看**，不能接管。观察期间被观察文明由 **AI 操作**，本地玩家是观众；Civ6 单人局没有“把控制权交给某 AI 文明”的机制（`Game.GetLocalPlayer()` 一局内固定，热座/多人是另一套）。所以“切视角后以该玩家身份操作”这个预期不成立。 |
+| 切视角后点**城市 banner** → UI 全部消失 | `[原版缺陷，已给兜底]`。`InGame.lua` 的 `BulkHide` 是**引用计数**（`m_bulkHideTracker`）：某次 `BulkHide(true, x)` 的配对 `false` 没跑到（报错 / 上下文被顶掉），计数卡在 ≥1，`WorldViewControls / HUD / PartialScreens / Screens / TopLevelHUD` **五大组永久隐藏**。原版为此留了调试热键 **Shift+Alt+B**（`InGame.lua` “DEBUG: Force unhiding”）——**安卓没键盘，等于没有**。 |
+| 兜底 | 本 mod 提供 `ExposedMembers.ModMiscToolUI.RestoreInGameUI()`，把五大组强制 `SetHide(false)`（就是 BulkHide 内部做的同一件事，只是不碰那个跨 context 拿不到的计数器）；测试面板上有「**恢复 UI**」按钮。 |
+
 ## 4. WorldBuilder（地图编辑器）接口
 
 | # | 接口 / 方法 | 状态 | 证据与备注 |
