@@ -24,7 +24,7 @@
 | 5 | `UnitManager.Kill(unit, false)` 清掉图上单位 | `[已验证可用]` | 日志 `killed=3`（城邦）/`killed=2`（主要文明）。 |
 | 6 | `UnitManager.PlaceUnit(unit, -1, -1)` 把单位“挪”到地图外 | `[已验证失败]` | 调用不报错，但引擎随后把单位**拉回地图**，幽灵重新落地建城（表现为“所有玩家都不是幽灵”）。搬离地图只能用第 4+5 条的组合。 |
 | 7 | 搬离顺序：先 `Kill` 再 `InitUnit` | `[已验证失败]` | 中间存在“零单位”瞬间，引擎判定玩家灭亡，幽灵直接死掉。**必须 `InitUnit` 在前、`Kill` 在后**。 |
-| 8 | `Game:SetProperty` / `Game:GetProperty` 存幽灵池 | `[已验证可用]` | 池子随存档保存，读档后仍可读回。**gameplay 专用：UI 端不可用**（授权者确认）—— 所以“对局内存数据”在 gameplay 侧用这一对，在 UI 侧只能用 `WriteCustomData`/`ReadCustomData`。 |
+| 8 | `Game:SetProperty` / `Game:GetProperty` 存幽灵池 | `[已验证可用]` | 池子随存档保存，读档后仍可读回。**gameplay 专用：UI 端不可用**（授权者确认）—— 所以“对局内存数据”在 gameplay 侧用这一对，在 UI 侧只能用 `WriteCustomData`/`ReadCustomData`。<br>**能力边界（授权者既有 mod 制作经验，2026-10-04 确认）：✅ 随存档落盘；❌ 不可跨存档** —— 数据属于那一份存档，别的档与新开的一局都读不到。所以它是“本档内的持久存储”，**不是**跨局/跨存档的传递通道。跨存档目前唯一走得通的只有前端那条（写 → 存配置档 → 下次启动前端读回）。 |
 | 9 | `player:IsMajor()` / `IsBarbarian()` / `GetCapitalCity()` / `GetUnits()` | `[已验证可用]` | gameplay 层判定与筛选正常。 |
 | 10 | `player:IsMinor()` | `[已验证失败]` | gameplay 层调用报 `function expected instead of nil`（该 API 只有 UI 层有）。城邦候选列表因此改由 UI 层算好、经 `ExposedMembers` 交给 gameplay。 |
 | 11 | `Game.GetLocalPlayer()` / `GameDefines.MAX_PLAYERS`（=64） | `[已验证可用]` | 用于跳过本机玩家、遍历槽位。 |

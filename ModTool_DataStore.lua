@@ -4,6 +4,13 @@
 -- 【为什么只能用 Game:SetProperty】
 --   对局内要“存数据”且**自动落盘**，唯一途径是 `Game:SetProperty` —— 它是游戏状态
 --   的一部分，存档即带走、读档自动还原（幽灵池就是这么存的，已验证）。
+--
+-- 【能力边界 —— 授权者既有 mod 制作经验，2026-10-04 确认】
+--   ✅ **随存档落盘**：写完之后存档，读这个档能原样读回。
+--   ❌ **不可跨存档**：数据属于那一份存档；别的档、以及新开的一局都读不到。
+--   所以这套 API 是“本局/本档内的持久存储”，**不是**跨局/跨存档的传递通道。
+--   真要跨存档，目前唯一走得通的是前端那条：前端写 → 存成配置档（.Civ6Cfg）→
+--   下次启动前端读回（见 UI/FrontEnd_SaveProbe.lua，默认关闭）。
 --   `Game:SetProperty` 是 **gameplay 专用**：UI 端用不了（授权者确认）。
 --   UI 侧想存只能 `WriteCustomData`，而且**写完必须再存一次档**才落盘，
 --   见 UI/Support_UI.lua 的 SetCustomData / GetCustomData。
@@ -96,7 +103,7 @@ local function RunDataStoreProbe()
     local previous = ModMiscToolData.Get(MODMISC_DATA_PROBE_KEY)
     if previous ~= nil then
         Log("startup: 读到 [" .. tostring(previous)
-            .. "] —— 这是随存档带回来的值（对局内存数据闭环的直接证据）")
+            .. "] —— 随存档带回来的值（只证明“本档内持久”，不代表跨存档）")
         return
     end
 
@@ -109,7 +116,7 @@ local function RunDataStoreProbe()
         .. ";turn=" .. tostring(turn)
     if ModMiscToolData.Set(MODMISC_DATA_PROBE_KEY, payload) then
         Log("startup: 没读到 → 已写入 [" .. payload
-            .. "]；存档后再读这个档，下一行应当原样读到它")
+            .. "]（新档/新局本来就没有这份数据，属预期）")
     end
 end
 

@@ -51,7 +51,7 @@
 --   LoadScreen: true / gameplay scripts loading / 探针再打一行 —— 三样都没有就是没读进去。
 -- ===========================================================================
 
-local MODMISC_FE_PROBE_BUILD_TAG = "2026-10-04-F"
+local MODMISC_FE_PROBE_BUILD_TAG = "2026-10-04-G"
 
 -- 与对局内探针（UI/Support_UI.lua 的 CROSS_SAVE_PROBE_KEY）共用同一个 key：
 -- 前端写进去的这份 payload，会被对局内启动探针原样读出来打印。
@@ -71,6 +71,7 @@ local m_Step = nil              -- nil = 本轮还没开跑
 local m_ContextKind = nil       -- MainMenu / AdvancedSetup / ScenarioSetup
 local m_ContextInstance = nil   -- tostring(ContextPtr)：用来识别“上下文被重建了”
 local m_LoadIssued = false      -- 本次读档是不是这个上下文发起的（见 LoadComplete 收尾）
+local m_LastWrittenPayload = nil -- 本次 step1 写进去的 payload（读档后拿来对比）
 local m_RunIndex = 0            -- 本次进程里第几次进入界面
 local m_LastHidden = true       -- 用来识别“隐藏 → 显示”这一刻
 local m_LoggedWait = false
@@ -238,6 +239,21 @@ local function OnConfigLoadComplete(eResult, eType, eOptions, eFileType)
         return
     end
 
+    -- 【关键测量】读配置档前 step1 刚写过一份 payload；读完之后再读一次：
+    --   读到 = 本次刚写的那份   ⇒ 配置档**没有**把 CustomData 带回来
+    --   读到 ≠ 本次写的（更早某轮的）⇒ 配置档**确实**带回了它存档那一刻的 CustomData
+    -- 后者成立，就说明“前端配置档”能当中转站，把 CustomData 跨存档/跨启动带过来。
+    local afterLoad = ReadProbe()
+    if afterLoad == nil then
+        Log("读完配置档后 CustomData = nil")
+    elseif afterLoad == m_LastWrittenPayload then
+        Log("读完配置档后 CustomData = [本次 step1 刚写的那份] → 配置档没带回旧值")
+    else
+        Log("读完配置档后 CustomData = [" .. tostring(afterLoad)
+            .. "] ≠ 本次 step1 写的 [" .. tostring(m_LastWrittenPayload)
+            .. "] → **配置档带回了它存档时刻的 CustomData**（跨存档通道成立）")
+    end
+
     if GameConfiguration.SetToPreGame ~= nil then
         pcall(function() GameConfiguration.SetToPreGame() end)
     end
@@ -393,6 +409,7 @@ local function StepWrite()
         return
     end
 
+    m_LastWrittenPayload = payload
     Log("step1 write ok; payload=[" .. payload
         .. "] readBack=[" .. tostring(ReadProbe()) .. "]")
     m_Step = "query"
