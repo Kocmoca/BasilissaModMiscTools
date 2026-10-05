@@ -1200,7 +1200,12 @@ gameplay 侧要换图，走 `ExposedMembers.ModMiscToolScript.WorldBuilderAPI.Se
 失败兜底：`pending` 两次都没确认也照样重开（原档已保存，丢的只是一条边，不损坏任何档），
 日志里会写清楚。
 
-#### 3.13.3b 换图 = 两步式（2026-10-05 第四轮定稿）
+#### 3.13.3b 换图 = 两步式（2026-10-05 **实机验证通过**）
+
+> 实机日志（第 14.2f 节）确认：两步式换图 + 分支关系 + 落盘复查 + 新局接手，全链路跑通。
+> 同时修掉一个隐藏 bug：`ModTool.lua` 暴露 `ModMiscToolData` 却没 include `ModTool_DataStore.lua`，
+> 报 `attempt to index a nil value` 后**中断了整个 Initialize**，导致 `Game:SetProperty` 通道与
+> `WorldBuilderAPI` / `TurnEraAPI` 的暴露全部失效；现已补 include 并把暴露改成逐组 pcall。
 
     PrepareSwitch()   第一步：算节点 → **先写待接分支**（sg_pending）→ Network.SaveGame 存原档
     SwitchNow(reason) 第二步：**在按钮回调里**直接 Network.RestartGame()

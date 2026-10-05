@@ -545,10 +545,10 @@ ModMiscTurnEra.SetStartEra("ERA_MEDIEVAL")    -- 下一局开始年代（GAME_ST
 
 | # | 接口 / 方法 | 状态 | 判定与备注 |
 |---|---|---|---|
-| 53 | 对局内 `Network.SaveGame{Type=SINGLE_PLAYER, FileType=GAME_STATE, Directory=SaveDirectories.DEFAULT, Name=<MMT 格式>}` 真的落盘 | `[未验证]`（第 45 条细化） | 面板「存档」→ 状态行出现「确认落盘」（= `SaveComplete` 之后复查 `UI.QuerySaveGameList` 列表里有这个档），日志 `落盘复查：节点 … 已在存档列表里`。**这是整条链路的地基**：不成立则关系树没有节点。 |
-| 54 | 本 mod 格式的档名能在存档列表里原样保留（含 `~`、点、连字符） | `[未验证]` | 扫描后节点数 > 0 即成立；日志 `扫描完成：列表 N 档，其中本 mod 关系档 M 档`。 |
-| 55 | 读自己的档之后能认出“我在哪个节点” | `[未验证]` | 读档 → 开局探针 `after-load: current=<id>`，且面板关系树里那一条带「本局」标记。依赖 CustomData 随档还原（第 21 条已验证，但这条链路没端到端跑过）。 |
-| 56 | 换图全流程：存原档 → 落盘确认 → 重开 → 新局首档成为**分支** | `[部分验证·2026-10-05]` | 授权者实测：**能按格式存档**，但新局把自己当成了树根（分支身份丢失）⇒ 已按 14.2b 修（存储就绪门 + 开局固化）。**待复测**：点「换图（先存原档）」→ 日志应为 `待接分支已写入存储` → `落盘复查：节点 … 已在存档列表里` → `待接分支已确认落盘` → `Network.RestartGame 调用已返回` → 新局 `本局接手待接分支：parent=<原档id>` → 新局点「存档」→ 面板信息行「来源」有值、关系树里新档标 `[B]` 挂在原档下。 |
+| 53 | 对局内 `Network.SaveGame{Type=SINGLE_PLAYER, FileType=GAME_STATE, Directory=SaveDirectories.DEFAULT, Name=<MMT 格式>}` 真的落盘 | `[✅ 已验证可用]`（2026-10-05 实机） | 面板「存档」→ 状态行出现「确认落盘」（= `SaveComplete` 之后复查 `UI.QuerySaveGameList` 列表里有这个档），日志 `落盘复查：节点 … 已在存档列表里`。**这是整条链路的地基**：不成立则关系树没有节点。 |
+| 54 | 本 mod 格式的档名能在存档列表里原样保留（含 `~`、点、连字符） | `[✅ 已验证可用]`（2026-10-05 实机） | 扫描后节点数 > 0 即成立；日志 `扫描完成：列表 N 档，其中本 mod 关系档 M 档`。 |
+| 55 | 读自己的档之后能认出“我在哪个节点” | `[✅ 已验证可用]`（2026-10-05 实机） | 读档 → 开局探针 `after-load: current=<id>`，且面板关系树里那一条带「本局」标记。依赖 CustomData 随档还原（第 21 条已验证，但这条链路没端到端跑过）。 |
+| 56 | 换图全流程：存原档 → 落盘确认 → 重开 → 新局首档成为**分支** | `[✅ 已验证可用]`（两步式，2026-10-05 实机，见 14.2f） | 授权者实测：**能按格式存档**，但新局把自己当成了树根（分支身份丢失）⇒ 已按 14.2b 修（存储就绪门 + 开局固化）。**待复测**：点「换图（先存原档）」→ 日志应为 `待接分支已写入存储` → `落盘复查：节点 … 已在存档列表里` → `待接分支已确认落盘` → `Network.RestartGame 调用已返回` → 新局 `本局接手待接分支：parent=<原档id>` → 新局点「存档」→ 面板信息行「来源」有值、关系树里新档标 `[B]` 挂在原档下。 |
 | 57 | SL 场景：读旧档继续 → 新档算分支、主线头不动 | `[未验证]` | 读一档旧档 → 存档 → 新档 `[B]`、父是旧档；面板信息行「主线头」不变。 |
 
 ### 14.2b 实机反馈与修复（2026-10-05）：分支不知道自己是谁
@@ -674,6 +674,55 @@ ModMiscTurnEra.SetStartEra("ERA_MEDIEVAL")    -- 下一局开始年代（GAME_ST
 而解析用的是固定 4 段的 Lua 模式 `^a|b|c|d$` —— **少一段就整条匹配失败**，
 于是旧版写的 3 段 pending 会被静默读成 nil（新局把自己当树根）。
 现在改成按 `|` 切字段（`SplitFields`），3 段/4 段都认；`Game:SetProperty` 的身份载荷同样处理。
+
+### 14.2f 实机第五轮（2026-10-05）：**两步式换图跑通** ✅ + 抓到一个隐藏 bug
+
+授权者：「测试成功，日志已拉取」。日志（`Lua.log`，前缀 `[ModMiscTool][SaveGraph]`）关键序列：
+
+```
+判定：current=tmew2la0 … 来源=current            => parent=tmew2la0 kind=M      ← 第二步之前本局节点
+换图[1/2]：待接分支已写入存储（parent=tmew2owf，新局算分支）
+即将调用 Network.SaveGame（switch） name=MMT~tmew2owf~tmew2la0~M~T001~Continents~20261005-0956
+[面板] Original save tmew2owf written. Press "Switch map" once more …
+[面板] The original save is still being written - wait a moment, then press again.   ← 提前点被拦住
+换图[2/2]：即将调用 Network.RestartGame()（原因=面板按钮（第二次点击））
+          环境：anyMultiplayer=false savedGame=false worldBuilder=false isGameHost=true turn=1
+换图[2/2]：调用已返回 result=true
+———（之后是新局上下文重新加载：面板 loading / Support_UI 探针）———
+after-load(store=true/ready): current=nil head=tmew2la0 pending=tmew2owf
+本局接手待接分支：parent=tmew2owf kind=B（已固化到本局身份，存储里那条已消费）
+判定：current=nil incoming=tmew2owf head=tmew2la0 pending=nil 来源=incoming => parent=tmew2owf kind=B consumePending=true
+即将调用 Network.SaveGame（manual） name=MMT~tmew4qln~tmew2owf~B~T001~Continents~20261005-0958
+落盘复查：节点 tmew4qln 已在存档列表里
+```
+
+得到的关系树：主线头 `tmew2la0`（M）← 原档 `tmew2owf`（M，换图前存的那一档）
+← 新局首档 `tmew4qln`（**B**，挂在原档下）—— 与 14.2 的设计完全一致。
+另外还看到过期保护生效：`待接分支已过期（… 2979 秒前 > 900 秒）→ 丢弃`（旧版本留下的陈旧 pending）。
+
+**结论：换图 = 两步式（先存原档 → 再点一次直接重开）成立。** 1.58~1.61 的三次失败都源于
+把重开从“按钮回调”挪到了事件回调 / 按帧回调里。
+
+**同时抓到一个隐藏 bug（已修）**：日志里 `节点身份已写入：customdata=ok **property=false（gameplay SetData 不可用）**`
+—— 顺藤摸到：
+
+```
+Runtime Error: …/ModTool.lua:579: attempt to index a nil value
+```
+
+`ModTool.lua` 暴露 `ModMiscToolData.Set` 时**从没 include 过 `ModTool_DataStore.lua`**（该文件只在
+modinfo 的 ImportFiles 里登记了），于是 `ModMiscToolData` 是 nil → 这一行报错 →
+**`Initialize()` 当场中断**，后面所有暴露（`WorldBuilderAPI`、`TurnEraAPI`…）全部静默失效。
+影响面比“属性通道用不了”大得多：任何依赖这些暴露的 mod 都拿不到接口。
+
+修法：
+1. `ModTool.lua` 补上 `include('ModTool_DataStore.lua')`；
+2. 暴露段改成**逐组 pcall**（DataStore / WorldBuilderAPI / TurnEraAPI 各一组），
+   某一组缺模块只打一行 `暴露 X 失败 -> …（只影响这一组，其余继续）`，
+   再也不会把整个 Initialize 带走 —— 这类“漏 include 静默废掉一半 API”的坑就此封死。
+
+> **教训（值得记进全局规范）**：把文件登记进 modinfo 的 `<ImportFiles>` **不等于**它被 `include` 了；
+> 而 game LUA 里一个 nil 索引就会中断整个初始化函数 —— 排查时要看 Initialize 后半段的暴露是否还在。
 
 ### 14.3 Lua.log 判定表
 

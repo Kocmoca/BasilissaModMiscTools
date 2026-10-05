@@ -7,6 +7,11 @@ include('ModTool_Support_Functions.lua')
 include('ModTool_WorldBuilderAPI.lua')
 include('ModTool_GhostPlayers.lua')
 include('ModTool_TurnEraAPI.lua')
+-- ⚠️ 必须 include：ModTool_DataStore.lua 提供 ModMiscToolData（Set/Get/Has/Remove/BuildKey）。
+-- 漏了它会让下面“暴露给其它 mod”的整段在 `ModMiscToolData.Set` 处报 attempt to index a nil value，
+-- **Initialize 直接中断** —— 后面所有暴露（WorldBuilderAPI、TurnEraAPI…）全部静默失效。
+-- 2026-10-05 实机日志抓到（表现为 Game:SetProperty 那条单向通道用不了）。
+include('ModTool_DataStore.lua')
 
 local playerCitiesInfo = {}
 local defeatedPlayers = {}
@@ -574,17 +579,45 @@ function Initialize()
 	ExposedMembers.ModMiscToolScript.DamageToUnit = DamageToUnit
 	ExposedMembers.ModMiscToolScript.AoeAllUnitsForPlot = AoeAllUnitsForPlot
 	ExposedMembers.ModMiscToolScript.GetPlotsInRange = GetPlotsInRange
-	-- 跨存档数据存取（gameplay 侧）：别的 mod 用它存自己的数据。
-	-- 底层是 Game:SetProperty —— 随存档自动保存/还原；UI 端用不了这个 API。
-	ExposedMembers.ModMiscToolScript.SetData = ModMiscToolData.Set
-	ExposedMembers.ModMiscToolScript.GetData = ModMiscToolData.Get
-	ExposedMembers.ModMiscToolScript.HasData = ModMiscToolData.Has
-	ExposedMembers.ModMiscToolScript.RemoveData = ModMiscToolData.Remove
-	ExposedMembers.ModMiscToolScript.BuildDataKey = ModMiscToolData.BuildKey
-	-- WorldBuilder（地图编辑器）接口模块：Gameplay 后端，UI 层通过它调用
-	ExposedMembers.ModMiscToolScript.WorldBuilderAPI = WorldBuilderAPI
-	-- 回合 / 年代（gameplay 后端）：UI 层直调失败时经它兜底；也供别的 mod 直接用。
-	-- 接口与静态依据见 ModTool_TurnEraAPI.lua 头部。
-	ExposedMembers.ModMiscToolScript.TurnEraAPI = TurnEraAPI
+	-- 暴露给其它 mod 的几组 API：**逐组 pcall** —— 某一组缺模块只打一行日志，
+	-- 不会像以前那样把 Initialize 整段中断（那会把后面所有暴露一起带走）。
+	local exposeGroups = {
+		{
+			Name = "DataStore",
+			-- 跨存档数据存取（gameplay 侧）：底层是 Game:SetProperty，随存档自动保存/还原；
+			-- UI 端用不了这个 API，需要就经 ExposedMembers 转。
+			Run = function()
+				ExposedMembers.ModMiscToolScript.SetData = ModMiscToolData.Set
+				ExposedMembers.ModMiscToolScript.GetData = ModMiscToolData.Get
+				ExposedMembers.ModMiscToolScript.HasData = ModMiscToolData.Has
+				ExposedMembers.ModMiscToolScript.RemoveData = ModMiscToolData.Remove
+				ExposedMembers.ModMiscToolScript.BuildDataKey = ModMiscToolData.BuildKey
+			end,
+		},
+		{
+			Name = "WorldBuilderAPI",
+			-- WorldBuilder（地图编辑器）接口模块：Gameplay 后端，UI 层通过它调用
+			Run = function()
+				ExposedMembers.ModMiscToolScript.WorldBuilderAPI = WorldBuilderAPI
+			end,
+		},
+		{
+			Name = "TurnEraAPI",
+			-- 回合 / 年代（gameplay 后端）：UI 层直调失败时经它兜底；也供别的 mod 直接用。
+			-- 接口与静态依据见 ModTool_TurnEraAPI.lua 头部。
+			Run = function()
+				ExposedMembers.ModMiscToolScript.TurnEraAPI = TurnEraAPI
+			end,
+		},
+	}
+	for _, group in ipairs(exposeGroups) do
+		local ok, err = pcall(group.Run)
+		if ok then
+			print("[ModMiscTool] exposed: " .. group.Name)
+		else
+			print("[ModMiscTool] 暴露 " .. group.Name .. " 失败 -> " .. tostring(err)
+				.. "（只影响这一组，其余继续）")
+		end
+	end
 end
 Events.LoadGameViewStateDone.Add(Initialize)

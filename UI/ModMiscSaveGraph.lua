@@ -757,7 +757,7 @@ local function OnSaveGraphSaveComplete(...)
     end
     if pending.Node.ConsumedPending then
         Log("已消费待接分支（本局第一次存档，父=" .. tostring(pending.Node.Parent) .. "）")
-        ClearPendingBranch()
+        ClearPendingBranch("已被本局第一次存档消费")
     end
 
     -- ⚠️ 先回调 OnSaved：换图就靠它立刻重开，**绝不能**再串一层扫描（扫描不回包 = 换图不跳转，
