@@ -37,9 +37,16 @@ Register({
 
 -- 换图待接分支：换图前写、新局开局消费；过期作废 → ephemeral
 Register({
+    -- 现在存的是**表**（{NodeId, Kind, Stamp, Epoch}），不再是 "a|B|stamp|epoch" 那种拼串：
+    -- 拼串要自己 SplitFields，历史上就踩过“3 段 vs 4 段”的解析 bug；表由协议负责编解码。
     Name = "sg_pending", Lifecycle = "ephemeral", Channel = "small",
-    Owner = "存档关系树", Version = 1, Type = "string", TTL = 900, MaxBytes = 96,
-    Describe = "换图时的待接分支（<原档id>|B|<stamp>|<epoch>；900 秒内有效）",
+    Owner = "存档关系树", Version = 1, Type = "table", TTL = 900,
+    Describe = "换图时的待接分支（表：NodeId/Kind/Stamp/Epoch；900 秒内有效）",
+})
+
+Register({
+    Name = "sgnode", Lifecycle = "persave", Owner = "存档关系树", Version = 1, Type = "table",
+    Describe = "本局节点身份（表：Id/Parent/Kind/Stamp/Logical/Offset）——随档走，新局不继承",
 })
 
 -- ===========================================================================
@@ -47,9 +54,10 @@ Register({
 -- ===========================================================================
 
 Register({
+    -- 同样是表（{Type, Detail, Amount, AcceptTurn, FromNode, FromPlayerID, FromCiv, Stamp, PayloadKey}）
     Name = "ev_*", Lifecycle = "ephemeral", Channel = "small",
-    Owner = "跨存档事件", Version = 1, Type = "string", TTL = 7 * 24 * 3600, MaxBytes = 200,
-    Describe = "事件信箱条目（发给某个节点；收件后由调用方投递并清理）",
+    Owner = "跨存档事件", Version = 1, Type = "table", TTL = 7 * 24 * 3600,
+    Describe = "事件信箱条目（表；发给某个节点，收件后由调用方投递并清理）",
 })
 
 Register({
@@ -79,6 +87,38 @@ Register({
 -- ===========================================================================
 -- 四、探针与测试数据（都是临时货，别当永久用）
 -- ===========================================================================
+
+Register({
+    Name = "probe_*", Lifecycle = "ephemeral", Channel = "small",
+    Owner = "诊断探针", Version = 1, Type = "string", TTL = 3600, MaxBytes = 96,
+    Describe = "开局/读档探针写的小标记（selftest/ingame 这类；1 小时过期）",
+})
+
+Register({
+    Name = "ghost_citystates", Lifecycle = "persave", Owner = "幽灵玩家（建局侧）", Version = 1,
+    Type = "string", Describe = "建局时把城邦数量记下来，对局内读它决定幽灵槽位",
+})
+
+Register({
+    Name = "ghost_majorplayers", Lifecycle = "persave", Owner = "幽灵玩家（建局侧）", Version = 1,
+    Type = "string", Describe = "建局时的主要文明数量（只记录、不抬高）",
+})
+
+Register({
+    Name = "svprobe", Lifecycle = "persave", Owner = "诊断探针", Version = 1, Type = "string",
+    Describe = "跨存档探针（验证随档通道能写能读）",
+})
+
+Register({
+    Name = "ModMiscAssetPlacements", Lifecycle = "persave", Owner = "永久资产放置", Version = 1,
+    Type = "table",
+    Describe = "摆在地图上的资产记录（表：V/Records[{fn,args}]）——随档走，新局不继承",
+})
+
+Register({
+    Name = "ui_*", Lifecycle = "persave", Owner = "UI 侧数据", Version = 1, Type = "string",
+    Describe = "UI 存给 gameplay 读的随档数据（CustomData）",
+})
 
 Register({
     Name = "panel", Lifecycle = "ephemeral", Channel = "big",

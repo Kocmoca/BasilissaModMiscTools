@@ -908,6 +908,7 @@ Support_UI: [TurnEvent] 开局收件：0 条（no-node）
 | 81 | 通道 G：`UserConfiguration.SetValue` 存自定义键 | `[已实机失败]` | 实机：写 4096 B **不报错**，但立刻读回是 `[没有这个键]` ⇒ 值没留下（`GetValue` 对未注册键返回 nil）。与通道 F 同因：引擎只认自己那套键。 |
 | 83 | **通用数据协议 `ModMiscDataProtocol`**（生命周期/类型/通道/审计/GC） | `[已落地·桩测试全绿]` | 三条铁律：没登记不许写 / 永久数据必须写 Owner+Version / 用后即焚真的焚。信封 `MMT1|生命周期|版本|时间|类型|长度|负载`，值编码长度前缀（二进制安全），解码严格、绝不返回半截。`SaveTree` = 头记录指向分片。 |
 | 84 | **数据登记表 `ModMiscDataRegistry`** | `[已落地]` | 现有 9 条数据集全部登记（`sg_head`/`sg_pending`/`ev_*`/`evb_*`/`blob*`/`carrier*`/`panel`/`probe`/`nameprobe`）。加新数据 = 加一行。 |
+| 88 | **存储调用全面迁移到协议**（旧的拼串/散键/回退链已删） | `[已落地·12 套桩测试全绿]` | 主线头/待接分支/事件信箱/事件大载荷/本局身份/资产记录/建局侧城邦数量/UI 数据/探针 全部走 `DataProtocol`；新增 `persave` 生命周期与 `save`(CustomData) 通道；小通道新增**自动溢出**（超单键上限自动分片，逻辑键不变）。 |
 | 87 | 协议**保真**（混合表/精度/共享引用/环/元表类）与**检测**（误领/丢包/损坏） | `[已落地·75+58 项全绿]` | 数字用 `%.17g`；共享子表与环用引用还原成同一张表；元表只存类名、解码侧 `RegisterClass` 装回、没登记就明确报告；信封 v2 带**数据集名**（拦误领）与**校验和**（拦静默损坏）；v1 兼容读。 |
 | 86 | 协议传输模拟器（devs 仓 `Tests/protocol_transport_sim.lua`） | `[已落地·58 项全绿]` | 本地模拟三条通道（含故障注入、真跨进程），直接跑 mod 真模块；抓出并修掉 GC/Audit 通配与半成品残留两个真 bug。 |
 | 85 | 面板「数据协议」一行（登记表 / 审计 / GC / 清永久数据） | `[待实机]` | 审计列出每条盘上有没有、多大、多老、孤儿片；GC 清过期与孤儿；**清永久数据要点两次**。 |
@@ -1484,3 +1485,42 @@ MMT2|生命周期|版本|写入时间|类型|<名字长度>:<数据集名>|<校�
 
 **性能不在目标里**：本轮没有做任何性能优化或性能测试；模拟器跑一轮的时间只当“本机耗时”记录，
 不作为指标。
+
+### 19.10 调用迁移：所有存储一律走协议（2026-10-05，授权者要求）
+
+授权者：**把现在的调用迁移到协议上，无需兼容旧有方法**。于是把散落的存储调用全部收进
+`DataProtocol`，把旧的拼串格式、散键、兼容分支与回退路径**删掉**（不留旧数据迁移代码）。
+
+#### 迁移对照
+
+| 原来 | 现在 | 说明 |
+|---|---|---|
+| `ModMiscStore.Save("sg_head", id)` | `DataProtocol.Save("sg_head", id)` | 登记项 permanent/small |
+| `sg_pending` 拼串 `parent\|kind\|stamp\|epoch\|logical` + `SplitFields` 解析（历史上踩过 3 段/4 段解析 bug） | **表** `{Parent, Kind, Stamp, WrittenAt, Logical}` | 登记项 ephemeral/small，TTL 900 s；解析交给协议 |
+| 事件信箱 `ev_*` 拼串 `Type\|Detail\|Amount\|…`（9 段） | **表** `{Type, Detail, Amount, AcceptTurn, FromNode, FromPlayerID, FromCiv, Stamp, PayloadKey}` | 协议负责编解码；`FetchEventsForNode` 用 `ListMatching(前缀)` 取键 |
+| 事件大载荷（曾走分片 blob + 多级回退） | `DataProtocol.Save(evb_*, text)` | ephemeral/big；回退链（BigStore/blob/协议）**已删** |
+| CustomData 五个散键 `NodeId/ParentId/Kind/Stamp/Offset/Logical` | **一个表** `sgnode`（persave 通道） | 新增 `persave` 生命周期 + `save`（CustomData）通道 |
+| `WriteCustomDataValue/ReadCustomDataValue`、`MODMISC_CD_PREFIX`、`SplitFields`（用于存储） | **删除** | 这些名字在 SaveGraph 里已不再存在 |
+| 资产放置记录拼串 `fn\|arg;fn\|arg…` + “tonumber 成功就当数字”的猜法 | **表** `ModMiscAssetPlacements = {V, Records[{fn, args}]}`（persave） | 数字按原类型还原，不再改型 |
+| 建局侧的 `WriteCustomData(Ghost…)` | `DataProtocol.Save("ghost_citystates"/"ghost_majorplayers")`（persave） | 前端/建局上下文也 include 了协议（Civ6Common 里） |
+| Support_UI 的 `ui_*`（UI 存给 gameplay 读）与跨存档探针 | `ui_*` / `svprobe`（persave） | 探针现在验证的是“随档通道” |
+| 诊断探针 `ModMiscStore.Save("selftest"/"ingame")` | `DataProtocol.Save("probe_*")` | 登记项 ephemeral/small |
+
+#### 迁移中发现并修掉的两个真问题
+
+1. **小通道单键上限装不下协议信封**：`ev_*` 的信箱条目信封 ≈200 字节，而文件名 255 字节
+   那条限制只给单键 ~90 字节（`blob_harness` 的 300 KB 事件用例当场报“发件=false”）✗。
+   修法：协议的小通道适配层做**自动溢出** —— 放得下就一个档，放不下就交给
+   `ModMiscStore.SaveBlob` 分片，**逻辑键不变**（读/删/枚举都归一化 `$<n>`/`$m`）。
+   于是小通道变成“容量近似无限、不用载入就能读、且完全不出现在模组界面”的通道
+   —— 信箱这类瞬时元数据继续留在它上面，不必挤到大通道去。
+2. **生命周期校验漏了新增的 `persave`**：登记 `sgnode` 时报“生命周期非法”；
+   同时把协议里所有通道调用都加了“通道没加载”的守卫（桩测试里 `ModMiscStore = nil` 的场景不再炸）。
+
+#### 校验
+
+* 12 套桩测试全绿（`sg_harness`/`sg2_harness`/`ev_harness` 现在都先装协议再跑；
+  `blob_harness` 的场景 6 改成“300 KB 载荷走协议 + 投递后残留检查”，实测残留 0）；
+* devs 仓模拟器新增**场景 10（随档通道）**：读档还在、**新局不继承**、审计能列出；
+  共 **10 场景 / 62 项全绿**；
+* `fwdcheck2`（前向引用 + 未定义标识符）与 `luac -p` 全项目通过。

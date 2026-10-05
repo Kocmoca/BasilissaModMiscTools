@@ -68,8 +68,17 @@ local DP_HEADER_SUFFIX = "$h"
 local DP_PART_SUFFIX = "$p"
 local DP_DEFAULT_PART_BYTES = 32768      -- 每个分片 32 KB（大通道内部再按 4000 字节切配置组）
 
-local DP_LIFECYCLE = { Permanent = "permanent", Session = "session", Ephemeral = "ephemeral" }
-local DP_CHANNEL = { Memory = "memory", Small = "small", Big = "big", Carrier = "carrier" }
+-- 生命周期：
+--   permanent  跨存档、跨进程长期存在（慎重）
+--   persave    随档：存档/读档跟着走，**新局不继承**（本局身份、资产记录这类）
+--   session    进程内内存
+--   ephemeral  用后即焚（TTL）
+local DP_LIFECYCLE = { Permanent = "permanent", PerSave = "persave",
+                       Session = "session", Ephemeral = "ephemeral" }
+-- 通道：
+--   save   引擎的 CustomData（UI 侧唯一可用的随档存储；gameplay 侧的 Game:SetProperty 在别的上下文）
+local DP_CHANNEL = { Memory = "memory", Small = "small", Big = "big",
+                     Carrier = "carrier", Save = "save" }
 
 local m_Registry = {}          -- name -> spec
 local m_Order = {}             -- 登记顺序（面板按这个列）
@@ -372,6 +381,12 @@ M.ParseEnvelope = ParseEnvelope
 
 local function ChannelAvailable(channel)
     if channel == DP_CHANNEL.Memory then return true end
+    if channel == DP_CHANNEL.Save then
+        return WriteCustomData ~= nil and ReadCustomData ~= nil
+    end
+    if channel == DP_CHANNEL.Small then
+        return ModMiscStore ~= nil and ModMiscStore.Save ~= nil
+    end
     if channel == DP_CHANNEL.Small then
         return ModMiscStore ~= nil and ModMiscStore.Save ~= nil
     end
@@ -384,11 +399,72 @@ local function ChannelAvailable(channel)
     return false
 end
 
-local function ChannelWrite(channel, key, text)
-    if channel == DP_CHANNEL.Small then
+-- 小通道的一个键 = 一个（或几个）小配置档。单键上限只有 ~100 字节（文件名 255 字节那条限制），
+-- 而协议信封本身就要几十字节（生命周期/版本/时间/名字/校验和/长度），
+-- 稍微像样的值都放不下 —— 比如事件信箱条目（表）实测 ~200 字节。
+-- 所以这里做**自动溢出**：放得下就一个档，放不下就交给 ModMiscStore.SaveBlob 分片，
+-- 逻辑键仍然是同一个（读/删/枚举都由本适配层负责拼回来）。
+local function SmallWrite(key, text)
+    if ModMiscStore == nil or ModMiscStore.Save == nil then
+        return false, "小通道（存档名编码）没加载"
+    end
+    local limit = nil
+    if ModMiscStore.ComputeMaxValueBytes ~= nil then limit = ModMiscStore.ComputeMaxValueBytes(key) end
+    if limit == nil or #text <= limit then
+        -- 先清掉可能存在的旧分片（同一个逻辑键以前是分片存的）
+        if ModMiscStore.RemoveBlob ~= nil then ModMiscStore.RemoveBlob(key) end
         return ModMiscStore.Save(key, text)
     end
+    if ModMiscStore.SaveBlob == nil then
+        return false, "值 " .. tostring(#text) .. " 字节超过单键上限 " .. tostring(limit)
+            .. "，且没有分片接口"
+    end
+    ModMiscStore.Remove(key)                 -- 清掉可能的旧单档形态
+    return ModMiscStore.SaveBlob(key, text)
+end
+
+local function SmallRead(key)
+    if ModMiscStore == nil then return nil, "小通道（存档名编码）没加载" end
+    if ModMiscStore.Refresh ~= nil and ModMiscStore.IsReady ~= nil
+        and ModMiscStore.IsReady() ~= true then
+        return nil, "小通道还没就绪（先 Refresh）"
+    end
+    if ModMiscStore.Get ~= nil then
+        local value = ModMiscStore.Get(key)
+        if value ~= nil and tostring(value) ~= "" then return value end
+    end
+    if ModMiscStore.LoadBlob ~= nil then
+        local text, err = ModMiscStore.LoadBlob(key)
+        if text ~= nil then return text end
+        return nil, err
+    end
+    return nil, "没有这份数据"
+end
+
+local function SmallRemove(key)
+    if ModMiscStore == nil then return false end
+    local removed = false
+    if ModMiscStore.Remove ~= nil then removed = ModMiscStore.Remove(key) and true or removed end
+    if ModMiscStore.RemoveBlob ~= nil then ModMiscStore.RemoveBlob(key) end
+    return removed
+end
+
+-- 小通道里“真实键”的归一化：分片的 <key>$<n> / 元数据 <key>$m 都归到逻辑键 <key>
+local function NormalizeSmallKey(key)
+    key = tostring(key)
+    key = key:gsub("%$%d+$", "")
+    key = key:gsub("%$m$", "")
+    return key
+end
+
+local function ChannelWrite(channel, key, text)
+    if channel == DP_CHANNEL.Small then
+        return SmallWrite(key, text)
+    end
     if channel == DP_CHANNEL.Big then
+        if ModMiscBigStore == nil or ModMiscBigStore.Save == nil then
+            return false, "大通道没加载"
+        end
         local ok, err = ModMiscBigStore.Save(key, text)
         return ok, err
     end
@@ -396,36 +472,50 @@ local function ChannelWrite(channel, key, text)
         -- 载体档：写入要给出一个“载体名”，键名就是名（读的时候要载入那份档）
         return ModMiscCarrier.Write(key, text)
     end
+    if channel == DP_CHANNEL.Save then
+        local ok, err = pcall(WriteCustomData, key, text)
+        if not ok then return false, "CustomData 写入失败: " .. tostring(err) end
+        return true
+    end
     return false, "不支持的通道: " .. tostring(channel)
 end
 
 local function ChannelRead(channel, key)
     if channel == DP_CHANNEL.Small then
-        if ModMiscStore.Refresh ~= nil and ModMiscStore.IsReady ~= nil
-            and ModMiscStore.IsReady() ~= true then
-            return nil, "小通道还没就绪（先 Refresh）"
-        end
-        return ModMiscStore.Get(key)
+        return SmallRead(key)
     end
     if channel == DP_CHANNEL.Big then
+        if ModMiscBigStore == nil or ModMiscBigStore.Load == nil then
+            return nil, "大通道没加载"
+        end
         return ModMiscBigStore.Load(key)
     end
     if channel == DP_CHANNEL.Carrier then
         return ModMiscCarrier.Read(key)
+    end
+    if channel == DP_CHANNEL.Save then
+        local ok, value = pcall(ReadCustomData, key)
+        if not ok then return nil, "CustomData 读取失败: " .. tostring(value) end
+        return value
     end
     return nil, "不支持的通道: " .. tostring(channel)
 end
 
 local function ChannelRemove(channel, key)
     if channel == DP_CHANNEL.Small then
-        return ModMiscStore.Remove(key)
+        return SmallRemove(key)
     end
     if channel == DP_CHANNEL.Big then
+        if ModMiscBigStore == nil or ModMiscBigStore.Remove == nil then return false end
         return ModMiscBigStore.Remove(key)
     end
     if channel == DP_CHANNEL.Carrier then
         if ModMiscCarrier.Clear ~= nil then return ModMiscCarrier.Clear(key) end
         return false
+    end
+    if channel == DP_CHANNEL.Save then
+        local ok = pcall(WriteCustomData, key, "")
+        return ok and true or false
     end
     return false
 end
@@ -440,11 +530,13 @@ local function ValidateSpec(spec)
     end
     local lifecycle = spec.Lifecycle
     if lifecycle ~= DP_LIFECYCLE.Permanent and lifecycle ~= DP_LIFECYCLE.Session
-        and lifecycle ~= DP_LIFECYCLE.Ephemeral then
-        return false, "生命周期非法（permanent/session/ephemeral）"
+        and lifecycle ~= DP_LIFECYCLE.Ephemeral and lifecycle ~= DP_LIFECYCLE.PerSave then
+        return false, "生命周期非法（permanent/persave/session/ephemeral）"
     end
     if lifecycle == DP_LIFECYCLE.Session then
         spec.Channel = DP_CHANNEL.Memory
+    elseif lifecycle == DP_LIFECYCLE.PerSave then
+        spec.Channel = DP_CHANNEL.Save          -- 随档数据固定走 CustomData
     elseif spec.Channel == nil then
         return false, "落盘的条目必须指定通道（small/big/carrier）"
     elseif spec.Channel ~= DP_CHANNEL.Small and spec.Channel ~= DP_CHANNEL.Big
@@ -455,6 +547,9 @@ local function ValidateSpec(spec)
         -- 铁律②：永久数据必须写清“谁的、第几版”，便于审计与迁移
         if spec.Owner == nil or spec.Owner == "" then return false, "永久数据必须写 Owner" end
         if tonumber(spec.Version) == nil then return false, "永久数据必须写 Version（数字）" end
+    end
+    if lifecycle == DP_LIFECYCLE.PerSave and (spec.Owner == nil or spec.Owner == "") then
+        return false, "随档数据也要写 Owner"        -- 随档数据同样要能追责
     end
     spec.Version = tonumber(spec.Version) or 1
     if lifecycle == DP_LIFECYCLE.Ephemeral and tonumber(spec.TTL) == nil then
@@ -757,7 +852,7 @@ local function EnumerateKeys(spec)
     local prefix = name:sub(1, #name - 1)
     if spec.Channel == DP_CHANNEL.Small and ModMiscStore ~= nil and ModMiscStore.GetAll ~= nil then
         for key in pairs(ModMiscStore.GetAll() or {}) do
-            key = tostring(key)
+            key = NormalizeSmallKey(key)
             if key:sub(1, #prefix) == prefix then keys[key] = true end
         end
     end
@@ -775,6 +870,29 @@ end
 
 M.EnumerateKeys = EnumerateKeys
 
+-- 按前缀列出**真实键**（跨两条通道）：事件信箱这种“前缀里带节点 id”的场景用它
+function M.ListMatching(prefix)
+    prefix = tostring(prefix or "")
+    local keys = {}
+    if ModMiscStore ~= nil and ModMiscStore.GetAll ~= nil then
+        for key in pairs(ModMiscStore.GetAll() or {}) do
+            key = NormalizeSmallKey(key)
+            if key:sub(1, #prefix) == prefix then keys[key] = true end
+        end
+    end
+    if ModMiscModGroupStore ~= nil and ModMiscModGroupStore.ListOurs ~= nil then
+        for _, group in ipairs(ModMiscModGroupStore.ListOurs() or {}) do
+            local key = tostring(group.Key)
+            local base = key:gsub("%$p%d+$", ""):gsub("%$h$", "")
+            if base:sub(1, #prefix) == prefix then keys[base] = true end
+        end
+    end
+    local list = {}
+    for key in pairs(keys) do table.insert(list, key) end
+    table.sort(list)
+    return list
+end
+
 -- 审计：登记了什么、盘上真有没有、多大、什么时候写的、是不是孤儿
 function M.Audit()
     local report = { Entries = {}, Orphans = {}, Tag = DP_BUILD_TAG }
@@ -785,6 +903,19 @@ function M.Audit()
         if spec.Lifecycle == DP_LIFECYCLE.Session then
             entry.Present = (m_Session[spec.Name] ~= nil)
             entry.Note = "内存"
+        elseif spec.Lifecycle == DP_LIFECYCLE.PerSave then
+            local text = ChannelRead(DP_CHANNEL.Save, spec.Name)
+            entry.Channel = DP_CHANNEL.Save
+            if text ~= nil and type(text) == "string" then
+                local envelope = ParseEnvelope(text)
+                entry.Present = true
+                entry.Bytes = #text
+                if envelope ~= nil then
+                    entry.Stamp = envelope.Stamp
+                    entry.ValueType = envelope.ValueType
+                end
+            end
+            entry.Note = "随档（新局不继承）"
         elseif spec.Name:sub(-1) == "*" then
             -- 通配数据集：按真实键逐条列（别只报 "evb_* 不存在" 这种没用的结论）
             local keys = EnumerateKeys(spec)

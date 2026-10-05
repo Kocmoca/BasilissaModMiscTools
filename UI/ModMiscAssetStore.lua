@@ -40,33 +40,30 @@ ModMiscAssetStore = ModMiscAssetStore or {}
 ModMiscAssetStore.BuildTag = MODMISC_ASSET_BUILD_TAG
 
 -- ===========================================================================
--- 序列化
+-- 落盘时的形状
+--
+-- **不再拼 "fn|arg|arg;fn|arg…" 那种字符串**：现在交给数据协议存一个表
+-- （登记项 sg_assets 是 persave：随档走、新局不继承）。协议负责编解码、
+-- 校验和（防损坏）与数据集名（防误领），数字也按原类型还原 —— 以前那套
+-- “tonumber 成功就当数字” 的猜法会把字符串形式的数字改型。
 -- ===========================================================================
 
-local function Serialize()
+local function RecordsForSave()
     local records = {}
     for _, spec in ipairs(m_Placements) do
-        local fields = { tostring(spec.fn) }
-        for _, arg in ipairs(spec.args) do
-            table.insert(fields, tostring(arg))
-        end
-        table.insert(records, table.concat(fields, "|"))
+        local args = {}
+        for _, arg in ipairs(spec.args) do table.insert(args, arg) end
+        table.insert(records, { fn = tostring(spec.fn), args = args })
     end
-    return table.concat(records, ";")
+    return { V = 1, Records = records }
 end
 
-local function Deserialize(text)
+local function RecordsFromLoad(value)
+    if type(value) ~= "table" or type(value.Records) ~= "table" then return {} end
     local list = {}
-    if text == nil or tostring(text) == "" then return list end
-    for record in tostring(text):gmatch("[^;]+") do
-        local fields = {}
-        for field in record:gmatch("[^|]+") do
-            local number = tonumber(field)
-            table.insert(fields, number ~= nil and number or field)
-        end
-        if #fields >= 3 then
-            local fn = table.remove(fields, 1)
-            table.insert(list, { fn = fn, args = fields })
+    for _, record in ipairs(value.Records) do
+        if type(record) == "table" and record.fn ~= nil and type(record.args) == "table" then
+            table.insert(list, { fn = tostring(record.fn), args = record.args })
         end
     end
     return list
@@ -77,11 +74,11 @@ end
 -- ===========================================================================
 
 function ModMiscAssetStore.Save()
-    if WriteCustomData == nil then
-        Log("Save 失败：WriteCustomData 不可用（Civ6Common 没 include？）")
+    if DataProtocol == nil then
+        Log("Save 失败：数据协议没加载")
         return false
     end
-    local ok, err = pcall(WriteCustomData, MODMISC_ASSET_CUSTOM_DATA_KEY, Serialize())
+    local ok, err = DataProtocol.Save(MODMISC_ASSET_CUSTOM_DATA_KEY, RecordsForSave())
     if not ok then
         Log("Save 失败 -> " .. tostring(err))
         return false
@@ -90,16 +87,18 @@ function ModMiscAssetStore.Save()
 end
 
 function ModMiscAssetStore.Load()
-    if ReadCustomData == nil then
-        Log("Load 失败：ReadCustomData 不可用")
+    if DataProtocol == nil then
+        Log("Load 失败：数据协议没加载")
         return false
     end
-    local ok, value = pcall(ReadCustomData, MODMISC_ASSET_CUSTOM_DATA_KEY)
-    if not ok then
-        Log("Load 失败 -> " .. tostring(value))
+    local value, err = DataProtocol.Load(MODMISC_ASSET_CUSTOM_DATA_KEY)
+    if value == nil then
+        -- 没存过 / 新局不继承：都不是错误，安静地当“没有记录”
+        Log("Load：没有放置记录（" .. tostring(err) .. "）")
+        m_Placements = {}
         return false
     end
-    m_Placements = Deserialize(value)
+    m_Placements = RecordsFromLoad(value)
     Log("Load 完成 build=" .. MODMISC_ASSET_BUILD_TAG
         .. "：读到 " .. tostring(#m_Placements) .. " 条放置记录")
     return true

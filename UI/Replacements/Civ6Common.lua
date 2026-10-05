@@ -1171,7 +1171,11 @@ local function ModMiscToolApplyGhostCityStates()
 	if target > GHOST_CITY_STATE_HARD_LIMIT then target = GHOST_CITY_STATE_HARD_LIMIT end
 	if target <= current then return end
 
-	WriteCustomData(GHOST_CITY_STATE_CUSTOM_DATA_KEY, current)
+	-- 走协议（登记项 ghost_citystates 是 persave：随档走、新局不继承）
+	local okGhost, ghostErr = DataProtocol.Save("ghost_citystates", tostring(current))
+	if not okGhost then
+		print("[ModMiscTool][Ghost] 城邦数量写入失败 -> " .. tostring(ghostErr))
+	end
 	GameConfiguration.SetValue("CITY_STATE_COUNT", target)
 	local tableValue = GHOST_CITY_STATE_BY_MAP_SIZE[mapSizeKey]
 	print("[ModMiscTool][Ghost] city states -> " .. tostring(target)
@@ -1200,7 +1204,7 @@ local function ModMiscToolApplyGhostMajorPlayers()
 		if configured <= 0 then return end
 		if configured ~= m_GhostLastSavedMajorCount then
 			m_GhostLastSavedMajorCount = configured
-			WriteCustomData(GHOST_MAJOR_PLAYER_CUSTOM_DATA_KEY, configured)
+			DataProtocol.Save("ghost_majorplayers", tostring(configured))
 			print("[ModMiscTool][Ghost] major players (configured, not raised) = "
 				.. tostring(configured))
 		end
@@ -1221,7 +1225,7 @@ local function ModMiscToolApplyGhostMajorPlayers()
 	majorTarget = majorTarget + hidden
 	if current >= majorTarget then return end
 
-	WriteCustomData(GHOST_MAJOR_PLAYER_CUSTOM_DATA_KEY, current)
+	DataProtocol.Save("ghost_majorplayers", tostring(current))
 	GameConfiguration.SetParticipatingPlayerCount(majorTarget)
 	print("[ModMiscTool][Ghost] major players -> " .. tostring(majorTarget)
 		.. " (player choice " .. tostring(current) .. " saved"
@@ -1309,6 +1313,17 @@ end
 -- Modding 组接口前端与对局内都能调。必须排在 ModMiscStore 之后（复用它的 hex 编解码）。
 if ModMiscModGroupStore == nil then
 	include("ModMiscModGroupStore")
+end
+
+-- 数据协议 + 登记表也要在前端/建局上下文里可用：
+-- 建局时要往 CustomData 写城邦数量（随档数据），读它的是对局内的 Support_UI；
+-- 两边都走协议，形状与校验（数据集名/校验和）才统一。
+if ModMiscBigStore == nil then
+	include("ModMiscBigStore")
+end
+if DataProtocol == nil then
+	include("ModMiscDataProtocol")
+	include("ModMiscDataRegistry")
 end
 
 -- 前端侧也把同一套接口挂到 ExposedMembers 上（前端 context 里别的 mod 也能直接用）

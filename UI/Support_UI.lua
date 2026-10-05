@@ -177,7 +177,7 @@ local function HandOffGhostCityStateCount()
     local script = ExposedMembers.ModMiscToolScript
     if script == nil or script.InitializeGhostPlayers == nil then return end
 
-    local savedCount = tonumber(ReadCustomData(GHOST_CITY_STATE_CUSTOM_DATA_KEY))
+    local savedCount = tonumber(DataProtocol.Load("ghost_citystates"))
     if savedCount == nil or savedCount <= 0 then
         savedCount = GHOST_FALLBACK_KEEP_CITY_STATES
         print("[ModMiscTool][Ghost] no saved city state count, fallback keep="
@@ -186,7 +186,7 @@ local function HandOffGhostCityStateCount()
         print("[ModMiscTool][Ghost] handing off saved city state count=" .. tostring(savedCount))
     end
     -- 玩家设定的主要文明人数：用来算槽位边界（边界之后的城邦槽位全部变幽灵）
-    local savedMajors = tonumber(ReadCustomData(GHOST_MAJOR_PLAYER_CUSTOM_DATA_KEY))
+    local savedMajors = tonumber(DataProtocol.Load("ghost_majorplayers"))
     if savedMajors == nil or savedMajors <= 0 then
         savedMajors = GHOST_FALLBACK_KEEP_MAJOR_PLAYERS
         print("[ModMiscTool][Ghost] no saved major player count, fallback majors="
@@ -246,17 +246,17 @@ Events.LoadGameViewStateDone.Add(HandOffGhostCityStateCount)
 --   * 新建游戏 → 退回主菜单 → 再新建游戏（验证 CustomData 是否跨局保留）
 --   * 存档 → 完全退出进程 → 重开 → 读档（验证是否随存档一起保存）
 -- ===========================================================================
-local CROSS_SAVE_PROBE_KEY = "ModMiscToolCrossSaveProbe"
+local CROSS_SAVE_PROBE_KEY = "svprobe"      -- 登记项 svprobe 是 persave（随档）
 -- payload -> 写入时是“本进程第几次进游戏”，用来区分“同一局里又读到自己刚写的”和“真的跨了局”
 local m_ProbeWrittenPayloads = {}
 local m_ProbeLoadIndex = 0
 
 local function RunCrossSaveProbe(source)
-    -- 前端能写不代表局内也能写（UI.GetGameParameters() 在局内可能不可用），两边都 pcall
-    local readOk, raw = pcall(ReadCustomData, CROSS_SAVE_PROBE_KEY)
-    if not readOk then
-        print("[ModMiscTool][Probe] " .. source .. ": FAILED ReadCustomData -> " .. tostring(raw))
-        return nil
+    -- 走协议读（登记项 svprobe 是 persave）——它替我们管好了“没有这份数据”这种正常情况
+    local raw, readErr = DataProtocol.Load(CROSS_SAVE_PROBE_KEY)
+    if raw == nil and readErr ~= nil and tostring(readErr):find("没有这份数据") == nil
+        and tostring(readErr):find("没有这个键") == nil then
+        print("[ModMiscTool][Probe] " .. source .. ": 读取说明 -> " .. tostring(readErr))
     end
     local previous = nil
     if raw ~= nil and tostring(raw) ~= "" then
@@ -278,10 +278,9 @@ local function RunCrossSaveProbe(source)
         .. ";load=" .. tostring(m_ProbeLoadIndex)
         .. ";turn=" .. tostring(turn)
         .. ";prev=" .. tostring(raw)
-    local writeOk, writeErr = pcall(WriteCustomData, CROSS_SAVE_PROBE_KEY, payload)
+    local writeOk, writeErr = DataProtocol.Save(CROSS_SAVE_PROBE_KEY, payload)
     if not writeOk then
-        print("[ModMiscTool][Probe] " .. source .. ": FAILED WriteCustomData -> " .. tostring(writeErr)
-            .. "（局内只能读、不能写）")
+        print("[ModMiscTool][Probe] " .. source .. ": 写入失败 -> " .. tostring(writeErr))
         return nil
     end
     m_ProbeWrittenPayloads[payload] = m_ProbeLoadIndex
@@ -321,18 +320,25 @@ end
 --
 -- 键前缀比 gameplay 侧多一个 ui_，避免两边混用同一个键时产生误解。
 -- ===========================================================================
-local MODMISC_UI_DATA_KEY_PREFIX = "kocmoca_modmisctool_ui_"
 
 local function LogUIData(message)
     print("[ModMiscTool][UIData] " .. message)
 end
+
+-- 现在走通用数据协议（登记项 ui_* 是 **persave**：随档走、新局不继承）。
+-- 键前缀比 gameplay 侧多一个 ui_，避免两边混用同一个键时产生误解。
+local MODMISC_UI_DATA_PREFIX = "ui_"
 
 function SetModMiscCustomData(key, value)
     if key == nil then
         LogUIData("Set 失败：key 为 nil")
         return false
     end
-    local ok, err = pcall(WriteCustomData, MODMISC_UI_DATA_KEY_PREFIX .. tostring(key), value)
+    if DataProtocol == nil then
+        LogUIData("Set 失败：数据协议没加载")
+        return false
+    end
+    local ok, err = DataProtocol.Save(MODMISC_UI_DATA_PREFIX .. tostring(key), tostring(value))
     if not ok then
         LogUIData("Set 失败 key=" .. tostring(key) .. " -> " .. tostring(err))
         return false
@@ -341,13 +347,15 @@ function SetModMiscCustomData(key, value)
 end
 
 function GetModMiscCustomData(key)
-    if key == nil then return nil end
-    local ok, value = pcall(ReadCustomData, MODMISC_UI_DATA_KEY_PREFIX .. tostring(key))
-    if not ok then
-        LogUIData("Get 失败 key=" .. tostring(key) .. " -> " .. tostring(value))
+    if key == nil or DataProtocol == nil then return nil end
+    local value, err = DataProtocol.Load(MODMISC_UI_DATA_PREFIX .. tostring(key))
+    if value == nil then
+        if err ~= nil and tostring(err):find("没有这份数据") == nil then
+            LogUIData("Get 说明 key=" .. tostring(key) .. " -> " .. tostring(err))
+        end
         return nil
     end
-    if value == nil or tostring(value) == "" then return nil end
+    if tostring(value) == "" then return nil end
     return value
 end
 
@@ -483,14 +491,14 @@ function Initialize()
 		end
 
 		ModMiscStore.OnReady(function()
-			LogStoreInGame("扫描完成；selftest=[" .. tostring(ModMiscStore.Get("selftest"))
-				.. "] ingame=[" .. tostring(ModMiscStore.Get("ingame")) .. "]")
+			LogStoreInGame("扫描完成；selftest=[" .. tostring(DataProtocol.Load("probe_selftest"))
+				.. "] ingame=[" .. tostring(DataProtocol.Load("probe_ingame")) .. "]")
 
 			if not MODMISC_STORE_INGAME_WRITE_TEST then return end
 			local payload = "ig=1;t=" .. tostring(os.time())
 				.. ";r=" .. tostring(math.random(100000, 999999))
 			LogStoreInGame("即将调用 Network.SaveGame(配置档) 写入 [" .. payload .. "]")
-			ModMiscStore.Save("ingame", payload)
+			DataProtocol.Save("probe_ingame", payload)
 			LogStoreInGame("Save 调用已返回（没卡死）")
 		end)
 		ModMiscStore.Refresh()

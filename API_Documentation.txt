@@ -1423,9 +1423,17 @@ API_Verification_Status.md §18.4/§18.6。
 本地模拟器（devs 仓）：`devs/BasilissaModMiscTools/Tests/protocol_transport_sim.lua`
 —— 8 场景 / 48 项断言，含故障注入与真跨进程；用法见该仓 README 与 Docs/01。
 
-生命周期：`permanent`（永久，慎重）/ `session`（进程内内存）/ `ephemeral`（用后即焚，TTL）。
-通道：`memory` / `small`（存档名编码，~100B、不用载入可读）/ `big`（配置组，实测 1MB）/
+生命周期：`permanent`（永久，慎重）/ `persave`（**随档**：读档还在、新局不继承）/
+`session`（进程内内存）/ `ephemeral`（用后即焚，TTL）。
+通道：`memory` / `save`（引擎 CustomData，persave 专用）/ `small`（存档名编码：单键 ~100B，
+**超了会自动分片**，逻辑键不变，不用载入就能读）/ `big`（配置组，实测 1MB）/
 `carrier`（载体档，要载入）。类型：string / number / table（table 递归，键值都支持）。
+
+**所有存储调用一律走协议**（2026-10-05 迁移完成，旧拼串/散键/回退链已删）：
+主线头 `sg_head`、待接分支 `sg_pending`（表）、事件信箱 `ev_*`（表）、事件大载荷 `evb_*`、
+本局身份 `sgnode`（persave 表）、资产记录 `ModMiscAssetPlacements`（persave 表）、
+建局侧 `ghost_citystates`/`ghost_majorplayers`、UI 数据 `ui_*`、探针 `probe_*`/`svprobe`。
+新增 `DataProtocol.ListMatching(前缀)` 用于“按前缀取真实键”（事件信箱按节点取件）。
 
 信封 v2：`MMT2|<生命周期>|<版本>|<写入时间>|<类型>|<名字长度>:<数据集名>|<校验和>|<负载长度>|<负载>`
 （v1 老信封仍可读，只做长度校验）。名字用来拦**误领**（读到别人家的数据），

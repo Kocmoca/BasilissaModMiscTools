@@ -98,7 +98,6 @@ local MODMISC_SWITCH_SAVE_GRACE = 12
 -- 事件信箱：键前缀 + 值里的分隔符
 local MODMISC_EVENT_KEY_PREFIX = "ev_"
 local MODMISC_EVENT_BLOB_PREFIX = "evb_"
-local MODMISC_EVENT_VALUE_SEP = "|"
 
 -- CustomData 键前缀：随档保存，读档后就知道“我在哪个节点”
 local MODMISC_CD_PREFIX = "ModMiscSaveGraph_"
@@ -279,23 +278,6 @@ end
 -- 当前节点 / 主线头 / 待接分支
 -- ===========================================================================
 
-local function ReadCustomDataValue(key)
-    local reader = ReadCustomData
-    if reader == nil then return nil end
-    local ok, value = pcall(reader, MODMISC_CD_PREFIX .. key)
-    if not ok or value == nil then return nil end
-    local text = tostring(value)
-    if text == "" then return nil end
-    return text
-end
-
-local function WriteCustomDataValue(key, value)
-    local writer = WriteCustomData
-    if writer == nil then return false end
-    local ok = pcall(writer, MODMISC_CD_PREFIX .. key, tostring(value or ""))
-    return ok
-end
-
 -- ===========================================================================
 -- 单向通道：Game:SetProperty（gameplay 侧）
 --
@@ -354,25 +336,42 @@ local function ReadNodeProperty()
     }
 end
 
--- 本局是哪个节点：CustomData（UI 侧写入，已验证）优先，Game:SetProperty（gameplay 侧）
--- 兜底 —— 两条通道写的是同一份身份，互为交叉校验。
+-- 本局身份（随档）：
+--   现在整份身份就是**一个表**（sgnode：Id/Parent/Kind/Stamp/Logical/Offset），
+--   走协议的 persave 通道（CustomData）—— 不再往 CustomData 里塞 5 个散键、也不再拼串。
+--   Game:SetProperty（gameplay 侧写的）仍作为**交叉校验**读一份：两个上下文的存储互不可见，
+--   两边都写着同一份身份，读得到哪份用哪份。
+local function LoadNodeIdentity()
+    if DataProtocol == nil then return nil end
+    local identity = DataProtocol.Load(MODMISC_IDENTITY_KEY)
+    if type(identity) ~= "table" then return nil end
+    return identity
+end
+
+local function SaveNodeIdentity(identity)
+    if DataProtocol == nil then return false end
+    return DataProtocol.Save(MODMISC_IDENTITY_KEY, identity) == true
+end
+
 function API.GetCurrentNodeId()
-    local fromCustomData = ReadCustomDataValue("NodeId")
-    if fromCustomData ~= nil then return fromCustomData, "customdata" end
+    local identity = LoadNodeIdentity()
+    if identity ~= nil and identity.Id ~= nil then return tostring(identity.Id), "persave" end
     local fromProperty = ReadNodeProperty()
     if fromProperty ~= nil then return fromProperty.Id, "property" end
     return nil, "none"
 end
 
--- “本局来源”：换图重开后，开局探针把待接分支固化到 CustomData 里（随档保存），
--- 于是本局第一次存档就知道自己挂在谁下面、算分支 —— 而且不依赖“存储此刻还读不读得到”。
+-- “本局来源”：换图重开后，开局探针把待接分支固化进**本局身份**（随档保存），
+-- 于是本局第一次存档就知道自己挂在谁下面、算分支 —— 也不依赖“存储此刻还读不读得到”。
 function API.GetIncomingBranch()
-    local parent = ReadCustomDataValue("PendingParent")
-    if parent == nil or parent == "" then return nil end
+    local identity = LoadNodeIdentity()
+    if identity == nil then return nil end
+    local parent = identity.Parent
+    if parent == nil or tostring(parent) == "" then return nil end
     return {
-        Parent = (parent ~= MODMISC_SAVE_ROOT_PARENT) and parent or nil,
-        Kind = ReadCustomDataValue("PendingKind") or MODMISC_KIND_BRANCH,
-        Logical = tonumber(ReadCustomDataValue("PendingLogical")),
+        Parent = (tostring(parent) ~= MODMISC_SAVE_ROOT_PARENT) and tostring(parent) or nil,
+        Kind = identity.Kind or MODMISC_KIND_BRANCH,
+        Logical = tonumber(identity.Logical),
     }
 end
 
@@ -392,8 +391,9 @@ function API.GetLogicalTurnInfo()
     local engineTurn = tonumber(TryCall(function() return Game.GetCurrentGameTurn() end)) or 1
 
     -- ① 本局偏移（身份里带的，或开局固化下来的）
-    local offset = tonumber(ReadCustomDataValue("Offset"))
-    local source = "customdata"
+    local identity = LoadNodeIdentity()
+    local offset = identity ~= nil and tonumber(identity.Offset) or nil
+    local source = "persave"
     if offset == nil then
         local fromProperty = ReadNodeProperty()
         if fromProperty ~= nil and fromProperty.Offset ~= nil then
@@ -408,7 +408,10 @@ function API.GetLogicalTurnInfo()
         if incoming ~= nil and incoming.Logical ~= nil then
             offset = incoming.Logical - 1
             source = "incoming"
-            WriteCustomDataValue("Offset", offset)
+            -- 固化进本局身份（随档）
+            local current = LoadNodeIdentity() or {}
+            current.Offset = offset
+            SaveNodeIdentity(current)
         end
     end
 
@@ -424,35 +427,37 @@ function API.GetLogicalTurn()
     return logical
 end
 
-local function GetStore()
+-- 存储调用一律走通用数据协议（DataProtocol）：
+--   * 登记表在 UI/ModMiscDataRegistry.lua；没登记的键写不进去；
+--   * 协议负责编解码（表/数字/字符串都行）、校验和（防损坏）、数据集名（防误领）、TTL；
+--   * 本文件**不再直接碰** ModMiscStore / ModMiscBigStore / CustomData。
+-- 扫描就绪是**通道**的事（小通道要先扫一遍存档列表），仍然问 ModMiscStore；
+-- 数据读写一律走 DataProtocol。
+local function GetScanStore()
     return ModMiscStore
 end
 
 function API.GetMainlineHeadId()
-    local store = GetStore()
-    if store == nil or store.Get == nil then return nil end
-    local value = store.Get(MODMISC_STORE_KEY_MAINLINE_HEAD)
+    if DataProtocol == nil then return nil end
+    local value = DataProtocol.Load(MODMISC_STORE_KEY_MAINLINE_HEAD)
     if value == nil or tostring(value) == "" then return nil end
     return tostring(value)
 end
 
--- 待接分支：`<原档id>|<kind>|<stamp>|<写入的 epoch 秒>|<起点逻辑回合>`
--- （换图重开前写入，新局开局时固化成本局来源并消费掉；
---   最后那段就是“回合同步”的锚点：新局引擎第 1 回合 = 那个逻辑回合）
+-- 待接分支（表：{Parent, Kind, Stamp, WrittenAt, Logical}）
+-- 换图重开前写入，新局开局时固化成本局来源并消费掉；
+-- Logical 就是“回合同步”的锚点：新局引擎第 1 回合 = 那个逻辑回合。
 function API.GetPendingBranch()
-    local store = GetStore()
-    if store == nil or store.Get == nil then return nil end
-    local value = store.Get(MODMISC_STORE_KEY_PENDING)
-    if value == nil or tostring(value) == "" then return nil end
-    -- 兼容 3 段（旧版：parent|kind|stamp）与 4 段（新版：多一个写入 epoch）
-    local fields = SplitFields(value, "|")
-    local parent = fields[1]
-    local kind = fields[2]
-    local stamp = fields[3]
-    if parent == nil or parent == "" then return nil end
+    if DataProtocol == nil then return nil end
+    local value = DataProtocol.Load(MODMISC_STORE_KEY_PENDING)
+    if type(value) ~= "table" then return nil end
+    local parent = value.Parent
+    local kind = value.Kind
+    local stamp = value.Stamp
+    if parent == nil or tostring(parent) == "" then return nil end
 
-    local writtenEpoch = tonumber(fields[4])
-    local originLogical = tonumber(fields[5])
+    local writtenEpoch = tonumber(value.WrittenAt)
+    local originLogical = tonumber(value.Logical)
     if writtenEpoch ~= nil then
         local now = ReadClock()
         if now ~= nil and (now - writtenEpoch) > MODMISC_PENDING_MAX_AGE then
@@ -475,24 +480,23 @@ function API.GetPendingBranch()
 end
 
 local function SetPendingBranch(parentId, kind, stamp, originLogical)
-    local store = GetStore()
-    if store == nil or store.Save == nil then return false end
+    if DataProtocol == nil then return false end
     local parent = parentId
     if parent == nil or tostring(parent) == "" then parent = MODMISC_SAVE_ROOT_PARENT end
-    local now = ReadClock() or 0
-    local payload = tostring(parent) .. "|" .. tostring(kind or MODMISC_KIND_BRANCH)
-        .. "|" .. tostring(stamp or "") .. "|" .. tostring(now)
-        .. "|" .. tostring(originLogical or "")
-    return store.Save(MODMISC_STORE_KEY_PENDING, payload)
+    local written = DataProtocol.Save(MODMISC_STORE_KEY_PENDING, {
+        Parent = tostring(parent),
+        Kind = tostring(kind or MODMISC_KIND_BRANCH),
+        Stamp = tostring(stamp or ""),
+        WrittenAt = ReadClock() or 0,
+        Logical = originLogical,
+    })
+    return written == true
 end
 
 function API.ClearPendingBranch(reason)
-    local store = GetStore()
-    if store == nil then return false end
+    if DataProtocol == nil then return false end
     Log("清除待接分支（" .. tostring(reason or "?") .. "）")
-    if store.Remove ~= nil then return store.Remove(MODMISC_STORE_KEY_PENDING) end
-    if store.Save ~= nil then return store.Save(MODMISC_STORE_KEY_PENDING, "") end
-    return false
+    return DataProtocol.Remove(MODMISC_STORE_KEY_PENDING) and true or false
 end
 
 local function ClearPendingBranch(reason)
@@ -500,9 +504,8 @@ local function ClearPendingBranch(reason)
 end
 
 local function SetMainlineHead(nodeId)
-    local store = GetStore()
-    if store == nil or store.Save == nil or nodeId == nil then return false end
-    return store.Save(MODMISC_STORE_KEY_MAINLINE_HEAD, tostring(nodeId))
+    if DataProtocol == nil or nodeId == nil then return false end
+    return DataProtocol.Save(MODMISC_STORE_KEY_MAINLINE_HEAD, tostring(nodeId)) == true
 end
 
 -- ===========================================================================
@@ -519,7 +522,7 @@ end
 --   * 存储用不了    → 回调 notReady，调用方自己决定“带警告继续”还是“取消”。
 -- ===========================================================================
 local function EnsureStoreReady(callback)
-    local store = GetStore()
+    local store = GetScanStore()
     if store == nil then callback(false, "存储模块没加载"); return end
     if store.IsReady == nil or store.IsReady() then callback(true, "ready"); return end
     if store.OnReady == nil then callback(false, "存储模块没有 OnReady"); return end
@@ -779,8 +782,9 @@ end
 --   然后把这些键删掉（投递一次）。
 -- ===========================================================================
 
+-- 只报前缀：信箱条目现在是协议的表，不再有“字段分隔符”这回事
 function API.GetEventTypeKeys()
-    return MODMISC_EVENT_KEY_PREFIX, MODMISC_EVENT_VALUE_SEP
+    return MODMISC_EVENT_KEY_PREFIX
 end
 
 -- 本机玩家身份（事件要带上“发给谁”：玩家 id + 文明类型，方便跨分支对上号）
@@ -795,8 +799,7 @@ end
 
 -- 发件：event = { Type, Detail, Amount, AcceptTurn, TargetPlayerID }
 function API.SendEvent(targetNodeId, event)
-    local store = GetStore()
-    if store == nil or store.Save == nil then return false, "跨存档存储不可用" end
+    if DataProtocol == nil then return false, "数据协议没加载" end
     if targetNodeId == nil or tostring(targetNodeId) == "" then return false, "没选目标存档" end
     if type(event) ~= "table" or event.Type == nil then return false, "事件格式不对" end
 
@@ -807,49 +810,35 @@ function API.SendEvent(targetNodeId, event)
     local acceptTurn = tonumber(event.AcceptTurn) or API.GetLogicalTurn()
     -- 大载荷：事件里的 PayloadText 交给 ModMiscBigStore —— 它优先走**配置组大通道**
     -- （实机 1 MB 跨进程已验证），不可用时自动回退到分片 blob；事件记录里只留一个引用。
-    local blobKey = nil
+    -- 大载荷：登记表里 evb_* 是 ephemeral/big（优先配置组大通道，实测 1 MB 跨进程一致）
+    local payloadKey = nil
     if event.PayloadText ~= nil and tostring(event.PayloadText) ~= "" then
-        blobKey = MODMISC_EVENT_BLOB_PREFIX .. tostring(targetNodeId)
+        payloadKey = MODMISC_EVENT_BLOB_PREFIX .. tostring(targetNodeId)
             .. "_" .. tostring(TryCall(function() return os.time() end) or 0)
             .. tostring(math.random(100, 999))
-        local bigOk, channel, detail
-        if DataProtocol ~= nil and DataProtocol.Save ~= nil then
-            -- 走通用协议：登记表里 evb_* 是 ephemeral/big，写入会被审计看到
-            bigOk, detail = DataProtocol.Save(blobKey, tostring(event.PayloadText))
-            channel = "protocol"
-        elseif ModMiscBigStore ~= nil and ModMiscBigStore.Save ~= nil then
-            bigOk, channel, detail = ModMiscBigStore.Save(blobKey, tostring(event.PayloadText))
-        else
-            -- 极端情况（门面没加载）：退回原来的分片 blob 写法，别把功能整个卡住
-            if store.SaveBlob == nil then
-                return false, "跨存档存储没有 SaveBlob（版本太老？）"
-            end
-            bigOk, channel = store.SaveBlob(blobKey, tostring(event.PayloadText)), "blob(回退)"
-        end
+        local bigOk, detail = DataProtocol.Save(payloadKey, tostring(event.PayloadText))
         if not bigOk then
-            Log("发件失败：大载荷写入失败 -> " .. tostring(channel))
+            Log("发件失败：大载荷写入失败 -> " .. tostring(detail))
             return false, "大载荷写入失败"
         end
-        Log("大载荷已存：" .. #tostring(event.PayloadText) .. " 字节 → 通道 " .. tostring(channel)
-            .. (detail ~= nil and ("（" .. tostring(detail) .. "）") or "") .. " key=" .. blobKey)
+        Log("大载荷已存：" .. #tostring(event.PayloadText) .. " 字节 key=" .. payloadKey)
     end
-
-    local payload = table.concat({
-        tostring(event.Type),
-        tostring(event.Detail or ""),
-        tostring(tonumber(event.Amount) or 0),
-        tostring(acceptTurn),
-        tostring(fromNode),
-        tostring(targetPlayer or -1),
-        tostring(civType or ""),
-        tostring(BuildStamp()),
-        tostring(blobKey or ""),
-    }, MODMISC_EVENT_VALUE_SEP)
 
     local key = MODMISC_EVENT_KEY_PREFIX .. tostring(targetNodeId)
         .. "_" .. tostring(TryCall(function() return os.time() end) or 0)
         .. tostring(math.random(100, 999))
-    local ok = store.Save(key, payload)
+    -- 信箱条目直接存**表**（协议负责编解码），不再拼 "字段|字段|…" 那种串
+    local ok = DataProtocol.Save(key, {
+        Type = tostring(event.Type),
+        Detail = tostring(event.Detail or ""),
+        Amount = tonumber(event.Amount) or 0,
+        AcceptTurn = acceptTurn,
+        FromNode = tostring(fromNode),
+        FromPlayerID = targetPlayer or -1,
+        FromCiv = civType,
+        Stamp = BuildStamp(),
+        PayloadKey = payloadKey,
+    })
     Log("发件：" .. tostring(event.Type) .. " " .. tostring(event.Detail or "")
         .. " x" .. tostring(event.Amount or "?") .. " → 节点 " .. tostring(targetNodeId)
         .. "（接受逻辑回合 " .. tostring(acceptTurn) .. "）key=" .. tostring(key)
@@ -859,61 +848,41 @@ end
 
 -- 收件：把发给 nodeId 的事件全部取出来（不删除；删不删由调用方决定）
 function API.FetchEventsForNode(nodeId)
-    local store = GetStore()
     local events, keys = {}, {}
-    if store == nil or store.GetAll == nil or nodeId == nil then return events, keys end
+    if DataProtocol == nil or nodeId == nil then return events, keys end
+    -- 按“节点前缀”列出真实键（协议负责枚举两条通道），再逐个按协议读回**表**
     local wantedPrefix = MODMISC_EVENT_KEY_PREFIX .. tostring(nodeId) .. "_"
-    for key, value in pairs(store.GetAll()) do
-        local keyText = tostring(key)
-        if keyText:sub(1, #wantedPrefix) == wantedPrefix then
-            local fields = SplitFields(value, MODMISC_EVENT_VALUE_SEP)
-            if fields[1] ~= nil and fields[1] ~= "" then
-                local blobKey = (fields[9] ~= nil and fields[9] ~= "") and fields[9] or nil
-                local eventRecord = {
-                    Type = fields[1],
-                    Detail = fields[2] or "",
-                    Amount = tonumber(fields[3]) or 0,
-                    AcceptTurn = tonumber(fields[4]),
-                    FromNode = fields[5] or "",
-                    FromPlayerID = tonumber(fields[6]),
-                    FromCiv = (fields[7] ~= nil and fields[7] ~= "") and fields[7] or nil,
-                    Stamp = fields[8] or "",
-                    MailKey = keyText,
-                    Blob = blobKey,
-                }
-                -- 大载荷：读回来挂在事件上（缺片/重复片会明确报出来，不返回半截）
-                if blobKey ~= nil and DataProtocol ~= nil and DataProtocol.Load ~= nil then
-                    local text, channel = DataProtocol.Load(blobKey)
-                    if text == nil then
-                        Log("警告：事件 " .. tostring(eventRecord.Type) .. " 的大载荷读不出来（"
-                            .. tostring(channel) .. "），只带元数据入列")
-                    else
-                        eventRecord.PayloadText = text
-                        eventRecord.PayloadChannel = "protocol"
-                    end
-                elseif blobKey ~= nil and (ModMiscBigStore == nil or ModMiscBigStore.Load == nil)
-                    and store.LoadBlob ~= nil then
-                    local text, err = store.LoadBlob(blobKey)
-                    if text == nil then
-                        Log("警告：事件 " .. tostring(eventRecord.Type) .. " 的大载荷读不出来（"
-                            .. tostring(err) .. "），只带元数据入列")
-                    else
-                        eventRecord.PayloadText = text
-                        eventRecord.PayloadChannel = "blob(回退)"
-                    end
-                elseif blobKey ~= nil and ModMiscBigStore ~= nil and ModMiscBigStore.Load ~= nil then
-                    local text, channel = ModMiscBigStore.Load(blobKey)
-                    if text == nil then
-                        Log("警告：事件 " .. tostring(eventRecord.Type) .. " 的大载荷读不出来（"
-                            .. tostring(channel) .. "），只带元数据入列")
-                    else
-                        eventRecord.PayloadText = text
-                        eventRecord.PayloadChannel = channel
-                    end
+    for _, keyText in ipairs(DataProtocol.ListMatching(wantedPrefix)) do
+        local record, reason = DataProtocol.Load(keyText, { keep = true })
+        if type(record) ~= "table" then
+            Log("跳过一条读不出来的信箱条目 " .. tostring(keyText) .. "：" .. tostring(reason))
+        else
+            local payloadKey = record.PayloadKey
+            local eventRecord = {
+                Type = record.Type,
+                Detail = record.Detail or "",
+                Amount = tonumber(record.Amount) or 0,
+                AcceptTurn = tonumber(record.AcceptTurn),
+                FromNode = record.FromNode or "",
+                FromPlayerID = tonumber(record.FromPlayerID),
+                FromCiv = record.FromCiv,
+                Stamp = record.Stamp or "",
+                MailKey = keyText,
+                PayloadKey = payloadKey,
+            }
+            -- 大载荷：读回来挂在事件上（缺片/重复片/校验和不对都会明确报出来）
+            if payloadKey ~= nil then
+                local text, channel = DataProtocol.Load(payloadKey, { keep = true })
+                if text == nil then
+                    Log("警告：事件 " .. tostring(eventRecord.Type) .. " 的大载荷读不出来（"
+                        .. tostring(channel) .. "），只带元数据入列")
+                else
+                    eventRecord.PayloadText = text
+                    eventRecord.PayloadChannel = channel
                 end
-                table.insert(events, eventRecord)
-                table.insert(keys, keyText)
             end
+            table.insert(events, eventRecord)
+            table.insert(keys, keyText)
         end
     end
     table.sort(events, function(a, b)
@@ -924,30 +893,18 @@ function API.FetchEventsForNode(nodeId)
 end
 
 function API.DropEventKeys(keys)
-    local store = GetStore()
-    if store == nil or store.Remove == nil or type(keys) ~= "table" then return 0 end
+    if DataProtocol == nil or type(keys) ~= "table" then return 0 end
     local removed = 0
     for _, key in ipairs(keys) do
         -- ⚠️ 顺序：**先读值拿到大载荷键，再删信箱键**。
-        -- 反过来的话值已经没了，blob 的分片就永远留在存储里（这里踩过一次）。
-        local blobKey = nil
-        if type(key) == "string" and store.Get ~= nil then
-            local value = store.Get(key)
-            if value ~= nil then
-                local fields = SplitFields(value, MODMISC_EVENT_VALUE_SEP)
-                if fields[9] ~= nil and fields[9] ~= "" then blobKey = fields[9] end
-            end
+        -- 反过来的话大载荷就永远留在存储里（这里踩过一次）。
+        local payloadKey = nil
+        if type(key) == "string" then
+            local record = DataProtocol.Load(key, { keep = true })
+            if type(record) == "table" then payloadKey = record.PayloadKey end
         end
-        if store.Remove(key) then removed = removed + 1 end
-        if blobKey ~= nil then
-            if DataProtocol ~= nil and DataProtocol.Remove ~= nil then
-                DataProtocol.Remove(blobKey)
-            elseif ModMiscBigStore ~= nil and ModMiscBigStore.Remove ~= nil then
-                ModMiscBigStore.Remove(blobKey)  -- 内部两条通道都清
-            elseif store.RemoveBlob ~= nil then
-                store.RemoveBlob(blobKey)        -- 回退路径
-            end
-        end
+        if DataProtocol.Remove(key) then removed = removed + 1 end
+        if payloadKey ~= nil then DataProtocol.Remove(payloadKey) end
     end
     Log("已投递并清理 " .. tostring(removed) .. " 个信箱键")
     return removed
@@ -1020,9 +977,10 @@ function API.DescribeContext()
     table.insert(lines, "pending=" .. (pending ~= nil
         and (tostring(pending.Parent) .. "|" .. tostring(pending.Kind)) or "nil"))
 
-    local store = GetStore()
-    table.insert(lines, "store=" .. tostring(store ~= nil)
-        .. " storeReady=" .. tostring(store ~= nil and store.IsReady ~= nil and store.IsReady())
+    local store = GetScanStore()
+    table.insert(lines, "policy=" .. tostring(DataProtocol ~= nil)
+        .. " channel=" .. tostring(store ~= nil)
+        .. " scanReady=" .. tostring(store ~= nil and store.IsReady ~= nil and store.IsReady())
         .. " nodes=" .. tostring(#m_Nodes))
     for _, line in ipairs(lines) do
         Log(line)
@@ -1090,12 +1048,13 @@ local function BuildNextNode()
     -- 换图后的新局第一次存档仍然**建新节点**（那时还没有本局节点，走下面的分支逻辑）。
     if currentId ~= nil then
         local existing = m_NodeById[currentId]
-        local parentFromCustom = ReadCustomDataValue("ParentId")
-        local kindFromCustom = ReadCustomDataValue("Kind") or MODMISC_KIND_MAINLINE
+        local identity = LoadNodeIdentity() or {}
+        local parentFromIdentity = identity.Parent
+        local kindFromIdentity = identity.Kind or MODMISC_KIND_MAINLINE
         local existingParent = (existing ~= nil and existing.Parent)
-            or ((parentFromCustom ~= nil and parentFromCustom ~= MODMISC_SAVE_ROOT_PARENT)
-                and parentFromCustom or nil)
-        local existingKind = (existing ~= nil and existing.Kind) or kindFromCustom
+            or ((parentFromIdentity ~= nil and tostring(parentFromIdentity) ~= MODMISC_SAVE_ROOT_PARENT)
+                and tostring(parentFromIdentity) or nil)
+        local existingKind = (existing ~= nil and existing.Kind) or kindFromIdentity
         Log("判定：current=" .. tostring(currentId) .. " ⇒ 原地覆盖（沿用 id / 父="
             .. tostring(existingParent) .. " / " .. tostring(existingKind) .. "）"
             .. " ｜逻辑回合=" .. tostring(logicalTurn) .. "（引擎 " .. tostring(engineTurn)
@@ -1237,17 +1196,18 @@ local function SaveNode(node, opts)
         return false, "档名构造失败"
     end
 
-    -- ① 节点身份写进两条“随档走”的通道（读档后就能知道“我在哪个节点”）：
-    --    * CustomData（UI 侧，第 21 条已验证）
-    --    * Game:SetProperty（gameplay 侧，授权者提议的单向通道；新局不会继承）
-    WriteCustomDataValue("NodeId", node.Id)
-    WriteCustomDataValue("ParentId", node.Parent or MODMISC_SAVE_ROOT_PARENT)
-    WriteCustomDataValue("Kind", node.Kind)
-    WriteCustomDataValue("Stamp", node.Stamp)
-    if node.Offset ~= nil then WriteCustomDataValue("Offset", node.Offset) end
-    if node.Logical ~= nil then WriteCustomDataValue("Logical", node.Logical) end
+    -- ① 节点身份：**一个表**走协议的 persave 通道（CustomData），另有 gameplay 侧的
+    --    Game:SetProperty 作为交叉校验（两个上下文互不可见，各写一份同一身份）。
+    local identityOk = SaveNodeIdentity({
+        Id = node.Id,
+        Parent = node.Parent or MODMISC_SAVE_ROOT_PARENT,
+        Kind = node.Kind,
+        Stamp = node.Stamp,
+        Offset = node.Offset,
+        Logical = node.Logical,
+    })
     local propertyOk, propertyErr = WriteNodeProperty(node)
-    Log("节点身份已写入：customdata=ok property=" .. tostring(propertyOk)
+    Log("节点身份已写入：persave=" .. tostring(identityOk) .. " property=" .. tostring(propertyOk)
         .. (propertyOk and "" or ("（" .. tostring(propertyErr) .. "）")))
 
     local saveFile = BuildGameSaveFile()
@@ -1429,13 +1389,15 @@ function API.ReportAfterLoad()
         --   ① 之后存档不再依赖“存储此刻读不读得到”（这正是分支认不出自己的根因）；
         --   ② 万一玩家之后退回主菜单另开新局，也不会被这条陈旧的 pending 误挂成分支。
         if currentId == nil and pending ~= nil and pending.Parent ~= nil then
-            WriteCustomDataValue("PendingParent", pending.Parent)
-            WriteCustomDataValue("PendingKind", pending.Kind or MODMISC_KIND_BRANCH)
+            local identity = LoadNodeIdentity() or {}
+            identity.Parent = pending.Parent
+            identity.Kind = pending.Kind or MODMISC_KIND_BRANCH
+            identity.Logical = pending.Logical
             if pending.Logical ~= nil then
-                WriteCustomDataValue("PendingLogical", pending.Logical)
                 -- 顺手把本局偏移也固化：逻辑回合 = 引擎回合 + (起点逻辑回合 - 1)
-                WriteCustomDataValue("Offset", pending.Logical - 1)
+                identity.Offset = pending.Logical - 1
             end
+            SaveNodeIdentity(identity)
             ClearPendingBranch("开局已固化成本局来源")
             Log("本局接手待接分支：parent=" .. tostring(pending.Parent)
                 .. " kind=" .. tostring(pending.Kind or MODMISC_KIND_BRANCH)
