@@ -425,6 +425,12 @@ local function SmallWrite(key, text)
             .. "，且没有分片接口"
     end
     ModMiscStore.Remove(key)                 -- 清掉可能的旧单档形态
+    -- 【实机教训 2026-10-06】small 的每个键是一个小配置档，由 Network.SaveGame **排队异步**写。
+    -- 一次写多个分片、紧接着重开/读档时，实测有分片赶不上落盘（4 个只到 1 个）⇒ 数据像是丢了。
+    -- 所以这里只当**兜底**：超过单键上限的值，正式做法是换 big 通道（模组数据库，同步且已验证）。
+    Log("警告：值 " .. tostring(#text) .. " 字节超过小通道单键上限 " .. tostring(limit)
+        .. "，已退化为分片写（每个分片是一个排队写出的配置档，紧接着重开/读档可能来不及落盘）"
+        .. " —— 关键数据请改用 big 通道")
     return ModMiscStore.SaveBlob(key, text)
 end
 

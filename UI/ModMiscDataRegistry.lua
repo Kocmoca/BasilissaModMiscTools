@@ -39,9 +39,14 @@ Register({
 
 -- 换图待接分支：换图前写、新局开局消费；过期作废 → ephemeral
 Register({
-    -- 现在存的是**表**（{NodeId, Kind, Stamp, Epoch}），不再是 "a|B|stamp|epoch" 那种拼串：
-    -- 拼串要自己 SplitFields，历史上就踩过“3 段 vs 4 段”的解析 bug；表由协议负责编解码。
-    Name = "sg_pending", Lifecycle = "ephemeral", Channel = "small",
+    -- 现在存的是**表**（{Parent, Kind, Stamp, WrittenAt, Logical, FromMap, ToMap, PayloadKey}），
+    -- 不再是 "a|B|stamp|epoch" 那种拼串（拼串历史上踩过 3 段/4 段解析 bug，表由协议编解码）。
+    --
+    -- 【通道为什么从 small 改成 big（实机 2026-10-06）】small 的每个键 = 一个小配置档，
+    -- 由 Network.SaveGame **排队异步**写出；换图时“写交接单 → 存原档 → 重开”只隔几秒，
+    -- 实测 4 个分片文件里只有 1 个赶在重开前落盘 ⇒ 新局读不到交接单 ⇒ **分支认不出自己**。
+    -- 大通道是模组数据库的同步调用（实机 1 MB 跨进程验证过），不受这个时间窗影响。
+    Name = "sg_pending", Lifecycle = "ephemeral", Channel = "big",
     Owner = "存档关系树", Version = 1, Type = "table", TTL = 900,
     Describe = "换图时的待接分支（表：NodeId/Kind/Stamp/Epoch；900 秒内有效）",
 })
@@ -57,7 +62,9 @@ Register({
 
 Register({
     -- 同样是表（{Type, Detail, Amount, AcceptTurn, FromNode, FromPlayerID, FromCiv, Stamp, PayloadKey}）
-    Name = "ev_*", Lifecycle = "ephemeral", Channel = "small",
+    -- 通道同 sg_pending：信箱条目 ~200 字节，在 small 上要分 3 片 ⇒ 爆发写有落盘风险
+    -- （收件人可能正好在读档/重开的窗口里），所以也走大通道。
+    Name = "ev_*", Lifecycle = "ephemeral", Channel = "big",
     Owner = "跨存档事件", Version = 1, Type = "table", TTL = 7 * 24 * 3600,
     Describe = "事件信箱条目（表；发给某个节点，收件后由调用方投递并清理）",
 })

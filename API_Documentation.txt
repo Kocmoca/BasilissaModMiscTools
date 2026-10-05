@@ -1420,6 +1420,13 @@ API_Verification_Status.md §18.4/§18.6。
       ModMiscModGroupStore（配置组名）**1 MB / 263 片跨进程一致**，片 = 一条配置组 → 大载荷
       ModMiscCarrier（载体存档）       随档走、界面干净 → 更大的表（需要载入那份档）
 
+    【选型铁律 · 实机 2026-10-06 换图事故换来的】容量之外还要看**落盘时机**：
+      small（存档名编码）= 每个键一个小配置档，由 Network.SaveGame **排队异步**写出 ——
+        一次写多个分片、紧接着重开/读档时，实测有分片赶不上落盘（4 个只到 1 个）；
+      big（模组配置组）  = 模组数据库的**同步**调用，1 MB 跨进程已验证。
+      ⇒ **跨重启/跨进程立刻要读的数据一律用 big**（换图交接单 sg_pending 与事件信箱 ev_* 就是因此改过去的）。
+      小通道的溢出路径会打明确警告，不再沉默退化。
+
     ModMiscBigStore.Save(key, text)    -- 优先配置组大通道；不可用/失败自动回退 SaveBlob
     ModMiscBigStore.Load(key)          -- 先大通道，读不到再回退 blob（旧数据不用迁移）
     ModMiscBigStore.Remove(key)        -- 两条通道都清
