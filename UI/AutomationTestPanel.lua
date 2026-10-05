@@ -638,6 +638,35 @@ local function GetSelectedModGroupSizeEntry()
     return FindEntry(BuildModGroupSizeEntries(), "Size", m_ModGroupSize)
 end
 
+-- 分片大小（每片原始字节；hex 后组名长度 ≈ 2×它 + 前缀开销）。
+-- 实机已验证 1224 字符的组名被引擎原样接受；真实上限由「名字上限」探针量。
+-- 名字越长 → 片越少 → 模组界面里多出来的配置组条目越少（每片 = 一条组 + 一份启用项副本）。
+local MODGROUP_CHUNK_STEPS = { 300, 600, 1200, 2000, 4000 }
+local m_ModGroupChunkBytes = 600
+
+local function FormatChunkLabel(bytes)
+    return Locale.Lookup("LOC_MODMISC_AUTOMATION_TEST_MODGROUP_CHUNK_LABEL", FormatByteSize(bytes))
+end
+
+local function BuildModGroupChunkEntries()
+    local entries = {}
+    for _, bytes in ipairs(MODGROUP_CHUNK_STEPS) do
+        table.insert(entries, { Bytes = bytes, Text = FormatChunkLabel(bytes) })
+    end
+    return entries
+end
+
+local function GetSelectedModGroupChunkEntry()
+    return FindEntry(BuildModGroupChunkEntries(), "Bytes", m_ModGroupChunkBytes)
+end
+
+-- 把面板上选的分片大小同步给存储模块（写不进去就保持模块默认值）
+local function ApplyModGroupChunkBytes()
+    if ModMiscModGroupStore ~= nil and ModMiscModGroupStore.SetDefaultChunkBytes ~= nil then
+        ModMiscModGroupStore.SetDefaultChunkBytes(m_ModGroupChunkBytes)
+    end
+end
+
 local function SelectFirstPlayerIfNeeded()
     if m_SelectedPlayerIndex ~= nil then return end
 

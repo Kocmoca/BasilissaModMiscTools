@@ -1216,6 +1216,36 @@ MMTSTORE~<hex(key)>~<3 位序号>~<hex(值分片)>        -- 一片一个配置�
 数据库层没有 255 字节那种限制，但**引擎传参/Lua 字符串/内存三关都还没验**，
 而且 1 GB 既不现实也不是需求 —— 先测到 MB 级、够用就收。
 
+### 18.6b 插曲：一次“静态检查没抓到”的实机崩溃（2026-10-05）
+
+复测时点开面板直接崩：
+
+```
+Runtime Error: .../UI/AutomationTestPanel.lua:1655: function expected instead of nil
+    in function 'OpenAutomationTestPanel'
+```
+
+**真因**：我在 `OpenAutomationTestPanel()` 开头加了 `ApplyModGroupChunkBytes()`（把面板选的
+分片大小同步给存储模块），但这个函数（连同它那一组：`MODGROUP_CHUNK_STEPS` /
+`m_ModGroupChunkBytes` / `BuildModGroupChunkEntries` / `GetSelectedModGroupChunkEntry`）
+**只在我那次补丁脚本里“打印了 ✓”，实际没写进文件** —— 脚本先做完全部替换最后才写盘，
+中途一条断言失败就整体退出，于是“成功”的两条也丢了。我随后看到的
+`fwdcheck2` “无前向引用疑点”也救不了：它当时只检查“local 声明得比使用晚”，
+**不检查“这个名字压根没有声明”**。
+
+**两条整改**：
+
+1. **工具补强**：`fwdcheck2.py` 增加**未定义标识符**检查 —— 被当函数调用、或被当值引用
+   （项目助手命名风格）的裸名字，如果本文件没声明、也不在「本项目 + 游戏自带 UI」
+   的名字索引里（缓存 6 小时，`--reindex` 重建），就点名。反向验证过：
+   故意写 `NotAFunctionAnywhere(1)` 会被报出来；全项目现在 0 误报。
+   顺带修掉一个正则退格误报（`SetStatus` 被截成 `SetStatu` 报出来）。
+2. **工具落地到仓库外**：`devtools/`（工作区根目录，不参与打包）存检查器 + 全部桩测试 +
+   README，免得临时目录被清掉就没法复跑。
+
+**教训（给以后的自己）**：改完一批文件**必须**独立跑一次解析/检查再报“完成”；
+补丁脚本要“先断言全部匹配、再统一写盘”，并且写完立刻验证文件里真的有那些名字。
+
 ### 18.7 第二轮实机：通道 E 通了（2026-10-05）
 
 修完 §18.6 那两个 bug 之后复测，日志给出的是**明确的好消息**：
