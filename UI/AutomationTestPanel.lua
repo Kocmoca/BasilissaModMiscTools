@@ -512,7 +512,8 @@ end
 -- ===========================================================================
 
 local m_Selectors = {}
-local m_SelectorOrder = { "player", "turns", "assetCategory", "assetIndex", "mapScript", "nameStoreSize" }
+local m_SelectorOrder = { "player", "turns", "assetCategory", "assetIndex", "mapScript",
+    "modGroupSize" }
 
 local function CloseOptionList()
     Controls.AutomationTestOptionPanel:SetHide(true)
@@ -609,8 +610,11 @@ local function GetSelectedAssetCategoryEntry()
 end
 
 -- 可测尺寸：从小往大；越往后越要小心（值最终落在用户选项文件里）
-local NAMESTORE_SIZE_STEPS = { 64, 256, 1024, 4096, 16384, 65536, 262144, 1048576 }
-local m_NameStoreSize = 4096
+-- 设置存储（通道 F/G）已实测不可用，面板上不再给它尺寸选择器，固定 4 KB 便于复现结论
+local NAMESTORE_PROBE_SIZE = 4096
+-- 配置组通道（目前唯一还没被证否的跨存档通道）：尺寸阶梯用来摸上限
+local MODGROUP_SIZE_STEPS = { 64, 256, 1024, 4096, 16384, 65536, 262144, 1048576 }
+local m_ModGroupSize = 4096
 
 local function FormatByteSize(size)
     if size >= 1048576 and size % 1048576 == 0 then
@@ -622,16 +626,16 @@ local function FormatByteSize(size)
     return tostring(size) .. " B"
 end
 
-local function BuildNameStoreSizeEntries()
+local function BuildModGroupSizeEntries()
     local entries = {}
-    for _, size in ipairs(NAMESTORE_SIZE_STEPS) do
+    for _, size in ipairs(MODGROUP_SIZE_STEPS) do
         table.insert(entries, { Size = size, Text = FormatByteSize(size) })
     end
     return entries
 end
 
-local function GetSelectedNameStoreSizeEntry()
-    return FindEntry(BuildNameStoreSizeEntries(), "Size", m_NameStoreSize)
+local function GetSelectedModGroupSizeEntry()
+    return FindEntry(BuildModGroupSizeEntries(), "Size", m_ModGroupSize)
 end
 
 local function SelectFirstPlayerIfNeeded()
@@ -674,16 +678,16 @@ local function BuildSelectors()
             isSelected = function(entry) return entry.Turns == m_SelectedTurns end,
             onSelect = function(entry) m_SelectedTurns = entry.Turns end,
         },
-        nameStoreSize = {
-            button = Controls.AutomationTestNameStoreSize,
-            getEntries = BuildNameStoreSizeEntries,
+        modGroupSize = {
+            button = Controls.AutomationTestModGroupSize,
+            getEntries = BuildModGroupSizeEntries,
             getEntryText = function(entry) return entry.Text end,
             getLabel = function()
-                local entry = GetSelectedNameStoreSizeEntry()
-                return entry ~= nil and entry.Text or FormatByteSize(m_NameStoreSize)
+                local entry = GetSelectedModGroupSizeEntry()
+                return entry ~= nil and entry.Text or FormatByteSize(m_ModGroupSize)
             end,
-            isSelected = function(entry) return entry.Size == m_NameStoreSize end,
-            onSelect = function(entry) m_NameStoreSize = entry.Size end,
+            isSelected = function(entry) return entry.Size == m_ModGroupSize end,
+            onSelect = function(entry) m_ModGroupSize = entry.Size end,
         },
         assetCategory = {
             button = Controls.AutomationTestAssetCategoryButton,
@@ -969,9 +973,11 @@ local function DescribeModGroupInfo(info)
     end
     table.insert(lines, "groups=" .. tostring(info.Total)
         .. "  ours=" .. tostring(info.Ours)
-        .. "  longestName=" .. tostring(info.MaxNameLength) .. " chars")
+        .. "  longestName=" .. tostring(info.MaxNameLength) .. " chars"
+        .. "  repeats=" .. tostring(info.Duplicates))
     table.insert(lines, "currentGroup=" .. tostring(info.CurrentHandle)
-        .. "  name=" .. tostring(info.CurrentName))
+        .. "  name=" .. tostring(info.CurrentName)
+        .. "  isOurs=" .. tostring(info.CurrentIsOurs))
     local ours = ModMiscModGroupStore.ListOurs() or {}
     for index, group in ipairs(ours) do
         if index > 8 then
@@ -998,24 +1004,41 @@ local function ModGroupInfo()
         true)
 end
 
--- 写入：一条带时间戳/随机数的测试数据（跨进程后凭它判断读回的是不是上一轮那份）
+-- 写入：按「配置组尺寸」写一份**长度等于所选尺寸**的数据，并**保留**（不清）。
+-- 值里带 os.time()：杀进程重开后点「读取」，看 t= 是不是这一轮那个数字。
+-- 面板底部日志会打出「最长名字长度」——名字被截断的话那里会看出来。
 local function ModGroupWrite()
     if ModMiscModGroupStore == nil then
         SetError("ModGroupWrite", "ModMiscModGroupStore 模块没加载")
         return
     end
-    local payload = MODGROUP_TEST_PAYLOAD_PREFIX .. ";t=" .. tostring(os.time())
-        .. ";r=" .. tostring(math.random(100000, 999999))
+    local size = m_ModGroupSize or 4096
+    local head = MODGROUP_TEST_PAYLOAD_PREFIX .. ";t=" .. tostring(os.time())
+        .. ";r=" .. tostring(math.random(100000, 999999)) .. ";"
+    local payload
+    if ModMiscModGroupStore.BuildPayload ~= nil then
+        -- 模块的载荷是 "<size>AAA…</e>"；这里要带我们的时间戳，所以自己拼、长度对齐到 size
+        payload = head .. string.rep("M", math.max(0, size - #head))
+    else
+        payload = head
+    end
     local ok, chunks, bytes = ModMiscModGroupStore.Save(MODGROUP_PANEL_KEY, payload)
     if not ok then
         SetError("ModGroupWrite", tostring(chunks))
         return
     end
-    local detail = "  " .. MODGROUP_PANEL_KEY .. " = " .. payload
-        .. "\n  chunks=" .. tostring(chunks) .. " bytes=" .. tostring(bytes)
+    -- 写完立刻读回比一遍（同一次运行内），并报出各片的名字长度
+    local readBack, readChunks = ModMiscModGroupStore.Load(MODGROUP_PANEL_KEY)
+    local matched = (readBack == payload)
+    local info = ModMiscModGroupStore.GetInfo()
+    local detail = "  写入 " .. tostring(bytes) .. "B / " .. tostring(chunks) .. " 片，读回 "
+        .. tostring(readBack ~= nil and #readBack or 0) .. "B 一致=" .. tostring(matched)
+        .. "\n  longestName=" .. tostring(info.MaxNameLength) .. " chars  repeats="
+        .. tostring(info.Duplicates) .. "  currentIsOurs=" .. tostring(info.CurrentIsOurs)
+        .. "\n  （值已保留：杀进程重开后再点「配置组读取」看 t= 是否还在）"
     SetOutputDetail(Locale.Lookup("LOC_MODMISC_AUTOMATION_TEST_MODGROUP_WRITTEN", detail),
         Locale.Lookup("LOC_MODMISC_AUTOMATION_TEST_MODGROUP_WRITE_SUMMARY",
-            MODGROUP_PANEL_KEY, tostring(chunks)),
+            FormatByteSize(size), tostring(chunks)),
         true)
 end
 
@@ -1030,7 +1053,8 @@ local function ModGroupRead()
         SetError("ModGroupRead", tostring(chunks))
         return
     end
-    local lines = { "  " .. MODGROUP_PANEL_KEY .. " = " .. text,
+    local lines = { "  " .. MODGROUP_PANEL_KEY .. " = " .. text:sub(1, 120)
+            .. (#text > 120 and ("…(共 " .. tostring(#text) .. "B)") or ""),
         "  chunks=" .. tostring(chunks) .. " bytes=" .. tostring(#text) }
     -- 顺手列一下现有的数据组（名字长度是判断“有没有被截断”的关键指标）
     local ours = ModMiscModGroupStore.ListOurs() or {}
@@ -1063,14 +1087,15 @@ local function ModGroupSelfTest()
     end
     local lines = { "  build=" .. tostring(report.Tag) }
     for _, step in ipairs(report.Steps or {}) do
-        table.insert(lines, "  " .. tostring(step.Size) .. "B -> ok=" .. tostring(step.Ok)
+        table.insert(lines, "  " .. tostring(step.Size) .. "B(payload "
+            .. tostring(step.PayloadBytes) .. "B) -> ok=" .. tostring(step.Ok)
             .. " chunks=" .. tostring(step.Chunks)
             .. " read=" .. tostring(step.ReadBytes)
             .. " match=" .. tostring(step.Match)
             .. (step.Error ~= nil and ("  (" .. tostring(step.Error) .. ")") or ""))
     end
     table.insert(lines, "  清理 " .. tostring(report.CleanupRemoved) .. " 条"
-        .. "（跳过选中组 " .. tostring(report.CleanupSkipped) .. " 条）"
+        .. "（失败 " .. tostring(report.CleanupFailed) .. " 条）"
         .. "  选中组未被改动=" .. tostring(report.CurrentGroupUnchanged))
     local largest = report.LastSuccess ~= nil and tostring(report.LastSuccess.Size) or "无"
     SetOutputDetail(Locale.Lookup("LOC_MODMISC_AUTOMATION_TEST_MODGROUP_SELFTEST_TEXT",
@@ -1086,13 +1111,18 @@ local function ModGroupClear()
         SetError("ModGroupClear", "ModMiscModGroupStore 模块没加载")
         return
     end
-    local removed, reason, skipped = ModMiscModGroupStore.ClearAll()
+    -- 第 2 个返回值现在是“失败条数”，第 3 个是诊断表（选中组有没有恢复等）
+    local removed, reason, failed, info = ModMiscModGroupStore.ClearAll()
     if removed == nil then
         SetError("ModGroupClear", tostring(reason))
         return
     end
-    SetOutputDetail(Locale.Lookup("LOC_MODMISC_AUTOMATION_TEST_MODGROUP_CLEARED",
-            tostring(removed), tostring(skipped)),
+    local detail = "  删除 " .. tostring(removed) .. " 条，失败 " .. tostring(failed) .. " 条"
+    if info ~= nil then
+        detail = detail .. "\n  选中组恢复=" .. tostring(info.CurrentRestored)
+            .. "  当前句柄=" .. tostring(info.CurrentHandle)
+    end
+    SetOutputDetail(Locale.Lookup("LOC_MODMISC_AUTOMATION_TEST_MODGROUP_CLEARED", detail),
         Locale.Lookup("LOC_MODMISC_AUTOMATION_TEST_MODGROUP_CLEAR_SUMMARY", tostring(removed)),
         true)
 end
@@ -1114,7 +1144,7 @@ local function NameStoreWrite()
         SetError("NameStoreWrite", "ModMiscNameStoreProbe 模块没加载")
         return
     end
-    local size = m_NameStoreSize or 4096
+    local size = NAMESTORE_PROBE_SIZE
     local lines = {}
     local okCount = 0
     for _, channel in ipairs(ModMiscNameStoreProbe.GetChannels()) do
@@ -1523,8 +1553,9 @@ local PAGE_MAIN_CONTROLS = {
     -- ModGroup 存储（模组配置组名字通道）
     "AutomationTestModGroupLabel", "AutomationTestModGroupSelfTest", "AutomationTestModGroupWrite",
     "AutomationTestModGroupRead", "AutomationTestModGroupInfo", "AutomationTestModGroupClear",
+    "AutomationTestModGroupSize",
     -- 引擎设置类键值存储探针（Options.SetUserOption / UserConfiguration）
-    "AutomationTestNameStoreLabel", "AutomationTestNameStoreSize", "AutomationTestNameStoreWrite",
+    "AutomationTestNameStoreLabel", "AutomationTestNameStoreWrite",
     "AutomationTestNameStoreSelfTest", "AutomationTestNameStoreRead", "AutomationTestNameStoreClear",
 }
 
@@ -1645,8 +1676,8 @@ function OnInit()
         function() SafeCall("StoreWrite", StoreWrite) end)
     Controls.AutomationTestStoreRead:RegisterCallback(Mouse.eLClick,
         function() SafeCall("StoreRead", StoreRead) end)
-    Controls.AutomationTestNameStoreSize:RegisterCallback(Mouse.eLClick,
-        function() SafeCall("NameStoreSize", function() ToggleOptionList("nameStoreSize") end) end)
+    Controls.AutomationTestModGroupSize:RegisterCallback(Mouse.eLClick,
+        function() SafeCall("ModGroupSize", function() ToggleOptionList("modGroupSize") end) end)
     Controls.AutomationTestNameStoreWrite:RegisterCallback(Mouse.eLClick,
         function() SafeCall("NameStoreWrite", NameStoreWrite) end)
     Controls.AutomationTestNameStoreSelfTest:RegisterCallback(Mouse.eLClick,

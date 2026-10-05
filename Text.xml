@@ -338,7 +338,7 @@
 			<Text>Cross-save store: {1_Action} done, {2_Count} keys (tap Messages above for details)</Text>
 		</Row>
 		<Row Tag="LOC_MODMISC_AUTOMATION_TEST_MODGROUP_LABEL">
-			<Text>Mod-group storage (data goes into mod loadout names; press Clear after testing)</Text>
+			<Text>Mod-group storage (data goes into mod loadout names; size selectable up to 1 MB; press Clear after testing)</Text>
 		</Row>
 		<Row Tag="LOC_MODMISC_AUTOMATION_TEST_MODGROUP_SELFTEST">
 			<Text>ModGroup self-test</Text>
@@ -371,7 +371,7 @@
 			<Text>Mod-group store write: {1_Detail}</Text>
 		</Row>
 		<Row Tag="LOC_MODMISC_AUTOMATION_TEST_MODGROUP_WRITE_SUMMARY">
-			<Text>Mod-group store: wrote {1_Key} in {2_Chunks} group(s)</Text>
+			<Text>Mod-group store: wrote {1_Size} into {2_Chunks} group(s); value kept for the restart check</Text>
 		</Row>
 		<Row Tag="LOC_MODMISC_AUTOMATION_TEST_MODGROUP_READ_TEXT">
 			<Text>Mod-group store read: {1_Detail}</Text>
@@ -380,7 +380,7 @@
 			<Text>Mod-group store: read {1_Key} -> {2_Bytes} bytes</Text>
 		</Row>
 		<Row Tag="LOC_MODMISC_AUTOMATION_TEST_MODGROUP_CLEARED">
-			<Text>Mod-group store clear: removed {1_Removed} group(s), skipped {2_Skipped} selected</Text>
+			<Text>Mod-group store clear: {1_Detail}</Text>
 		</Row>
 		<Row Tag="LOC_MODMISC_AUTOMATION_TEST_MODGROUP_CLEAR_SUMMARY">
 			<Text>Mod-group store: cleaned {1_Count} group(s)</Text>
@@ -413,7 +413,7 @@
 			<Text>Settings store: probe keys cleared</Text>
 		</Row>
 		<Row Tag="LOC_MODMISC_AUTOMATION_TEST_NAMESTORE_LABEL">
-			<Text>Settings store (invisible to the player: Options.SetUserOption / UserConfiguration.SetValue)</Text>
+			<Text>Settings store (invisible to the player) - tested: useroption rejected by the engine, userconfig does not keep values</Text>
 		</Row>
 		<Row Tag="LOC_MODMISC_AUTOMATION_TEST_NAMESTORE_WRITE">
 			<Text>Settings store write (keep)</Text>

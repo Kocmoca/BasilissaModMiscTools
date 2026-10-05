@@ -34,9 +34,19 @@
 --   值按 chunk 切片；改值 = 删掉这个 key 的所有旧组再重写（见上：没有改名接口）。
 --   hex 是为了名字里不出现奇怪字符（这个名字玩家在模组界面的下拉框里看得见）。
 --
--- 【安全规矩】**只碰自己前缀 `MMTSTORE~` 的组**；**永不删除当前选中的组**
---   （哪怕它的名字碰巧带我们的前缀 —— 宁可漏删，也不能把玩家正在用的配置组删掉）；
---   所有引擎调用一律 pcall 包住，失败只记日志、不抛异常。
+-- 【安全规矩】**只碰自己前缀 `MMTSTORE~` 的组**；所有引擎调用一律 pcall 包住。
+--
+-- 【实机教训 · 2026-10-05，两条都是我这边写错了，不是通道不通】
+--   ① **`Modding.CreateModGroup` 会把新建的组设为“当前选中的组”**（原版界面里看不出来，
+--      因为它建完就刷新下拉框、玩家自己会再选回去）。后果：玩家的配置组选择被我们的写入
+--      悄悄改掉；而且下一次写同 key 时，旧片因为“正被选中”删不掉 ⇒ 同 key 同序号出现多份
+--      ⇒ `Load` 数到 2 组但只有第 1 片 ⇒ 报“缺第 2 片”（实机日志里就是这个）。
+--      修法：**写之前记住原来的选中组，写完全部恢复**；删“当前选中的组”之前，先照抄原版
+--      `FrontEnd/Mods.lua` 的 `DeleteModGroup()` —— 把选中切到另一个组，再删。
+--   ② 自检报的“尺寸”和实际字节数不一致（8B 的载荷其实只有 7 字节，`<8></e>`），
+--      容易把“读回 7 字节”误读成失败。修法：载荷**长度精确等于标称尺寸**。
+--   顺带：写入 29 字节的小数据实机是**成功**的（写 29B、读回 29B、逐字一致），
+--   所以通道 E 本身可用 —— 之前看到的失败全是上面这两条引起的。
 --
 -- 【对玩家的可见影响】每个数据片 = 模组界面下拉框里的一条配置组。
 --   建组时会把“当前组”的启用项复制过去 ⇒ 即使它被选中，启用集合也跟原来一样（不会把 mod 关掉）。
@@ -114,6 +124,70 @@ local function GetCurrentGroup()
     return nil
 end
 
+local function SetCurrentGroup(handle)
+    if handle == nil then return false end
+    if Modding == nil or Modding.SetCurrentModGroup == nil then return false end
+    local ok = pcall(function() return Modding.SetCurrentModGroup(handle) end)
+    return ok and true or false
+end
+
+-- 要删“当前选中的组”时，得先把选中挪到别的组（原版 DeleteModGroup() 就是这么做的）。
+-- 挑法：**不挑我们自己的组**（免得把选中留在一堆数据组里），优先挑不可删的那个默认组。
+local function PickFallbackGroup(excludeHandle)
+    local groups = GetGroupsRaw()
+    if groups == nil then return nil end
+    local firstOther = nil
+    for _, group in ipairs(groups) do
+        if type(group) == "table" and group.Handle ~= excludeHandle then
+            if group.CanDelete == false or group.CanDelete == 0 then
+                return group.Handle                     -- 默认组：最稳的落脚点
+            end
+            if firstOther == nil and ParseGroupName(group.Name) == nil then
+                firstOther = group.Handle               -- 退而求其次：别的非数据组
+            end
+        end
+    end
+    if firstOther ~= nil then return firstOther end
+    for _, group in ipairs(groups) do
+        if type(group) == "table" and group.Handle ~= excludeHandle then
+            return group.Handle                         -- 实在没有就随便挑一个别的
+        end
+    end
+    return nil
+end
+
+local function GroupExists(handle)
+    if handle == nil then return false end
+    local groups = GetGroupsRaw()
+    if groups == nil then return false end
+    for _, group in ipairs(groups) do
+        if type(group) == "table" and group.Handle == handle then return true end
+    end
+    return false
+end
+
+-- 选中组收尾：
+--   * 玩家的组还在 ⇒ 恢复成它；
+--   * 原选中组已经不存在、或它本来就是**我们的数据组**（上一轮写崩留下的）⇒ 落到一个正常组，
+--     别把玩家的配置组选择留在一堆数据组里。
+local function SettleSelection(preferredHandle, logTag)
+    if GroupExists(preferredHandle) and not ModMiscModGroupStore.IsOurs(preferredHandle) then
+        local ok = SetCurrentGroup(preferredHandle)
+        Log(tostring(logTag) .. " 恢复选中组 handle=" .. tostring(preferredHandle)
+            .. " 结果=" .. tostring(ok))
+        return ok
+    end
+    local fallback = PickFallbackGroup(nil)
+    if fallback == nil then
+        Log(tostring(logTag) .. " 没有可落脚的其他配置组（只有数据组）")
+        return false
+    end
+    local ok = SetCurrentGroup(fallback)
+    Log(tostring(logTag) .. " 原选中组不可用/是数据组 -> 落到 handle=" .. tostring(fallback)
+        .. " 结果=" .. tostring(ok))
+    return ok
+end
+
 -- ===========================================================================
 -- 对外接口
 -- ===========================================================================
@@ -180,47 +254,90 @@ function ModMiscModGroupStore.GetInfo()
     info.Total = #groups
     info.Ours = 0
     info.MaxNameLength = 0
+    info.Duplicates = 0
+    local seen = {}
     for _, group in ipairs(groups) do
-        if group.Ours then info.Ours = info.Ours + 1 end
+        if group.Ours then
+            info.Ours = info.Ours + 1
+            local slot = tostring(group.Key) .. "#" .. tostring(group.Index)
+            if seen[slot] ~= nil then info.Duplicates = info.Duplicates + 1 end
+            seen[slot] = true
+        end
         if #group.Name > info.MaxNameLength then info.MaxNameLength = #group.Name end
         if group.IsCurrent then
             info.CurrentHandle = group.Handle
             info.CurrentName = group.Name
+            info.CurrentIsOurs = group.Ours and true or false
         end
     end
     return info
 end
 
 -- 删除某个 key 的所有片（当前选中的组永不删）
-local function RemoveByKey(key, onlyKey)
+-- 删除本 mod 的组；选中组先切走再删（原版做法）；originHandle 是“玩家的选中组”，删完恢复
+local function RemoveByKey(key, onlyKey, originHandle)
     local ours, reason = ModMiscModGroupStore.ListOurs()
     if ours == nil then return nil, reason end
-    local removed, skipped = 0, 0
+    local removed, failed = 0, 0
     for _, group in ipairs(ours) do
-        if (not onlyKey) or tostring(group.Key) == tostring(key) then
+        local targeted = (not onlyKey) or tostring(group.Key) == tostring(key)
+        if targeted then
+            -- 引擎不让我们删“当前选中的组”⇒ 先把选中挪到别的组（原版做法）
+            local canDelete = true
             if group.IsCurrent then
-                skipped = skipped + 1
-                Log("跳过：这个组正被选中，不能删 -> " .. group.Name)
-            else
+                local fallback = PickFallbackGroup(group.Handle)
+                Log("要删的组正被选中，先把选中切到 handle=" .. tostring(fallback))
+                canDelete = SetCurrentGroup(fallback)
+                if not canDelete then
+                    failed = failed + 1
+                    Log("切走失败，跳过 -> " .. group.Name)
+                end
+            end
+            if canDelete then
                 local ok = pcall(function() return Modding.DeleteModGroup(group.Handle) end)
                 if ok then
                     removed = removed + 1
                 else
+                    failed = failed + 1
                     Log("删除失败 -> " .. group.Name)
                 end
             end
         end
     end
-    return removed, nil, skipped
+    local restored = SettleSelection(originHandle, "RemoveByKey")
+    return removed, nil, failed, restored
 end
 
-function ModMiscModGroupStore.Remove(key)
-    return RemoveByKey(key, true)
+function ModMiscModGroupStore.Remove(key, originHandle)
+    local current = originHandle ~= nil and originHandle or GetCurrentGroup()
+    return RemoveByKey(key, true, current)
 end
 
--- 清掉本 mod 的所有数据组（测试后收摊用）
-function ModMiscModGroupStore.ClearAll()
-    return RemoveByKey(nil, false)
+-- 清掉本 mod 的所有数据组（测试后收摊用）；顺带把选中组恢复成“玩家的那个”
+function ModMiscModGroupStore.ClearAll(originHandle)
+    local current = originHandle ~= nil and originHandle or GetCurrentGroup()
+    if ModMiscModGroupStore.IsOurs(current) then
+        -- 玩家当前选中的竟然是我们的数据组（上一轮写崩了）⇒ 先挪到正常组
+        local fallback = PickFallbackGroup(current)
+        Log("当前选中的是我们的数据组，先切到 handle=" .. tostring(fallback))
+        SetCurrentGroup(fallback)
+        current = fallback
+    end
+    local removed, reason, failed, restored = RemoveByKey(nil, false, current)
+    if removed == nil then return nil, reason end
+    local info = { Failed = failed, CurrentRestored = restored, CurrentHandle = GetCurrentGroup() }
+    return removed, nil, failed, info
+end
+
+-- 某个句柄是不是我们的数据组
+function ModMiscModGroupStore.IsOurs(handle)
+    if handle == nil then return false end
+    local groups = ModMiscModGroupStore.List()
+    if groups == nil then return false end
+    for _, group in ipairs(groups) do
+        if group.Handle == handle then return group.Ours end
+    end
+    return false
 end
 
 -- 写一个 key：先删旧片，再按序建新片；最后复查一遍名字是否都在
@@ -244,30 +361,51 @@ function ModMiscModGroupStore.Save(key, text, chunkBytes)
         return false, "分片太多（" .. tostring(#chunks) .. " > " .. tostring(MODGROUP_MAX_CHUNKS) .. "）"
     end
 
-    local removed, reason = RemoveByKey(key, true)
+    -- 记住玩家原本选中的组：CreateModGroup **会把新组设为选中**（实机教训 ①），写完全恢复
+    local origin = GetCurrentGroup()
+    local removed, reason = RemoveByKey(key, true, origin)
     if removed == nil then return false, reason end
 
-    local current = GetCurrentGroup()
+    local source = GetCurrentGroup()
+    local expected = {}
     local created = 0
     for i, chunk in ipairs(chunks) do
         local name = BuildGroupName(key, i, chunk)
-        local ok, err = pcall(function() return Modding.CreateModGroup(name, current) end)
+        expected[name] = true
+        -- 以“当前组”为模板复制启用项：来源组要是我们的数据组也没关系（启用集合一样）
+        local ok, err = pcall(function() return Modding.CreateModGroup(name, source) end)
         if not ok then
+            SettleSelection(origin, "Save(失败后)")
             return false, "第 " .. tostring(i) .. " 片建组失败: " .. tostring(err)
         end
         created = created + 1
     end
+    -- 引擎把选中挪到了最后建的那个组 ⇒ 立刻收尾（恢复玩家的组，或落到一个正常组）
+    local restored = SettleSelection(origin, "Save")
 
-    -- 复查：名字都回来了才算写成
+    -- 精确复查：**按名字逐个核对**，并数一数有没有同 key 同序号的重复片
     local ours = ModMiscModGroupStore.ListOurs() or {}
-    local seen = 0
+    local seen, duplicated, missing = 0, 0, 0
+    local seenIndex = {}
     for _, group in ipairs(ours) do
-        if tostring(group.Key) == key then seen = seen + 1 end
+        if tostring(group.Key) == key then
+            seen = seen + 1
+            if seenIndex[group.Index] ~= nil then duplicated = duplicated + 1 end
+            seenIndex[group.Index] = true
+            if not expected[group.Name] then duplicated = duplicated + 1 end
+        end
+    end
+    for i = 1, created do
+        if seenIndex[i] == nil then missing = missing + 1 end
     end
     Log("Save key=" .. key .. " 字节=" .. tostring(#text) .. " 片=" .. tostring(created)
-        .. " 复查到=" .. tostring(seen))
-    if seen < created then
-        return false, "复查只看到 " .. tostring(seen) .. "/" .. tostring(created) .. " 片"
+        .. " 复查到=" .. tostring(seen) .. " 重复=" .. tostring(duplicated)
+        .. " 缺=" .. tostring(missing) .. " 选中已恢复=" .. tostring(restored))
+    if missing > 0 then
+        return false, "复查缺 " .. tostring(missing) .. " 片（见 " .. tostring(seen) .. " 组）"
+    end
+    if duplicated > 0 then
+        return false, "有 " .. tostring(duplicated) .. " 个重复/多余的片（点清理再写一次）"
     end
     return true, created, #text
 end
@@ -282,14 +420,19 @@ function ModMiscModGroupStore.Load(key)
     if ours == nil then return nil, reason end
 
     local byIndex = {}
-    local count = 0
+    local count, duplicated = 0, 0
     for _, group in ipairs(ours) do
         if tostring(group.Key) == key then
+            if byIndex[group.Index] ~= nil then duplicated = duplicated + 1 end
             byIndex[group.Index] = group
             count = count + 1
         end
     end
     if count == 0 then return nil, "没有这个 key" end
+    if duplicated > 0 then
+        -- 实机踩过：CreateModGroup 抢走选中 ⇒ 旧片删不掉 ⇒ 同序号两份 ⇒ 拼出来是错的
+        return nil, "有 " .. tostring(duplicated) .. " 个重复片（同 key 同序号）——先点清理再写"
+    end
 
     local parts = {}
     for i = 1, count do
@@ -305,6 +448,17 @@ function ModMiscModGroupStore.Load(key)
     return text, count
 end
 
+-- 自检/面板共用的载荷：长度恰好 size 字节，带首尾标记（肉眼能看出截断/串位）
+local function BuildProbePayload(size)
+    size = tonumber(size) or 0
+    local head = "<" .. tostring(size) .. ">"
+    local tail = "</e>"
+    if size <= #head + #tail then return (head .. tail):sub(1, math.max(0, size)) end
+    return head .. string.rep("A", size - #head - #tail) .. tail
+end
+
+ModMiscModGroupStore.BuildPayload = BuildProbePayload
+
 -- 自检：按尺寸阶梯写→读→逐字节比对，找出“能完整往返”的上限，然后清理
 function ModMiscModGroupStore.SelfTest(sizes)
     sizes = sizes or { 8, 64, 256, 1024, 4096, 16384 }
@@ -316,9 +470,9 @@ function ModMiscModGroupStore.SelfTest(sizes)
 
     local currentBefore = GetCurrentGroup()
     for _, size in ipairs(sizes) do
-        -- 可读的测试内容（重复字符 + 首尾标记，肉眼也能看出截断/串位）
-        local payload = "<" .. tostring(size) .. ">" .. string.rep("A", math.max(0, size - 8)) .. "</e>"
-        local step = { Size = size }
+        -- 载荷**长度精确等于标称尺寸**（实机教训 ②：以前 8B 的载荷其实只有 7 字节，日志会误读）
+        local payload = BuildProbePayload(size)
+        local step = { Size = size, PayloadBytes = #payload }
         local ok, chunks, written = ModMiscModGroupStore.Save(MODGROUP_PROBE_KEY, payload,
             MODGROUP_DEFAULT_CHUNK_BYTES)
         step.Ok = ok and true or false
@@ -347,10 +501,11 @@ function ModMiscModGroupStore.SelfTest(sizes)
     end
 
     -- 收摊：把自检留下的组删掉，并回报“当前选中的组有没有被我们动过”
-    local removed, reason, skipped = ModMiscModGroupStore.ClearAll()
+    local removed, reason, failed, info = ModMiscModGroupStore.ClearAll(currentBefore)
     report.CleanupRemoved = removed
-    report.CleanupSkipped = skipped
+    report.CleanupFailed = failed
     report.CleanupError = reason
+    report.CleanupInfo = info
     local currentAfter = GetCurrentGroup()
     report.CurrentGroupUnchanged = (currentBefore == currentAfter)
     report.CurrentBefore = currentBefore

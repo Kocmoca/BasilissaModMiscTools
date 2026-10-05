@@ -338,7 +338,7 @@
 			<Text>跨存档存储：{1_Action} 完成，共 {2_Count} 个键（点上方消息栏看详情）</Text>
 		</Replace>
 		<Replace Tag="LOC_MODMISC_AUTOMATION_TEST_MODGROUP_LABEL" Language="zh_Hans_CN">
-			<Text>配置组存储（数据写进模组配置组的名字；测完请点清理）</Text>
+			<Text>配置组存储（数据写进模组配置组名字；尺寸可选到 1MB；测完请点清理）</Text>
 		</Replace>
 		<Replace Tag="LOC_MODMISC_AUTOMATION_TEST_MODGROUP_SELFTEST" Language="zh_Hans_CN">
 			<Text>配置组自检</Text>
@@ -371,7 +371,7 @@
 			<Text>配置组存储写入：{1_Detail}</Text>
 		</Replace>
 		<Replace Tag="LOC_MODMISC_AUTOMATION_TEST_MODGROUP_WRITE_SUMMARY" Language="zh_Hans_CN">
-			<Text>配置组存储：已写入 {1_Key}，共 {2_Chunks} 条配置组</Text>
+			<Text>配置组存储：已写入 {1_Size}，占用 {2_Chunks} 条配置组；值保留，便于重启后核对</Text>
 		</Replace>
 		<Replace Tag="LOC_MODMISC_AUTOMATION_TEST_MODGROUP_READ_TEXT" Language="zh_Hans_CN">
 			<Text>配置组存储读取：{1_Detail}</Text>
@@ -380,7 +380,7 @@
 			<Text>配置组存储：读到 {1_Key} → {2_Bytes} 字节</Text>
 		</Replace>
 		<Replace Tag="LOC_MODMISC_AUTOMATION_TEST_MODGROUP_CLEARED" Language="zh_Hans_CN">
-			<Text>配置组存储清理：删了 {1_Removed} 条，跳过选中组 {2_Skipped} 条</Text>
+			<Text>配置组存储清理：{1_Detail}</Text>
 		</Replace>
 		<Replace Tag="LOC_MODMISC_AUTOMATION_TEST_MODGROUP_CLEAR_SUMMARY" Language="zh_Hans_CN">
 			<Text>配置组存储：已清理 {1_Count} 条</Text>
@@ -413,7 +413,7 @@
 			<Text>设置存储：探针键已清</Text>
 		</Replace>
 		<Replace Tag="LOC_MODMISC_AUTOMATION_TEST_NAMESTORE_LABEL" Language="zh_Hans_CN">
-			<Text>设置存储（玩家看不见：Options.SetUserOption / UserConfiguration.SetValue）</Text>
+			<Text>设置存储（玩家看不见）——已实测：useroption 被引擎拒绝、userconfig 留不住值</Text>
 		</Replace>
 		<Replace Tag="LOC_MODMISC_AUTOMATION_TEST_NAMESTORE_WRITE" Language="zh_Hans_CN">
 			<Text>设置存储写入（保留）</Text>
