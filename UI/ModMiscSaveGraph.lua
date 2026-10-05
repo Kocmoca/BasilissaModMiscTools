@@ -915,7 +915,11 @@ function API.FetchEventsForNode(nodeId)
     if DataProtocol == nil or nodeId == nil then return events, keys end
     -- 按“节点前缀”列出真实键（协议负责枚举两条通道），再逐个按协议读回**表**
     local wantedPrefix = MODMISC_EVENT_KEY_PREFIX .. tostring(nodeId) .. "_"
-    for _, keyText in ipairs(DataProtocol.ListMatching(wantedPrefix)) do
+    local matchedKeys = DataProtocol.ListMatching(wantedPrefix)
+    Log("收件扫描：节点 " .. tostring(nodeId) .. " 找前缀 " .. wantedPrefix
+        .. "，命中 " .. tostring(#matchedKeys) .. " 个键"
+        .. (#matchedKeys > 0 and ("（" .. table.concat(matchedKeys, ", ") .. "）") or "（大通道里没有它的信箱）"))
+    for _, keyText in ipairs(matchedKeys) do
         local record, reason = DataProtocol.Load(keyText, { keep = true })
         if type(record) ~= "table" then
             Log("跳过一条读不出来的信箱条目 " .. tostring(keyText) .. "：" .. tostring(reason))
@@ -981,7 +985,10 @@ end
 -- ===========================================================================
 
 function API.IntakeEvents(onDone)
-    API.WhenStoreReady(function()
+    -- 【2026-10-06】收件**只走大通道**（信箱条目 ev_* 与载荷 evb_* 都在 big 上），
+    -- 所以不再等“小通道扫描就绪”—— 那是个多余的门，扫描慢/不回包时会把收件一起卡住
+    -- （授权者反馈“事件接受没有成功”）。身份来自随档数据、事件来自大通道，都不需要那次扫描。
+    local function Run()
         local script = GetGameplayMembers()
         local turnEvents = script ~= nil and script.TurnEvents or nil
         if turnEvents == nil or turnEvents.AddIncoming == nil then
@@ -1018,7 +1025,8 @@ function API.IntakeEvents(onDone)
             .. "（本局逻辑回合 " .. tostring(logicalTurn) .. "，引擎 " .. tostring(engineTurn)
             .. "，偏移 +" .. tostring(offset) .. "）")
         if onDone ~= nil then pcall(onDone, added, "ok") end
-    end)
+    end
+    Run()
 end
 
 -- ===========================================================================
@@ -1219,6 +1227,22 @@ local function OnSaveGraphSaveComplete(...)
     end
     Log("SaveComplete 回执：" .. tostring(saveResult) .. "（节点 " .. tostring(pending.Node.Id)
         .. "）—— 注意：这个事件认不出是哪一份存档，是否落盘以列表复查为准")
+
+    -- 【别删这段】回执到了要**照常刷新列表并回调 OnChecked**：
+    -- 上一版把它当成“只记日志”、顺手把刷新删了 ⇒ 面板点保存后列表不刷新（授权者 2026-10-06 反馈）。
+    -- 注意语义：found=true 只代表“列表里有这个 id”，不代表 SaveComplete 就是这份档的。
+    if pending.OnSaved ~= nil then
+        pcall(pending.OnSaved, nil, pending.Node)
+    end
+    API.Refresh(function(nodes)
+        local found = false
+        for _, node in ipairs(nodes) do
+            if node.Id == pending.Node.Id then found = true break end
+        end
+        Log("回执后列表复查：节点 " .. tostring(pending.Node.Id)
+            .. (found and " 已在列表里" or " 不在列表里（保存还没落盘 / 或这一笔根本不是我们的）"))
+        if pending.OnChecked ~= nil then pcall(pending.OnChecked, found, pending.Node) end
+    end)
 end
 
 -- 按既定节点写一档：写 CustomData 身份 → Network.SaveGame → 等 SaveComplete → 复查落盘
