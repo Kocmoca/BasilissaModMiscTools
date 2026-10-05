@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<Mod id="a1b2c3d4-5e6f-7a8b-9c0d-1e2f3a4b5c6d" version="1.68">
+<Mod id="a1b2c3d4-5e6f-7a8b-9c0d-1e2f3a4b5c6d" version="1.69">
     <Properties>
         <Name>Basilissa Mod Misc Tools</Name>
         <Description>LOC_MODMISC_MOD_DESCRIPTION</Description>
@@ -52,6 +52,7 @@
                 <LoadOrder>10000</LoadOrder>
             </Properties>
             <File>UI/FrontEnd_SaveProbe.lua</File>
+            <File>UI/FrontEnd_GameSaveProbe.lua</File>
         </ImportFiles>
         <!-- 跨存档数据存储（UI/ModMiscStore.lua）：把数据编进「配置档的文件名」，
              下一轮从存档列表读回来 —— 原版唯一可用、且已实机验证的跨存档通道。
@@ -229,6 +230,7 @@
         <File>UI/ButtonAdjust_PHONE.lua</File>
         <File>UI/Replacements/Civ6Common.lua</File>
         <File>UI/FrontEnd_SaveProbe.lua</File>
+        <File>UI/FrontEnd_GameSaveProbe.lua</File>
         <File>UI/ModMiscStore.lua</File>
         <File>UI/ModMiscAssetStore.lua</File>
         <File>UI/ModMiscCreateGame.lua</File>

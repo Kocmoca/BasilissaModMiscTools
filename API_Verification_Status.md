@@ -899,3 +899,46 @@ Support_UI: [TurnEvent] 开局收件：0 条（no-node）
 | 70 | 载体存档（`ModMiscCarrier`） | `[待实机]` | 写 CustomData + 存一份 `MMTBlob~<name>~<时间>` 普通档；读取要载入那份档。 |
 | 71 | 事件大载荷（`PayloadText` → 分片） | `[待实机]` | 收件时自动拼回；投递时清分片（**先读值再删键**，反了的话分片会永久残留 —— 这里踩过一次）。 |
 | 72 | `ModMiscStore.Save` 顺手记下“刚写的档” | `[待实机]` | 让同一个会话里马上 `Remove` 这个键也能删掉，不用等下一次扫描。 |
+
+---
+
+## 16. 前端能否建立 / 读取**普通存档**（2026-10-05，**待实机**）
+
+授权者提的方向：先试别的路子 —— 例如用一份**特别命名的普通存档**当载体，
+关键是**能不能在前端（主界面）建立并读取普通存档**。前端没有正在进行的对局，
+普通存档里没有游戏数据，**预期很可能失败，但值得一试**。
+
+### 16.1 探针（`UI/FrontEnd_GameSaveProbe.lua`，本轮默认开启）
+
+由 `UI/Replacements/Civ6Common.lua` 那条**已有的**前端刷新回调每帧驱动（不自己再挂回调，
+免得顶掉幽灵 hook），认「主界面 / 创建游戏 / 创建场景」三个界面；一次进入界面 = 一轮实验，
+日志前缀 `[ModMiscTool][FeGameSaveProbe]`：
+
+| 步骤 | 做什么 | 判定 |
+|---|---|---|
+| step0 recon | 自述界面 / 各接口可用性 / `GameConfiguration.GetGameState()`（前端应为 PREGAME）/ `UI.IsInFrontEnd()` | — |
+| step1 write | 在 CustomData 写个探针标记，然后 `Network.SaveGame{ Type=SINGLE_PLAYER, FileType=GAME_STATE, Name=MMTGameSaveProbe~<时间> }` | `fe-gamesave-written` / `fe-gamesave-write-failed` |
+| step2 wait | 等 `Events.SaveComplete`（最多 600 帧 ≈ 10 秒） | `fe-gamesave-no-complete` |
+| step3 list | `UI.QuerySaveGameList(普通存档)`：我们的档在不在？**列表里到底能读到哪些字段**（把每条记录的所有字段打出来） | `fe-gamesave-listed` / `fe-gamesave-not-listed` |
+| step4 load | 在前端试着 `Network.LoadGame(这份档, SERVER_TYPE_NONE)` —— 本次的核心问题 | `fe-gamesave-load-issued` / `fe-gamesave-load-call-failed` |
+| step5 clean | 仍停在前端就删掉探针档（**只认 `MMTGameSaveProbe` 前缀**，绝不碰玩家自己的档）并复查（顺带清历史遗留） | `fe-gamesave-deleted` / `fe-gamesave-delete-failed` |
+
+开关：`UI/Replacements/Civ6Common.lua` 顶部的 `MODMISC_FRONT_END_GAMESAVE_PROBE_ENABLED`
+（本轮默认 **true**；测完改 false）。
+
+### 16.2 怎么判读（三种结局都有用）
+
+| 日志表现 | 含义 | 对“大表格载体”的意义 |
+|---|---|---|
+| `fe-gamesave-write-failed` / `no-complete` + `not-listed` | 前端**写不出**普通存档（预期结局） | 这条路不通，回到分片 blob / 载体存档（要先进对局） |
+| `fe-gamesave-listed` 但 `load-issued` 之后没有 `LoadScreen` / 没进对局 | **能建、能列，但读不进去**（空壳档没有游戏数据） | 只能当“文件名的载体”（与配置档同一套限制，没有增益） |
+| `fe-gamesave-listed` + 真进了对局（日志出现 `LoadScreen: true` / gameplay scripts loading） | 前端**能建也能读**普通存档 | 打开一条新路：可以在前端准备一份“数据档”，进对局后靠 CustomData 取回（容量按 CustomData 上限） |
+| step3 打出的字段列表 | 不用载入能读到什么（`LeaderType` / `TurnCount` / `Type` / `FileType` … 都是引擎填的） | 若里面没有 mod 可控字段，就印证通道 D 的结论（元数据不可注入） |
+
+### 16.3 已知风险
+
+* 前端写普通存档可能**产出退化档**（没有游戏数据），留在玩家的「载入游戏」列表里会很难看 ——
+  所以探针**成功后立刻删掉**，并只删自己的前缀；
+* 前端 `Network.LoadGame` 万一真的开始加载，可能停在半路（黑屏/卡住）—— 探针把调用包在 pcall 里、
+  调用前后各打一行日志，出事时能定位到具体哪一步（tombstone 里看 backtrace）；
+* 这份探针与配置档探针（`FrontEnd_SaveProbe.lua`，默认关）是**两个独立实验**，只开一个更干净。

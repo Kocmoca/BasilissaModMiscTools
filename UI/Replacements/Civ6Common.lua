@@ -890,6 +890,16 @@ local function ModMiscToolIsGameSetupContext()
 	return MapSize_ValueChanged ~= nil
 end
 
+-- 前端界面识别：三个界面各有一个只属于自己的控件。
+-- 两个前端探针（配置档 / 普通存档）都要用它，所以放这里共用，别在各处再抄一遍。
+function ModMiscToolFrontEndContextKind()
+	if Controls == nil then return nil end
+	if Controls.ScenarioDescription ~= nil then return "ScenarioSetup" end
+	if Controls.SaveConfig ~= nil then return "AdvancedSetup" end
+	if Controls.MainMenuOptionStack ~= nil then return "MainMenu" end
+	return nil
+end
+
 local m_GhostLastPollKey = nil
 
 -- ===========================================================================
@@ -1243,10 +1253,21 @@ end
 -- ===========================================================================
 local MODMISC_FRONT_END_PROBE_ENABLED = false
 
+-- 【本轮实验 · 2026-10-05】前端「普通存档」探针：验证能不能在**前端**建立/读取
+-- GAME_STATE（普通存档）—— 授权者要试的方向。前端没有正在进行的对局，普通存档里
+-- 没有游戏数据，预期很可能失败，但值得一试。默认开着；测完改成 false 即可。
+local MODMISC_FRONT_END_GAMESAVE_PROBE_ENABLED = true
+
 if MODMISC_FRONT_END_PROBE_ENABLED
 	and ModMiscFrontEndProbeRefresh == nil
 	and ModMiscToolIsGameSetupContext() then
 	include("FrontEnd_SaveProbe")
+end
+
+if MODMISC_FRONT_END_GAMESAVE_PROBE_ENABLED
+	and ModMiscFrontEndGameSaveProbeRefresh == nil
+	and ModMiscToolIsGameSetupContext() then
+	include("FrontEnd_GameSaveProbe")
 end
 
 -- 跨存档数据存储（UI/ModMiscStore.lua）：把数据编进「配置档的文件名」，
@@ -1326,6 +1347,10 @@ local function ModMiscToolGhostRefresh(delta)
 	-- 探针在隐藏时也要跑：它靠“隐藏→显示”的那一刻判定新一轮（内部自己判界面）
 	if ModMiscFrontEndProbeRefresh ~= nil then
 		ModMiscFrontEndProbeRefresh()
+	end
+	-- 前端「普通存档」探针（本轮实验：能不能在前端建立/读取普通存档）
+	if ModMiscFrontEndGameSaveProbeRefresh ~= nil then
+		ModMiscFrontEndGameSaveProbeRefresh()
 	end
 	-- 跨存档存储：每个前端 context 首次刷新时扫一遍存档列表（结果进内存表）
 	if ModMiscStore ~= nil and ModMiscStoreAutoRefreshed == nil then
