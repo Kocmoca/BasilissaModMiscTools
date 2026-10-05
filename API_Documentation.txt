@@ -1418,6 +1418,10 @@ API_Verification_Status.md §18.4/§18.6。
     DataProtocol.GC{ PurgeOrphans } -- 清过期 ephemeral（+可选清孤儿）
     DataProtocol.Purge(name) / PurgeAllPermanent()   -- 慎重；通配条目按前缀清现有键
     DataProtocol.SetSession / GetSession             -- 进程内数据（绝不落盘）
+    DataProtocol.EnumerateKeys(spec)                 -- 某数据集现在真正在盘上的键（通配按前缀枚举）
+
+本地模拟器（devs 仓）：`devs/BasilissaModMiscTools/Tests/protocol_transport_sim.lua`
+—— 8 场景 / 48 项断言，含故障注入与真跨进程；用法见该仓 README 与 Docs/01。
 
 生命周期：`permanent`（永久，慎重）/ `session`（进程内内存）/ `ephemeral`（用后即焚，TTL）。
 通道：`memory` / `small`（存档名编码，~100B、不用载入可读）/ `big`（配置组，实测 1MB）/

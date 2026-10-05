@@ -559,6 +559,39 @@ end
 -- 审计 / GC / 清理（“用永久数据要慎重”的落地）
 -- ===========================================================================
 
+-- 枚举某个数据集“现在真正在盘上的键”：
+--   * 字面名：就它自己；
+--   * 通配（"ev_*" / "evb_*"）：去两条通道里按前缀找——
+--     这一步是必需的：GC 与审计都得按**真实键**走，盯着字面名 "evb_*" 什么都清不掉
+--     （模拟器场景 4 抓到：TTL 过期了 GC 却报“清了 0 项”）。
+local function EnumerateKeys(spec)
+    local keys = {}
+    local name = tostring(spec.Name or "")
+    if name:sub(-1) ~= "*" then
+        keys[name] = true
+        return keys
+    end
+    local prefix = name:sub(1, #name - 1)
+    if spec.Channel == DP_CHANNEL.Small and ModMiscStore ~= nil and ModMiscStore.GetAll ~= nil then
+        for key in pairs(ModMiscStore.GetAll() or {}) do
+            key = tostring(key)
+            if key:sub(1, #prefix) == prefix then keys[key] = true end
+        end
+    end
+    if spec.Channel == DP_CHANNEL.Big and ModMiscModGroupStore ~= nil
+        and ModMiscModGroupStore.ListOurs ~= nil then
+        for _, group in ipairs(ModMiscModGroupStore.ListOurs() or {}) do
+            local key = tostring(group.Key)
+            -- 分片与头记录归到逻辑键上：<name>$p1 / <name>$h
+            local base = key:gsub("%$p%d+$", ""):gsub("%$h$", "")
+            if base:sub(1, #prefix) == prefix then keys[base] = true end
+        end
+    end
+    return keys
+end
+
+M.EnumerateKeys = EnumerateKeys
+
 -- 审计：登记了什么、盘上真有没有、多大、什么时候写的、是不是孤儿
 function M.Audit()
     local report = { Entries = {}, Orphans = {}, Tag = DP_BUILD_TAG }
@@ -569,6 +602,32 @@ function M.Audit()
         if spec.Lifecycle == DP_LIFECYCLE.Session then
             entry.Present = (m_Session[spec.Name] ~= nil)
             entry.Note = "内存"
+        elseif spec.Name:sub(-1) == "*" then
+            -- 通配数据集：按真实键逐条列（别只报 "evb_* 不存在" 这种没用的结论）
+            local keys = EnumerateKeys(spec)
+            local listed = 0
+            for key in pairs(keys) do
+                local text = ChannelRead(spec.Channel, key)
+                if text ~= nil and type(text) == "string" then
+                    local sub = { Name = key, Lifecycle = spec.Lifecycle, Channel = spec.Channel,
+                                  Owner = spec.Owner, Version = spec.Version, TTL = spec.TTL,
+                                  Present = true, Bytes = #text, Pattern = spec.Name }
+                    local envelope = ParseEnvelope(text)
+                    if envelope ~= nil then
+                        sub.Stamp = envelope.Stamp
+                        sub.ValueType = envelope.ValueType
+                        sub.StoredVersion = envelope.Version
+                        if envelope.Stamp ~= nil and envelope.Stamp > 0 then
+                            local current = tonumber(TryCall(function() return os.time() end) or 0)
+                            sub.Age = current - envelope.Stamp
+                        end
+                    end
+                    table.insert(report.Entries, sub)
+                    listed = listed + 1
+                end
+            end
+            entry.Note = listed > 0 and ("通配：" .. tostring(listed) .. " 个真实键") or "通配：当前没有数据"
+            entry.Present = listed > 0
         else
             local text = ChannelRead(spec.Channel, spec.Name)
             if text ~= nil and type(text) == "string" then
@@ -623,15 +682,18 @@ function M.GC(options)
     local now = tonumber(TryCall(function() return os.time() end) or 0)
     for _, spec in ipairs(M.GetRegistered()) do
         if spec.Lifecycle == DP_LIFECYCLE.Ephemeral and tonumber(spec.TTL) ~= nil then
-            local text = ChannelRead(spec.Channel, spec.Name)
-            if text ~= nil and type(text) == "string" then
-                local envelope = ParseEnvelope(text)
-                local stamp = envelope ~= nil and envelope.Stamp or nil
-                -- 没有时间戳的一律当过期处理：宁可不留，也不留一堆来历不明的永久垃圾
-                if stamp == nil or stamp == 0 or (now - stamp) > tonumber(spec.TTL) then
-                    ChannelRemove(spec.Channel, spec.Name)
-                    table.insert(result.Expired, spec.Name)
-                    result.Removed = result.Removed + 1
+            for key in pairs(EnumerateKeys(spec)) do
+                local text = ChannelRead(spec.Channel, key)
+                if text ~= nil and type(text) == "string" then
+                    local envelope = ParseEnvelope(text)
+                    local stamp = envelope ~= nil and envelope.Stamp or nil
+                    -- 没有时间戳的一律当过期处理：宁可不留，也不留一堆来历不明的永久垃圾
+                    if stamp == nil or stamp == 0 or (now - stamp) > tonumber(spec.TTL) then
+                        M.RemoveTree(key)
+                        ChannelRemove(spec.Channel, key)
+                        table.insert(result.Expired, key)
+                        result.Removed = result.Removed + 1
+                    end
                 end
             end
         end

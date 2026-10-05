@@ -66,7 +66,12 @@ function ModMiscBigStore.Save(key, text)
                 .. " 片=" .. tostring(chunks))
             return true, "modgroup", chunks
         end
-        Log("大通道写入失败（" .. tostring(chunks) .. "）→ 回退分片 blob")
+        -- 写失败时先把它写了一半的片清掉，再回退 —— 否则那些半成品会变成没人认领的孤儿，
+        -- 一直挂在模组界面的配置组里（模拟器场景 5.1/5.2 抓到）。
+        if ModMiscModGroupStore.Remove ~= nil then
+            ModMiscModGroupStore.Remove(key)
+        end
+        Log("大通道写入失败（" .. tostring(chunks) .. "）→ 已清半成品，回退分片 blob")
     end
     if ModMiscStore == nil or ModMiscStore.SaveBlob == nil then
         return false, "没有可用的大载荷通道"
