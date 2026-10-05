@@ -1,7 +1,9 @@
 include("ModTool_Support_Functions.lua")
 include("ModTool_Support_UI.lua")
 include("Civ6Common")   -- ReadCustomData：读取创建游戏时保存的城邦数量
-include("ModMiscStore") -- 跨存档存储（存档名编码通道）
+include("ModMiscStore") -- 跨存档存储（存档名编码通道：小数据、不用载入就能读）
+include("ModMiscModGroupStore") -- 跨存档存储（模组配置组名字通道：实机 1MB 验证过）
+include("ModMiscBigStore") -- 大载荷门面：优先配置组通道、回退分片 blob
 include("ModMiscAssetStore") -- 永久资产放置（读档自动重放）
 include("ModMiscCreateGame") -- 对局内「创建新局 / 换地图」验证（开局探针 + 面板入口）
 include("ModMiscTurnEra") -- 回合数 / 年代 探查与试写（开局探针 + 面板入口）

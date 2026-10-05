@@ -641,7 +641,7 @@ end
 -- 分片大小（每片原始字节；hex 后组名长度 ≈ 2×它 + 前缀开销）。
 -- 实机已验证 1224 字符的组名被引擎原样接受；真实上限由「名字上限」探针量。
 -- 名字越长 → 片越少 → 模组界面里多出来的配置组条目越少（每片 = 一条组 + 一份启用项副本）。
-local MODGROUP_CHUNK_STEPS = { 300, 600, 1200, 2000, 4000 }
+local MODGROUP_CHUNK_STEPS = { 300, 600, 1200, 2000, 4000, 8000, 16000 }
 local m_ModGroupChunkBytes = 600
 
 local function FormatChunkLabel(bytes)

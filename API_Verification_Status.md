@@ -903,9 +903,10 @@ Support_UI: [TurnEvent] 开局收件：0 条（no-node）
 | 74 | **游戏加载完成之前**（`Events.LoadScreenContentReady`，读到一半/建局一半）存档与读档 | `[待实机]` | 探针 `UI/LoadTime_SaveProbe.lua` 默认开；L4（载入期 `Network.SaveGame`）默认开、L5（载入期 `Network.LoadGame`）默认关。判据 `lt-l0-ok` / `lt-l2-written` / `lt-l4-save-*` / `lt-p2-marker-alive` / `lt-p2-probe-save-*` / `lt-p2-cleaned` / `lt-p1-missed`，协议见 §17。 |
 | 75 | 载入界面上下文判据（安卓） | `[已静态修正]` | 安卓跑 `LoadScreen_PHONE.xml`，**没有** `PortraitContainer`（桌面版才有）——只看它会让阶段一永不执行。改成 `ContextPtr:GetID() == "LoadScreen"`（三个变体同名），控件只作退路。 |
 | 76 | 「游戏加载完成之前」存档 / 读档（`Events.LoadScreenContentReady`） | `[已验证失败]` | **实机仍然闪退**（授权者 2026-10-05）。与游戏自己的注释一致：载入期不该做 Lua→引擎调用。探针已关（`MODMISC_LOAD_TIME_PROBE_ENABLED=false`）。另：载入界面判据在安卓上要认 `ContextPtr:GetID()`（见 75）。 |
-| 77 | **通道 E：模组配置组名字**（`Modding.CreateModGroup` / `ModGroups.Name`） | `[实机可用·64KB 跨进程已验证]` | **实机（2026-10-05 第二轮）：64 KB = 110 片，杀进程重开后读回逐字一致**；单条组名 **1224 字符**被引擎原样存下（未被截断）；`复查到=110 重复=0 缺=0 选中已恢复=true`。 **实机：写 29 B、读回 29 B、逐字一致** ⇒ 通道本身可用；`Modding` 组接口对局内 `available=true`。没有改名接口 ⇒ 改值 = 删旧建新。命名 `MMTSTORE~<hex(key)>~<序号>~<hex(片)>`。**坑（我已修）**：`CreateModGroup` 会把新组设为“当前选中”⇒ ① 玩家选择被改 ② 旧片因“正被选中”删不掉 ⇒ 同序号重复 ⇒ 读回报错；修法：写前记住选中、写完全部恢复，删选中组前先切走（照抄原版 `DeleteModGroup()`）。面板：自检 / 写入（尺寸可选到 1 MB、值保留）/ 读取 / 诊断 / 清理。 |
+| 77 | **通道 E：模组配置组名字**（`Modding.CreateModGroup` / `ModGroups.Name`） | `[实机可用·1MB 跨进程已验证]` | **实机（2026-10-05 第三轮）：1 MB = 1048576 B / 263 片，杀进程重开后读回逐字一致**；分片设 4000 字节/片时单条组名 **8024 字符**被引擎原样接受；此前 64 KB = 110 片、组名 1224 字符也已验证；`复查到=110 重复=0 缺=0 选中已恢复=true`。 **实机：写 29 B、读回 29 B、逐字一致** ⇒ 通道本身可用；`Modding` 组接口对局内 `available=true`。没有改名接口 ⇒ 改值 = 删旧建新。命名 `MMTSTORE~<hex(key)>~<序号>~<hex(片)>`。**坑（我已修）**：`CreateModGroup` 会把新组设为“当前选中”⇒ ① 玩家选择被改 ② 旧片因“正被选中”删不掉 ⇒ 同序号重复 ⇒ 读回报错；修法：写前记住选中、写完全部恢复，删选中组前先切走（照抄原版 `DeleteModGroup()`）。面板：自检 / 写入（尺寸可选到 1 MB、值保留）/ 读取 / 诊断 / 清理。 |
 | 80 | 通道 F：`Options.SetUserOption` 存自定义键 | `[已验证失败]` | **实机：`MMTProbe is not a registered option.`** —— 引擎按注册表校验选项名，写不进去（`lSetUserOption` 直接报错）。除非能让引擎“注册”一个新选项，否则此路不通。 |
 | 81 | 通道 G：`UserConfiguration.SetValue` 存自定义键 | `[已实机失败]` | 实机：写 4096 B **不报错**，但立刻读回是 `[没有这个键]` ⇒ 值没留下（`GetValue` 对未注册键返回 nil）。与通道 F 同因：引擎只认自己那套键。 |
+| 82 | **大载荷门面 `ModMiscBigStore`**（优先配置组大通道、回退分片 blob） | `[待实机]` | 事件大载荷（`PayloadText`）已改走它：写优先配置组通道（1 MB 已验证），读**先大通道再回退 blob**（旧数据不用迁移），删两条都清。分片默认 4000 B（`SetChunkBytes` 可调）。 |
 | 78 | 通道 F/G：引擎设置类键值存储（`Options.SetUserOption`+`SaveOptions` / `UserConfiguration.SetValue`+`SaveCheckpoint`） | `[待实机·本轮主测]` | 不占存档、不占文件名、**玩家界面看不见**。未知：引擎认不认自己不知道的键、值能多长。面板：**尺寸（64B→1MB）/ 写入（保留）/ 读取 / 自检 / 清理**；「写入（保留）+ 重启后读取」= 跨进程验证。 |
 | 78b | 配置组（通道 E）的尺寸上限 | `[下一轮]` | 值落在 SQLite `TEXT` 列，数据库层没有 255 字节限制；但引擎/内存/字符串三关未验。“1G”那个说法要实测才认，且我们的需求是 KB–MB。面板的尺寸阶梯逻辑可复用到配置组那组按钮上。 |
 | 79 | 原版「文件存取 / 名字设定」接口盘点 | `[已静态核对]` | 文件侧只有 `Network.SaveGame/LoadGame` + `UI.QuerySaveGameList/DeleteSavedGame/GetSaveGameMetaData/…`，**没有**打开文件读写的接口；运行时数据库只有 `DB.Query/ConfigurationQuery/ConfigurationChanges`，**全只读**。能持久化名字/键值的只有：存档名、模组配置组名、用户选项、UserConfiguration（见 §18.1）。 |
@@ -1276,3 +1277,41 @@ Runtime Error: .../UI/AutomationTestPanel.lua:1655: function expected instead of
 但**引擎的 Lua↔DB 传参**这一关现在只验证到 1224 字符；`Name` 之外还有 `SortIndex`/行数等
 实际约束。等「名字上限」把真实数字量出来，再谈能不能往 GB 级走 —— 不过按我们的需求
 （存档关系树、事件、表格），**KB–MB 级够用**，先把这条通道在 MB 级上跑稳。
+
+### 18.8 第三轮实机：1 MB 也通了，大载荷改造上线（2026-10-05）
+
+授权者实测「尺寸 1 MB + 分片 4000 字节」并重启后读取，日志：
+
+```
+Mod-group store read: panel = panel=1;t=1791194411;r=725350;MMMM…(共 1048576B)
+    | chunks=263 bytes=1048576 | [1] panel #1 nameLen=8024 | [2] panel #2 nameLen=8024 …
+```
+
+* **1048576 B（1 MB）分 263 片读回，字节数与内容一致**；
+* 每片原始 4000 字节 ⇒ 组名 **8024 字符**（8000 hex + 前缀），**引擎原样接受、没有截断**；
+* 这份 1 MB 数据是**上一轮会话写的**（本日志里没有对应的写入行）⇒ **1 MB 级跨进程持久化成立**。
+
+至此通道 E 的能力有了三段实测数据：**64 KB（110 片 / 1224 字符名字）→ 1 MB（263 片 / 8024 字符名字）**，
+都跨进程一致。关于“1 G”那个说法：数据库层是 SQLite `TEXT`（没有 255 字节那种限制），
+引擎这关现在验证到 8024 字符的组名；**但 1 GB 不是我们的需求** —— 存档关系树、事件、
+表格都在 KB–MB 级，先把这条通道在 MB 级用稳比追 GB 有意义。面板的「分片」现在可选
+300 / 600 / 1200 / 2000 / **4000（推荐大载荷）** / 8000 / 16000，想继续摸上限随时可以试。
+
+**代价与建议（重要）**：每片 = 模组界面配置组下拉框里的一条 + 一份启用项副本。
+1 MB 就是 **263 条**，界面会很长、模组数据库也会变大。所以：
+
+* 大载荷分片用 **4000 字节**（默认），别用 300/600 去存大表；
+* 数据量控制在**几百 KB 以内**，超过就考虑“载体存档”（`ModMiscCarrier`，随档走、界面干净）；
+* 面板的「配置组清理」随时能把数据片收干净（只认 `MMTSTORE~` 前缀，绝不动玩家自己的组）。
+
+**大载荷门面（本轮新增 `UI/ModMiscBigStore.lua`）**：事件的大载荷（`event.PayloadText`）
+已经从“分片 blob”改成走这个门面：
+
+    ModMiscBigStore.Save(key, text)   -- 优先配置组大通道；不可用/失败自动回退 ModMiscStore.SaveBlob
+    ModMiscBigStore.Load(key)         -- 先大通道，读不到再回退 blob（**旧事件不用迁移**）
+    ModMiscBigStore.Remove(key)       -- 两条通道都清
+    ModMiscBigStore.SetChunkBytes(n)  -- 分片大小（默认 4000）
+    ModMiscBigStore.GetInfo()         -- 大通道在不在、分片大小、现有数据片数
+
+这样“事件带大表格”这条链路终于不受 ~100 字节/键的限制了；`SendEvent` / `FetchEventsForNode` /
+`DropEventKeys` 三处已经切过去（发件日志会写 `通道 modgroup（片数）` 或 `通道 blob`）。

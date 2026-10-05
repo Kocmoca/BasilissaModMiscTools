@@ -805,22 +805,29 @@ function API.SendEvent(targetNodeId, event)
     local targetPlayer = event.TargetPlayerID
     if targetPlayer == nil then targetPlayer = playerID end
     local acceptTurn = tonumber(event.AcceptTurn) or API.GetLogicalTurn()
-    -- 大载荷：事件里的 PayloadText 走**分片 blob**（每片 ≤ 每键上限），事件记录只留个引用
-    -- （授权者 2026-10-05：这种跨存档方式不支持大表格 ⇒ 用分片把它撑起来）
+    -- 大载荷：事件里的 PayloadText 交给 ModMiscBigStore —— 它优先走**配置组大通道**
+    -- （实机 1 MB 跨进程已验证），不可用时自动回退到分片 blob；事件记录里只留一个引用。
     local blobKey = nil
     if event.PayloadText ~= nil and tostring(event.PayloadText) ~= "" then
         blobKey = MODMISC_EVENT_BLOB_PREFIX .. tostring(targetNodeId)
             .. "_" .. tostring(TryCall(function() return os.time() end) or 0)
             .. tostring(math.random(100, 999))
-        if store.SaveBlob == nil then
-            return false, "跨存档存储没有 SaveBlob（版本太老？）"
+        local bigOk, channel, detail
+        if ModMiscBigStore ~= nil and ModMiscBigStore.Save ~= nil then
+            bigOk, channel, detail = ModMiscBigStore.Save(blobKey, tostring(event.PayloadText))
+        else
+            -- 极端情况（门面没加载）：退回原来的分片 blob 写法，别把功能整个卡住
+            if store.SaveBlob == nil then
+                return false, "跨存档存储没有 SaveBlob（版本太老？）"
+            end
+            bigOk, channel = store.SaveBlob(blobKey, tostring(event.PayloadText)), "blob(回退)"
         end
-        local blobOk, blobErr = store.SaveBlob(blobKey, tostring(event.PayloadText))
-        if not blobOk then
-            Log("发件失败：大载荷分片写入失败 -> " .. tostring(blobErr))
-            return false, "大载荷分片写入失败"
+        if not bigOk then
+            Log("发件失败：大载荷写入失败 -> " .. tostring(channel))
+            return false, "大载荷写入失败"
         end
-        Log("大载荷已分片：" .. #tostring(event.PayloadText) .. " 字节 → blob " .. blobKey)
+        Log("大载荷已存：" .. #tostring(event.PayloadText) .. " 字节 → 通道 " .. tostring(channel)
+            .. (detail ~= nil and ("（" .. tostring(detail) .. "）") or "") .. " key=" .. blobKey)
     end
 
     local payload = table.concat({
@@ -870,14 +877,25 @@ function API.FetchEventsForNode(nodeId)
                     MailKey = keyText,
                     Blob = blobKey,
                 }
-                -- 大载荷：把分片读回来挂在事件上（缺片会明确报出来，不返回半截）
-                if blobKey ~= nil and store.LoadBlob ~= nil then
+                -- 大载荷：读回来挂在事件上（缺片/重复片会明确报出来，不返回半截）
+                if blobKey ~= nil and (ModMiscBigStore == nil or ModMiscBigStore.Load == nil)
+                    and store.LoadBlob ~= nil then
                     local text, err = store.LoadBlob(blobKey)
                     if text == nil then
                         Log("警告：事件 " .. tostring(eventRecord.Type) .. " 的大载荷读不出来（"
                             .. tostring(err) .. "），只带元数据入列")
                     else
                         eventRecord.PayloadText = text
+                        eventRecord.PayloadChannel = "blob(回退)"
+                    end
+                elseif blobKey ~= nil and ModMiscBigStore ~= nil and ModMiscBigStore.Load ~= nil then
+                    local text, channel = ModMiscBigStore.Load(blobKey)
+                    if text == nil then
+                        Log("警告：事件 " .. tostring(eventRecord.Type) .. " 的大载荷读不出来（"
+                            .. tostring(channel) .. "），只带元数据入列")
+                    else
+                        eventRecord.PayloadText = text
+                        eventRecord.PayloadChannel = channel
                     end
                 end
                 table.insert(events, eventRecord)
@@ -908,8 +926,12 @@ function API.DropEventKeys(keys)
             end
         end
         if store.Remove(key) then removed = removed + 1 end
-        if blobKey ~= nil and store.RemoveBlob ~= nil then
-            store.RemoveBlob(blobKey)
+        if blobKey ~= nil then
+            if ModMiscBigStore ~= nil and ModMiscBigStore.Remove ~= nil then
+                ModMiscBigStore.Remove(blobKey)  -- 内部两条通道都清
+            elseif store.RemoveBlob ~= nil then
+                store.RemoveBlob(blobKey)        -- 回退路径
+            end
         end
     end
     Log("已投递并清理 " .. tostring(removed) .. " 个信箱键")
