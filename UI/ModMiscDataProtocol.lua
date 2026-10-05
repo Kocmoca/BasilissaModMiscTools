@@ -62,7 +62,8 @@
 
 local DP_BUILD_TAG = "2026-10-05-A"
 
-local DP_ENVELOPE_PREFIX = "MMT1"
+local DP_ENVELOPE_PREFIX = "MMT1"       -- 老信封（兼容读）
+local DP_ENVELOPE_PREFIX_V2 = "MMT2"   -- 新信封：带数据集名 + 校验和
 local DP_HEADER_SUFFIX = "$h"
 local DP_PART_SUFFIX = "$p"
 local DP_DEFAULT_PART_BYTES = 32768      -- 每个分片 32 KB（大通道内部再按 4000 字节切配置组）
@@ -73,6 +74,11 @@ local DP_CHANNEL = { Memory = "memory", Small = "small", Big = "big", Carrier = 
 local m_Registry = {}          -- name -> spec
 local m_Order = {}             -- 登记顺序（面板按这个列）
 local m_Session = {}           -- session 数据（进程内）
+-- 元表类登记 + 最近一次解码报告：**必须在 DecodeValue 之前声明**
+-- （第一版写在使用点之后 ⇒ 函数体里解析成全局 nil，解码带类名的表就会 index nil；
+--   fwdcheck2 的前向引用检查当场抓到）
+local m_Classes = {}
+local m_LastDecodeReport = nil
 local m_LastErrors = {}
 
 local function Log(message)
@@ -101,32 +107,72 @@ M.PartSuffix = DP_PART_SUFFIX
 -- 序列化 / 反序列化
 -- ===========================================================================
 
-local function EncodeValue(value, out)
+-- 数字：**必须用 %.17g**。
+-- tostring() 在 Lua 5.1 是 "%.14g" ⇒ 0.1+0.2 会写成 "0.3"、大整数会掉精度，
+-- 那样“还原成原来的数据”就是假的（这条是模拟器/桩测试里最容易漏掉的失真）。
+local function EncodeNumber(value)
+    if value ~= value then return "dnan;" end                       -- NaN
+    if value == math.huge then return "dinf;" end
+    if value == -math.huge then return "d-inf;" end
+    return "d" .. string.format("%.17g", value) .. ";"
+end
+
+local function DecodeNumber(text)
+    if text == "nan" then return 0 / 0 end
+    if text == "inf" then return math.huge end
+    if text == "-inf" then return -math.huge end
+    return tonumber(text)
+end
+
+-- 值编码：
+--   n / b0|b1 / d<数字>; / s<长度>:<字节>
+--   t<个数>:[<类名>]{ 键 值 … }   表格（可带元表类名）
+--   r<编号>;                      引用（同一个表第二次出现、以及环）
+-- 引用机制同时解决两件事：**共享子表还原成同一张表**、**自引用/环不会把编码器转死**。
+local function EncodeValue(value, out, ctx)
     local kind = type(value)
     if value == nil then
         out[#out + 1] = "n"
     elseif kind == "boolean" then
         out[#out + 1] = value and "b1" or "b0"
     elseif kind == "number" then
-        out[#out + 1] = "d" .. tostring(value) .. ";"
+        out[#out + 1] = EncodeNumber(value)
     elseif kind == "string" then
         out[#out + 1] = "s" .. tostring(#value) .. ":" .. value
     elseif kind == "table" then
+        local seenId = ctx.seen[value]
+        if seenId ~= nil then
+            out[#out + 1] = "r" .. tostring(seenId) .. ";"     -- 共享/环：写成引用
+            return true
+        end
+        ctx.nextId = ctx.nextId + 1
+        local id = ctx.nextId
+        ctx.seen[value] = id
         local count = 0
         for _ in pairs(value) do count = count + 1 end
-        out[#out + 1] = "t" .. tostring(count) .. ":{"
+        local className = nil
+        local meta = getmetatable(value)
+        if type(meta) == "table" and type(meta.__mmtclass) == "string" then
+            className = meta.__mmtclass                            -- 只认显式的类名标记
+        end
+        out[#out + 1] = "t" .. tostring(count) .. ":"
+            .. (className ~= nil and ("[" .. className .. "]") or "") .. "{"
+        if className ~= nil then ctx.classes[className] = true end   -- 别拿 nil 当下标
         for key, item in pairs(value) do
-            EncodeValue(key, out)
-            EncodeValue(item, out)
+            local okKey, errKey = EncodeValue(key, out, ctx)
+            if not okKey then return false, errKey end
+            local okVal, errVal = EncodeValue(item, out, ctx)
+            if not okVal then return false, errVal end
         end
         out[#out + 1] = "}"
     else
+        -- 函数 / userdata / thread：明确报错，别静默丢字段（“还原不出的东西要说出来”）
         return false, "不支持的类型: " .. tostring(kind)
     end
     return true
 end
 
-local function DecodeValue(text, pos)
+local function DecodeValue(text, pos, ctx)
     local tag = text:sub(pos, pos)
     if tag == "" then return nil, nil, "数据提前结束" end
     if tag == "n" then return nil, pos + 1 end
@@ -136,10 +182,20 @@ local function DecodeValue(text, pos)
         if bit == "0" then return false, pos + 2 end
         return nil, nil, "布尔值坏了"
     end
+    if tag == "r" then
+        local stop = text:find(";", pos + 1, true)
+        if stop == nil then return nil, nil, "引用没有结束符" end
+        local id = tonumber(text:sub(pos + 1, stop - 1))
+        if id == nil then return nil, nil, "引用编号非法" end
+        if ctx.refs[id] == nil then
+            return nil, nil, "引用指向一个还没出现的表（编号 " .. tostring(id) .. "）"
+        end
+        return ctx.refs[id], stop + 1
+    end
     if tag == "d" then
         local stop = text:find(";", pos + 1, true)
         if stop == nil then return nil, nil, "数字没有结束符" end
-        local number = tonumber(text:sub(pos + 1, stop - 1))
+        local number = DecodeNumber(text:sub(pos + 1, stop - 1))
         if number == nil then return nil, nil, "数字解析失败" end
         return number, stop + 1
     end
@@ -154,67 +210,157 @@ local function DecodeValue(text, pos)
         return text:sub(start, finish), finish + 1
     end
     if tag == "t" then
-        local brace = text:find("{", pos + 1, true)
-        if brace == nil then return nil, nil, "表格没有起始花括号" end
-        -- 格式是 t<个数>:{ —— 括号前还有一个冒号，得减掉它
-        -- （第一版忘了减，于是所有表格都解不出来；dp_harness 第 1 组当场抓到）
-        local count = tonumber(text:sub(pos + 1, brace - 2))
+        -- 格式：t<个数>:[<类名>]{键 值 …}；类名可省
+        local colon = text:find(":", pos + 1, true)
+        if colon == nil then return nil, nil, "表格没有个数分隔符" end
+        local count = tonumber(text:sub(pos + 1, colon - 1))
         if count == nil then return nil, nil, "表格元素个数非法" end
+        local cursor = colon + 1
+        local className = nil
+        if text:sub(cursor, cursor) == "[" then
+            local close = text:find("]", cursor + 1, true)
+            if close == nil then return nil, nil, "类名没有结束方括号" end
+            className = text:sub(cursor + 1, close - 1)
+            cursor = close + 1
+        end
+        if text:sub(cursor, cursor) ~= "{" then return nil, nil, "表格没有起始花括号" end
         local result = {}
-        local cursor = brace + 1
+        ctx.nextId = ctx.nextId + 1
+        ctx.refs[ctx.nextId] = result          -- **先登记再填**：自引用/环才解得开
+        cursor = cursor + 1
         for _ = 1, count do
             local key, value, err
-            key, cursor, err = DecodeValue(text, cursor)
+            key, cursor, err = DecodeValue(text, cursor, ctx)
             if err ~= nil then return nil, nil, "表格键: " .. err end
-            value, cursor, err = DecodeValue(text, cursor)
+            value, cursor, err = DecodeValue(text, cursor, ctx)
             if err ~= nil then return nil, nil, "表格值: " .. err end
             result[key] = value
         end
         if text:sub(cursor, cursor) ~= "}" then return nil, nil, "表格没有结束花括号" end
+        if className ~= nil then
+            local class = m_Classes[className]
+            if class ~= nil and class.OnDecode ~= nil then
+                local ok, applied = pcall(class.OnDecode, result)
+                if not ok then
+                    table.insert(ctx.classErrors, className .. ": " .. tostring(applied))
+                end
+            else
+                -- 元表类没登记：**如实报告**，别假装还原成功
+                table.insert(ctx.droppedClasses, className)
+            end
+            result.__mmtclass = nil                -- 别把标记本身留在数据里
+        end
         return result, cursor + 1
     end
     return nil, nil, "不认识的标记 '" .. tostring(tag) .. "'"
 end
 
+-- 元表类登记：`__mmtclass = "名字"` 的表，解码时交给这里登记的 OnDecode 还原。
+-- 【为什么只做这么点】元表里的函数没法序列化（也不该序列化），
+-- 所以协议只保存“类名”，由使用方在解码侧把行为装回去；没登记的类会**如实报出来**，
+-- 绝不让“以为还原了、其实没有”这种情况静默通过。
+function M.RegisterClass(name, handler)
+    if type(name) ~= "string" or name == "" then return false, "类名非法" end
+    m_Classes[name] = handler or {}
+    return true
+end
+
+function M.GetLastDecodeReport()
+    return m_LastDecodeReport
+end
+
 -- 对外：编码成负载串 / 从负载串解回
 function M.EncodeValue(value)
+    local ctx = { seen = {}, nextId = 0, classes = {} }
     local out = {}
-    local ok, err = EncodeValue(value, out)
+    local ok, err = EncodeValue(value, out, ctx)
     if not ok then return nil, err end
     return table.concat(out)
 end
 
 function M.DecodeValue(text)
-    local value, pos, err = DecodeValue(tostring(text or ""), 1)
-    if err ~= nil then return nil, err end
-    if pos <= #tostring(text or "") then
+    text = tostring(text or "")
+    local ctx = { refs = {}, nextId = 0, droppedClasses = {}, classErrors = {} }
+    local value, pos, err = DecodeValue(text, 1, ctx)
+    if err ~= nil then
+        m_LastDecodeReport = { Error = err }
+        return nil, err
+    end
+    if pos <= #text then
+        m_LastDecodeReport = { Error = "尾部多余内容" }
         return nil, "数据尾部有多余内容（第 " .. tostring(pos) .. " 字节起）"
     end
+    m_LastDecodeReport = { Refs = ctx.nextId, DroppedClasses = ctx.droppedClasses,
+                           ClassErrors = ctx.classErrors }
     return value
 end
 
--- 信封：MMT1|生命周期|版本|写入时间|类型|负载长度|负载
-local function BuildEnvelope(spec, value)
+-- 校验和（FNV-1a 32 位）：用来发现**静默损坏**——长度对得上、内容被改了的那种。
+-- 丢片/截断靠长度校验，改字节靠它。
+local function Checksum(text)
+    local hash = 2166136261
+    for i = 1, #text do
+        hash = hash % 4294967296
+        hash = (hash * 16777619 + text:byte(i)) % 4294967296
+    end
+    return string.format("%08x", hash)
+end
+
+M.Checksum = Checksum
+
+-- 信封 v2：MMT2|生命周期|版本|写入时间|类型|<名字长度>:<数据集名>|<校验和>|<负载长度>|<负载>
+--   * 带**数据集名** ⇒ 读到别人家的数据能当作“误领”报出来（Load 会比对登记名/通配匹配）
+--   * 带**校验和** ⇒ 内容被改一个字节也认得出来
+--   * 仍然能读 v1 老信封（没有名字与校验和 ⇒ 只做长度校验，并在解码报告里标注）
+local function BuildEnvelope(spec, value, datasetName)
     local payload, err = M.EncodeValue(value)
     if payload == nil then return nil, err end
     local stamp = tostring(TryCall(function() return os.time() end) or 0)
-    local head = table.concat({ DP_ENVELOPE_PREFIX, tostring(spec.Lifecycle), tostring(spec.Version),
-        stamp, type(value), tostring(#payload) }, "|")
-    return head .. "|" .. payload
+    local name = tostring(datasetName or spec.Name or "")
+    local head = table.concat({ DP_ENVELOPE_PREFIX_V2, tostring(spec.Lifecycle),
+        tostring(spec.Version), stamp, type(value),
+        tostring(#name) .. ":" .. name, Checksum(payload) }, "|")
+    return head .. "|" .. tostring(#payload) .. "|" .. payload
 end
 
 local function ParseEnvelope(text)
     if type(text) ~= "string" then return nil, "不是字符串" end
+    local prefix = text:match("^([^|]*)|")
+    if prefix == DP_ENVELOPE_PREFIX_V2 then
+        local a, b, c, d, e, f = text:match("^([^|]*)|([^|]*)|([^|]*)|([^|]*)|([^|]*)|([^|]*)|")
+        if a == nil then return nil, "信封头不完整" end
+        local nameLen, name = f:match("^(%d+):(.*)$")
+        if nameLen == nil then return nil, "数据集名段非法" end
+        name = name:sub(1, tonumber(nameLen))
+        local headLen = #a + #b + #c + #d + #e + #f + 7
+        local cursor = headLen
+        local checkEnd = text:find("|", cursor, true)
+        if checkEnd == nil then return nil, "信封缺校验和段" end
+        local checksum = text:sub(cursor, checkEnd - 1)
+        local lenEnd = text:find("|", checkEnd + 1, true)
+        if lenEnd == nil then return nil, "信封缺负载长度段" end
+        local declared = tonumber(text:sub(checkEnd + 1, lenEnd - 1))
+        if declared == nil then return nil, "负载长度非法" end
+        local payload = text:sub(lenEnd + 1)
+        if #payload ~= declared then
+            return nil, "负载长度不符（头写 " .. tostring(declared) .. "，实到 "
+                .. tostring(#payload) .. "）"
+        end
+        return { Format = "v2", Lifecycle = b, Version = tonumber(c), Stamp = tonumber(d),
+                 ValueType = e, Name = name, Checksum = checksum, Payload = payload }
+    end
+    -- v1（老格式）：6 段头 + 负载
     local a, b, c, d, e, f = text:match("^([^|]*)|([^|]*)|([^|]*)|([^|]*)|([^|]*)|([^|]*)|")
     if a == nil then return nil, "信封头不完整" end
     if a ~= DP_ENVELOPE_PREFIX then return nil, "不是本协议的封包（" .. tostring(a) .. "）" end
     local length = tonumber(f)
     if length == nil then return nil, "负载长度非法" end
-    local payload = text:sub(#a + #b + #c + #d + #e + #f + 7)   -- 6 个分隔符 + 6 段
+    local payload = text:sub(#a + #b + #c + #d + #e + #f + 7)
     if #payload ~= length then
         return nil, "负载长度不符（头写 " .. tostring(length) .. "，实到 " .. tostring(#payload) .. "）"
     end
-    return { Lifecycle = b, Version = tonumber(c), Stamp = tonumber(d), ValueType = e, Payload = payload }
+    return { Format = "v1", Lifecycle = b, Version = tonumber(c), Stamp = tonumber(d),
+             ValueType = e, Payload = payload }
 end
 
 M.BuildEnvelope = BuildEnvelope
@@ -371,7 +517,8 @@ function M.Save(name, value, options)
     if not ChannelAvailable(spec.Channel) then
         return false, "通道不可用: " .. tostring(spec.Channel)
     end
-    local envelope, err = BuildEnvelope(spec, value)
+    -- 信封里写**真实键名**（不是登记表里的通配名）：读的时候靠它认“这是不是给我的数据”
+    local envelope, err = BuildEnvelope(spec, value, name)
     if envelope == nil then return false, err end
     if spec.MaxBytes ~= nil and #envelope > spec.MaxBytes then
         Log("写入超限：" .. name .. " " .. tostring(#envelope) .. " > " .. tostring(spec.MaxBytes)
@@ -400,8 +547,44 @@ function M.Load(name, options)
     if text == nil then return nil, readErr or "没有这份数据" end
     local envelope, parseErr = ParseEnvelope(text)
     if envelope == nil then return nil, parseErr end
+
+    -- ① 校验和：内容被改过/传丢了一段（长度还对得上）也要认出来
+    if envelope.Checksum ~= nil then
+        local actual = Checksum(envelope.Payload)
+        if actual ~= envelope.Checksum then
+            Log("校验和不符：" .. name .. "（头写 " .. tostring(envelope.Checksum)
+                .. "，实算 " .. tostring(actual) .. "）—— 数据被改过或传坏了")
+            return nil, "校验和不符（数据损坏或丢包）"
+        end
+    end
+
+    -- ② 误领：信封里写着这份数据是给谁的；不是这个键（也不匹配通配）就拒收
+    if envelope.Name ~= nil and envelope.Name ~= "" and envelope.Name ~= name then
+        local expected = false
+        if spec.Name:sub(-1) == "*" then
+            local prefix = spec.Name:sub(1, #spec.Name - 1)
+            expected = (envelope.Name:sub(1, #prefix) == prefix)
+        end
+        if not expected then
+            Log("误领拦截：" .. name .. " 里读到的是给 " .. tostring(envelope.Name) .. " 的数据")
+            return nil, "误领：这份数据属于 " .. tostring(envelope.Name) .. "，不是 " .. name
+        end
+    end
+
     local value, decodeErr = M.DecodeValue(envelope.Payload)
     if decodeErr ~= nil then return nil, decodeErr end
+
+    -- ③ 元表类没登记/装不回去：如实报出来（别让“以为还原了”静默通过）
+    local decodeReport = M.GetLastDecodeReport()
+    if decodeReport ~= nil then
+        for _, className in ipairs(decodeReport.DroppedClasses or {}) do
+            Log("警告：" .. name .. " 里的表带元表类 '" .. tostring(className)
+                .. "'，但解码侧没登记 ⇒ 只还原了字段，行为没装回去")
+        end
+        for _, classErr in ipairs(decodeReport.ClassErrors or {}) do
+            Log("警告：类还原失败 " .. tostring(classErr))
+        end
+    end
     if spec.Type ~= nil and spec.Type ~= "any" and type(value) ~= spec.Type then
         return nil, "类型不符（登记为 " .. tostring(spec.Type) .. "，实际 " .. tostring(type(value)) .. "）"
     end
