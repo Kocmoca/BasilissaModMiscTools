@@ -1480,6 +1480,17 @@ API_Verification_Status.md §18.4/§18.6。
 
 换图这一步**不写永久数据**（`sg_head` 只在正常存档时写）——桩测试第 14 节盯着这条。
 
+**切换的判据（实机 2026-10-06 教训）**：`Events.SaveComplete` 是全局事件、认不出是哪一份存档，
+**不能用它判断“原档写好了”**。唯一判据是**存档列表里查得到**：
+
+    ModMiscSaveGraph.GetSaveState()      -- { NodeId, Name, Attempts, Verified, Failed, Elapsed, SaveCompleteSeen }
+    ModMiscSaveGraph.VerifySaveNow(fn)   -- 查一次列表；查到 ⇒ Verified=true 并回调
+    ModMiscSaveGraph.RetrySave(fn)       -- 未确认时重发一次（只一次）
+    ModMiscSaveGraph.SwitchNow(reason)   -- **未确认一律拒绝**（返回 false, "原档还没确认落盘"）
+    ModMiscSaveGraph.MarkSaveFailed()    -- 面板等够了两次之后标记失败
+
+面板按帧每 ~2 秒查一次；40 秒未确认重发一次；再 40 秒仍无 ⇒ 报“本次没有切换”。
+
 信封 v2：`MMT2|<生命周期>|<版本>|<写入时间>|<类型>|<名字长度>:<数据集名>|<校验和>|<负载长度>|<负载>`
 （v1 老信封仍可读，只做长度校验）。名字用来拦**误领**（读到别人家的数据），
 校验和（FNV-1a 32）用来拦**静默损坏**（长度对得上、内容被改）。

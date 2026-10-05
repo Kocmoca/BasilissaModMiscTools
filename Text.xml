@@ -642,6 +642,15 @@
 		<Row Tag="LOC_MODMISC_SAVEPANEL_TITLE">
 			<Text>Saves &amp; Map Switch</Text>
 		</Row>
+		<Row Tag="LOC_MODMISC_SAVEPANEL_SAVE_VERIFYING">
+			<Text>Checking the save list... {1_Name} ({2_Seconds}s)</Text>
+		</Row>
+		<Row Tag="LOC_MODMISC_SAVEPANEL_SAVE_VERIFIED">
+			<Text>Original save confirmed on disk - switching shortly (tap Switch map to go now)</Text>
+		</Row>
+		<Row Tag="LOC_MODMISC_SAVEPANEL_SAVE_FAILED">
+			<Text>Could not confirm the original save after 2 tries - nothing was switched</Text>
+		</Row>
 		<Row Tag="LOC_MODMISC_SAVEPANEL_TOOLTIP">
 			<Text>Open the save-tree / map-switch panel</Text>
 		</Row>

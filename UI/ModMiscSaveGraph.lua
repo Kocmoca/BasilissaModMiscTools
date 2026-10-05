@@ -1168,6 +1168,9 @@ local function BuildNextNode()
 end
 
 local m_SavePending = nil
+-- 存档确认状态：SaveComplete 只记日志，**能不能切换以“列表里查得到”为准**
+-- （实机 2026-10-06：面板说存好了、列表里却没有 —— 就是错信了 SaveComplete）
+local m_SaveState = nil
 
 local function OnSaveGraphSaveComplete(...)
     if m_SavePending == nil then return end
@@ -1205,25 +1208,17 @@ local function OnSaveGraphSaveComplete(...)
         ClearPendingBranch("已被本局第一次存档消费")
     end
 
-    -- ⚠️ 先回调 OnSaved：换图就靠它立刻重开，**绝不能**再串一层扫描（扫描不回包 = 换图不跳转，
-    -- 授权者 2026-10-05 实测的那个问题）。found 传 nil 表示“落盘还没复查”。
-    if pending.OnSaved ~= nil then
-        pcall(pending.OnSaved, nil, pending.Node)
+    -- 【2026-10-06 实机教训】**SaveComplete 不等于“我们这份档写好了”**：
+    --   它是所有存档（含 ModMiscStore 那些小配置档）共用的事件，回调参数只有一个数字、认不出是谁；
+    --   换图前刚好写了交接单（小配置档）⇒ 很容易把**它的回执**当成原档写完 ⇒ 提前重开 ⇒
+    --   原档根本没落盘（授权者实测：面板说存好了，存档列表里却没有）。
+    --   所以这里**只记日志**，能不能切换一律以“存档列表里查得到”为准（见 API.VerifySaveNow）。
+    if m_SaveState ~= nil then
+        m_SaveState.SaveCompleteSeen = true
+        m_SaveState.SaveCompleteArg = tostring(saveResult)
     end
-
-    -- 复查列表只用来打日志 + 给可选的 OnChecked 回调（文件真的落盘了才会出现在列表里，
-    -- UI.QuerySaveGameList 是 [已验证可用] 接口）
-    API.Refresh(function(nodes)
-        local found = false
-        for _, node in ipairs(nodes) do
-            if node.Id == pending.Node.Id then found = true break end
-        end
-        Log("落盘复查：节点 " .. tostring(pending.Node.Id)
-            .. (found and " 已在存档列表里" or " 没在列表里（可能还没写完 / 写失败）"))
-        if pending.OnChecked ~= nil then
-            pcall(pending.OnChecked, found, pending.Node)
-        end
-    end)
+    Log("SaveComplete 回执：" .. tostring(saveResult) .. "（节点 " .. tostring(pending.Node.Id)
+        .. "）—— 注意：这个事件认不出是哪一份存档，是否落盘以列表复查为准")
 end
 
 -- 按既定节点写一档：写 CustomData 身份 → Network.SaveGame → 等 SaveComplete → 复查落盘
@@ -1282,10 +1277,19 @@ local function SaveNode(node, opts)
     saveFile.IsAutosave = false
     saveFile.IsQuicksave = false
 
+    m_SaveState = {
+        Node = node,
+        NewName = name,
+        Attempts = ((options.Attempts ~= nil) and tonumber(options.Attempts)) or 1,
+        Verified = false,
+        Failed = false,
+        StartedAt = ReadClock() or 0,
+        OnVerified = options.OnVerified,   -- 列表里查到了才回调（面板据此开放切换）
+    }
     m_SavePending = {
         Node = node,
-        OnSaved = options.OnSaved,      -- SaveComplete 一到就回调（found 为 nil = 还没复查落盘）
-        OnChecked = options.OnChecked,  -- 存档列表复查完再回调一次（found = 真的在列表里）
+        OnSaved = options.OnSaved,      -- 已废弃（SaveComplete 认不出是谁）；保留字段只为兼容老调用
+        OnChecked = options.OnChecked,  -- 同上
         Reason = options.Reason,
         StartedAt = ReadClock() or 0,
         -- 原地覆盖：旧档等这一笔写成功之后再删（写失败也不丢旧档）
@@ -1386,14 +1390,11 @@ function API.PrepareSwitch(options)
 
     local started = SaveNode(node, {
         Reason = "switch",
-        OnSaved = function(found, checkedNode)
-            Log("换图：原档已回执（" .. tostring(node.Id) .. "）")
-            if opts.OnSaved ~= nil then pcall(opts.OnSaved, found, checkedNode or node) end
-        end,
-        OnChecked = function(found, checkedNode)
-            Log("换图：原档落盘复查 " .. tostring(checkedNode.Id)
-                .. (found and " 已在存档列表里" or " 没在列表里（可能还没写完）"))
-            if opts.OnChecked ~= nil then pcall(opts.OnChecked, found, checkedNode or node) end
+        -- 只有“列表里查到了”才回调；SaveComplete / 猜时间都不算
+        OnVerified = function(found, checkedNode)
+            Log("换图：原档已确认落盘（" .. tostring(checkedNode ~= nil and checkedNode.Id or node.Id)
+                .. " 在存档列表里）")
+            if opts.OnVerified ~= nil then pcall(opts.OnVerified, found, checkedNode or node) end
         end,
     })
     if not started then
@@ -1401,6 +1402,82 @@ function API.PrepareSwitch(options)
         return false, "存档请求没发出去"
     end
     return true, node.Id
+end
+
+-- ===========================================================================
+-- 换图存档的**唯一判据**：这份档到底有没有出现在存档列表里
+--
+-- SaveComplete 认不出是哪一份存档（见上面那次实机教训），所以不要用它判断。
+-- 面板按帧调 VerifySaveNow：查到了 ⇒ 可以切换；超时 ⇒ 重发一次；还不行 ⇒ 老实报错。
+-- ===========================================================================
+
+-- 当前存档状态（面板用它显示“正在确认落盘…”）
+function API.GetSaveState()
+    if m_SaveState == nil then return nil end
+    local now = ReadClock()
+    return {
+        NodeId = m_SaveState.Node ~= nil and m_SaveState.Node.Id or nil,
+        Name = m_SaveState.NewName,
+        Attempts = m_SaveState.Attempts,
+        Verified = m_SaveState.Verified,
+        Failed = m_SaveState.Failed,
+        Elapsed = (now ~= nil and m_SaveState.StartedAt ~= nil)
+            and (now - m_SaveState.StartedAt) or nil,
+        SaveCompleteSeen = m_SaveState.SaveCompleteSeen,
+    }
+end
+
+-- 查一次存档列表：在 ⇒ 标记已确认；不在 ⇒ 保持待确认（面板据此决定重发或放弃）
+function API.VerifySaveNow(onDone)
+    if m_SaveState == nil or m_SaveState.Node == nil then
+        if onDone ~= nil then pcall(onDone, false, "没有待确认的存档") end
+        return false
+    end
+    local wantedId = m_SaveState.Node.Id
+    API.Refresh(function(nodes)
+        local found = false
+        for _, node in ipairs(nodes) do
+            if node.Id == wantedId then found = true break end
+        end
+        if found then
+            local firstTime = (m_SaveState.Verified ~= true)
+            m_SaveState.Verified = true
+            Log("落盘确认：节点 " .. tostring(wantedId) .. " 已在存档列表里（"
+                .. tostring(m_SaveState.NewName) .. "）⇒ 可以切换")
+            if firstTime and m_SaveState.OnVerified ~= nil then
+                pcall(m_SaveState.OnVerified, true, m_SaveState.Node)
+            end
+        else
+            Log("落盘确认：节点 " .. tostring(wantedId) .. " 还不在列表里（第 "
+                .. tostring(m_SaveState.Attempts) .. " 次尝试）")
+        end
+        if onDone ~= nil then pcall(onDone, found, m_SaveState.Node) end
+    end)
+    return true
+end
+
+-- 重发一次存档（面板在超时后调一次；再失败就老实报错，不做无限重试）
+function API.RetrySave(onVerified)
+    if m_SaveState == nil or m_SaveState.Node == nil then
+        return false, "没有可重发的存档"
+    end
+    local node = m_SaveState.Node
+    local attempts = (m_SaveState.Attempts or 1)
+    Log("落盘确认超时，重发存档（第 " .. tostring(attempts + 1) .. " 次）")
+    m_SaveState = nil
+    m_SavePending = nil
+    local ok, err = SaveNode(node, { Reason = "retry", OnVerified = onVerified })
+    return ok, err
+end
+
+-- 面板等够了两次都没确认到：标记失败（之后要切换必须重新走一次换图）
+function API.MarkSaveFailed()
+    if m_SaveState ~= nil then
+        m_SaveState.Failed = true
+        Log("存档确认失败：节点 " .. tostring(m_SaveState.Node ~= nil and m_SaveState.Node.Id or "?")
+            .. "（" .. tostring(m_SaveState.NewName) .. "）—— 不做无限重试，等玩家手动重来")
+    end
+    return true
 end
 
 -- 原档是不是还在写（还在写就先别重开；超时后自愈，见 MODMISC_SAVE_PENDING_TIMEOUT）
@@ -1423,6 +1500,16 @@ end
 
 -- 第二步：**在按钮回调里直接重开**（这是唯一被实机证明可行的调用方式）
 function API.SwitchNow(reason)
+    -- 【硬门槛】必须先在存档列表里见到这份原档才能重开。
+    -- 之前靠 SaveComplete + 倒计时“猜”它写完了，实机证明会猜错（列表里根本没有那份档），
+    -- 于是“声称留下了存档、实际没有” —— 现在不确认就不许切。
+    if m_SaveState ~= nil and m_SaveState.Verified ~= true then
+        local state = API.GetSaveState() or {}
+        Log("拒绝切换：原档还没确认落盘（节点 " .. tostring(state.NodeId)
+            .. "，第 " .. tostring(state.Attempts) .. " 次尝试，已等 "
+            .. tostring(state.Elapsed) .. " 秒）")
+        return false, "原档还没确认落盘"
+    end
     if Network == nil or Network.RestartGame == nil then
         return false, "Network.RestartGame 不可用（换图只能靠它，见第 42 条）"
     end

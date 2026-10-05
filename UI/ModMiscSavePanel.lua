@@ -528,24 +528,68 @@ end
 
 -- 换图按钮：第一次 = 存原档，第二次 = 直接重开
 -- 按帧推进：倒计时显示 + 到点自动重开
+-- 前置声明：ArmAutoRestart 要用它把按帧回调挂上（Lua 5.1 必须先声明再使用）
+local EnsureSwitchTick = nil
+
+-- 倒计时：**只在确认落盘后**调用（ArmAutoRestart 必须先于 TickAutoSwitch 声明 ——
+-- Lua 5.1 里 local function 不前置声明的话，函数体里的引用会被解析成全局 nil）
+local function ArmAutoRestart(delaySeconds)
+    if m_AutoRestartAt ~= nil then return end       -- 已经排上了
+    local now = os.time()
+    if now == nil then return end
+    m_AutoRestartAt = now + (tonumber(delaySeconds) or SWITCH_AUTO_DELAY)
+    EnsureSwitchTick()
+    Log("自动换图：原档已确认落盘，倒计时开始（" .. tostring(delaySeconds or SWITCH_AUTO_DELAY) .. " 秒）")
+end
+
+-- 换图状态机（**简化后只剩三件事**：等确认 → 确认了倒计时 → 到点重开）
+--   为什么要等确认：SaveComplete 认不出是哪一份存档（换图前刚好写了交接单那个小配置档），
+--   之前靠它 + 一个盲倒计时“猜”原档写完了，实机结果就是“面板说存好了、存档列表里却没有”。
+--   现在唯一的判据是**存档列表里查得到**；超时只重发一次，再不行就老实说失败。
 local function TickAutoSwitch(delta)
-    if m_AutoRestartAt ~= nil then
+    local state = ModMiscSaveGraph.GetSaveState ~= nil and ModMiscSaveGraph.GetSaveState() or nil
+    if state ~= nil and state.Verified ~= true and state.Failed ~= true then
+        m_SaveWaitFrames = (m_SaveWaitFrames or 0) + 1
+        m_CheckSaveFrames = (m_CheckSaveFrames or 0) + 1
+        -- 每 ~2 秒查一次列表（帧率按 30 估）
+        if m_CheckSaveFrames >= 60 then
+            m_CheckSaveFrames = 0
+            ModMiscSaveGraph.VerifySaveNow(function(found)
+                if found then
+                    m_SaveWaitFrames = 0
+                    SetStatus(Locale.Lookup("LOC_MODMISC_SAVEPANEL_SAVE_VERIFIED"))
+                    ArmAutoRestart(SWITCH_AUTO_DELAY)
+                end
+            end)
+        end
+        SetStatus(Locale.Lookup("LOC_MODMISC_SAVEPANEL_SAVE_VERIFYING",
+            tostring(state.Name or "?"), tostring(math.floor((state.Elapsed or 0)))))
+        -- 等太久（40 秒）⇒ 重发一次；再等 40 秒还没有 ⇒ 老实报错，不再盲切
+        if (state.Elapsed or 0) > 40 then
+            if (state.Attempts or 1) < 2 then
+                m_SaveWaitFrames = 0
+                ModMiscSaveGraph.RetrySave(function(found)
+                    if found then ArmAutoRestart(SWITCH_AUTO_DELAY) end
+                end)
+            else
+                Log("换图：原档两次都没能确认落盘，停止自动切换（等玩家手动重试）")
+                SetStatus(Locale.Lookup("LOC_MODMISC_SAVEPANEL_SAVE_FAILED"))
+                m_SaveWaitFrames = nil
+                ModMiscSaveGraph.MarkSaveFailed()
+            end
+        end
+    elseif m_AutoRestartAt ~= nil then
         local now = os.time()
         if now == nil then
             m_AutoRestartAt = nil
         elseif now >= m_AutoRestartAt then
             m_AutoRestartAt = nil
-            m_AutoRestartTries = m_AutoRestartTries + 1
-            Log("自动换图：发出重开（第 " .. tostring(m_AutoRestartTries) .. " 次）")
+            Log("自动换图：原档已确认落盘，发出重开")
             SetStatus(Locale.Lookup("LOC_MODMISC_SAVEPANEL_AUTO_RESTART"))
-            local ok = pcall(ModMiscSaveGraph.SwitchNow, "自动（倒计时结束）")
-            if (not ok) or m_AutoRestartTries >= SWITCH_AUTO_MAX_TRIES then
-                if not ok then
-                    SetStatus(Locale.Lookup("LOC_MODMISC_SAVEPANEL_AUTO_FAILED"))
-                end
-            else
-                -- 还活着就说明没真重开：再等一会儿给第二次机会
-                m_AutoRestartAt = now + SWITCH_AUTO_RETRY_DELAY
+            local ok, err = ModMiscSaveGraph.SwitchNow("自动（确认落盘后倒计时结束）")
+            if not ok then
+                Log("自动换图：重开被拒 -> " .. tostring(err) .. "（等玩家手动点）")
+                SetStatus(Locale.Lookup("LOC_MODMISC_SAVEPANEL_AUTO_FAILED"))
             end
         else
             SetStatus(Locale.Lookup("LOC_MODMISC_SAVEPANEL_AUTO_COUNTDOWN",
@@ -555,7 +599,7 @@ local function TickAutoSwitch(delta)
     ContextPtr:RequestRefresh()
 end
 
-local function EnsureSwitchTick()
+EnsureSwitchTick = function()
     if m_SwitchTickArmed then return end
     m_SwitchTickArmed = true
     ContextPtr:SetRefreshHandler(TickAutoSwitch)
@@ -563,20 +607,12 @@ local function EnsureSwitchTick()
     Log("自动换图倒计时回调已挂")
 end
 
-local function ArmAutoRestart(delaySeconds)
-    if m_AutoRestartAt ~= nil then return end       -- 已经排上了（OnSaved 与 OnChecked 谁先到都行）
-    local now = os.time()
-    if now == nil then return end
-    m_AutoRestartAt = now + (tonumber(delaySeconds) or SWITCH_AUTO_DELAY)
-    EnsureSwitchTick()
-    Log("自动换图：倒计时开始（" .. tostring(delaySeconds or SWITCH_AUTO_DELAY) .. " 秒）")
-end
-
 local function DoSwitchMap()
     -- 第二步：原档已存好 → 在按钮回调里直接重开
     if ModMiscSaveGraph.HasPendingSwitch() then
-        if ModMiscSaveGraph.IsSwitchSaveInFlight() then
-            -- 原档还在写：先别重开（可能把存档截断）
+        local state = ModMiscSaveGraph.GetSaveState ~= nil and ModMiscSaveGraph.GetSaveState() or nil
+        if state ~= nil and state.Verified ~= true then
+            -- 原档还没确认落盘：先别重开（免得切过去却丢档）
             Report(Locale.Lookup("LOC_MODMISC_SAVEPANEL_SWITCH_WAIT_SAVE"),
                 Locale.Lookup("LOC_MODMISC_SAVEPANEL_SWITCH_WAIT_SAVE_DETAIL"))
             return
@@ -588,15 +624,13 @@ local function DoSwitchMap()
         return
     end
 
-    -- 第一步：存原档 + 记待接分支
+    -- 第一步：记交接单 + 发存档；**倒计时只在“列表里确认到了”之后才开始**（见 TickAutoSwitch）
     m_AutoRestartTries = 0
+    m_SaveWaitFrames = 0
+    m_CheckSaveFrames = 59        -- 下一帧就去查一次
     local ok, idOrErr = ModMiscSaveGraph.PrepareSwitch({
-        -- 落盘复查确认了就开始倒计时；万一复查不来，SaveComplete 之后也给个更长的兜底
-        OnChecked = function(found)
+        OnVerified = function(found)
             if found then ArmAutoRestart(SWITCH_AUTO_DELAY) end
-        end,
-        OnSaved = function()
-            ArmAutoRestart(SWITCH_AUTO_DELAY + 7)
         end,
     })
     if not ok then

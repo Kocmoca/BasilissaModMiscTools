@@ -642,6 +642,15 @@
 		<Replace Tag="LOC_MODMISC_SAVEPANEL_TITLE" Language="zh_Hans_CN">
 			<Text>存档与换图</Text>
 		</Replace>
+		<Replace Tag="LOC_MODMISC_SAVEPANEL_SAVE_VERIFYING" Language="zh_Hans_CN">
+			<Text>正在确认原档落盘… {1_Name}（{2_Seconds} 秒）</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_SAVEPANEL_SAVE_VERIFIED" Language="zh_Hans_CN">
+			<Text>原档已确认落盘 —— 稍后自动切换（点「换图」可立刻切）</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_SAVEPANEL_SAVE_FAILED" Language="zh_Hans_CN">
+			<Text>两次都没能确认原档落盘 —— 本次没有切换</Text>
+		</Replace>
 		<Replace Tag="LOC_MODMISC_SAVEPANEL_TOOLTIP" Language="zh_Hans_CN">
 			<Text>打开存档关系 / 换图面板</Text>
 		</Replace>
