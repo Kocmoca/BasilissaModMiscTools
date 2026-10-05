@@ -27,6 +27,12 @@ print("[ModMiscTool][SavePanel] panel loading build=" .. tostring(MODMISC_BUILD_
 local m_Registered = false
 local m_EntryIM = nil
 
+-- 换图兜底：SaveComplete 若一直不来（引擎不给回执 / 上下文被顶掉），
+-- 面板这个按帧回调会在超时后强制重开 —— 否则玩家点了换图什么都不会发生。
+local SWITCH_FALLBACK_SECONDS = 10
+local m_SwitchDeadline = nil
+local m_WatchdogArmed = false
+
 -- ===========================================================================
 -- 输出
 -- ===========================================================================
@@ -156,11 +162,19 @@ end
 local function DoSave()
     local ok, err = ModMiscSaveGraph.SaveCurrentGame({
         Reason = "manual",
+        -- ① SaveComplete 回执（立刻）：只报“已回执”，落盘复查是下一步
         OnSaved = function(found, node)
             if node == nil then
-                ReportError("Save", "存档未完成（跨存档存储不可用）")
+                ReportError("Save", "存档未完成")
                 return
             end
+            Report(Locale.Lookup("LOC_MODMISC_SAVEPANEL_SAVED", tostring(node.Id),
+                    Locale.Lookup("LOC_MODMISC_SAVEPANEL_SAVED_ACKED")),
+                tostring(node.RawName or ""))
+        end,
+        -- ② 存档列表复查（异步，可能不来）：来了就把最终结论换上并刷新关系树
+        OnChecked = function(found, node)
+            if node == nil then return end
             Report(Locale.Lookup("LOC_MODMISC_SAVEPANEL_SAVED", tostring(node.Id),
                     Locale.Lookup(found and "LOC_MODMISC_SAVEPANEL_SAVED_ON_DISK"
                         or "LOC_MODMISC_SAVEPANEL_SAVED_UNCONFIRMED")),
@@ -177,13 +191,40 @@ local function DoSave()
         Locale.Lookup("LOC_MODMISC_SAVEPANEL_SAVING_DETAIL"))
 end
 
+-- 按帧跑：到点还没跳转就强制重开（正常路径下 SaveComplete 一到就重开了，
+-- 上下文随之销毁，这个计时器也就没机会跑）
+local function SwitchWatchdog(delta)
+    if m_SwitchDeadline ~= nil then
+        local now = os.time()
+        if now ~= nil and now >= m_SwitchDeadline then
+            m_SwitchDeadline = nil
+            Log("换图兜底：等了 " .. tostring(SWITCH_FALLBACK_SECONDS) .. " 秒还没跳转，强制重开")
+            SetStatus(Locale.Lookup("LOC_MODMISC_SAVEPANEL_SWITCH_FALLBACK"))
+            pcall(ModMiscSaveGraph.ForceSwitch, "面板兜底计时器超时")
+        end
+    end
+    ContextPtr:RequestRefresh()
+end
+
+local function ArmSwitchWatchdog()
+    local now = os.time()
+    m_SwitchDeadline = (now ~= nil and now or 0) + SWITCH_FALLBACK_SECONDS
+    if not m_WatchdogArmed then
+        m_WatchdogArmed = true
+        ContextPtr:SetRefreshHandler(SwitchWatchdog)
+        ContextPtr:RequestRefresh()
+        Log("换图兜底计时器已挂（" .. tostring(SWITCH_FALLBACK_SECONDS) .. " 秒）")
+    end
+end
+
 local function DoSwitchMap()
     local ok, err = ModMiscSaveGraph.SwitchMap()
     if not ok then
         ReportError("SwitchMap", err)
         return
     end
-    -- 换图是链式的：等存储就绪 → 存原档 → 落盘确认 → 重开。面板把“正在做什么”讲清楚即可。
+    ArmSwitchWatchdog()
+    -- 换图是链式的：等存储就绪 → 存原档 → 回执 → 重开（超时兜底）。面板把“正在做什么”讲清楚。
     Report(Locale.Lookup("LOC_MODMISC_SAVEPANEL_SWITCHING"),
         Locale.Lookup("LOC_MODMISC_SAVEPANEL_SWITCHING_DETAIL"))
 end

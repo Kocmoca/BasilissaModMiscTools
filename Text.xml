@@ -562,6 +562,12 @@
 		<Row Tag="LOC_MODMISC_SAVEPANEL_ERROR">
 			<Text>{1_Action} failed: {2_Detail}</Text>
 		</Row>
+		<Row Tag="LOC_MODMISC_SAVEPANEL_SWITCH_FALLBACK">
+			<Text>No restart yet - forcing the map switch now.</Text>
+		</Row>
+		<Row Tag="LOC_MODMISC_SAVEPANEL_SAVED_ACKED">
+			<Text>SaveComplete received, checking the list...</Text>
+		</Row>
 </BaseGameText>
 
 

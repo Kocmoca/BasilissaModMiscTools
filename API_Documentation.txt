@@ -1200,7 +1200,22 @@ gameplay 侧要换图，走 `ExposedMembers.ModMiscToolScript.WorldBuilderAPI.Se
 失败兜底：`pending` 两次都没确认也照样重开（原档已保存，丢的只是一条边，不损坏任何档），
 日志里会写清楚。
 
-#### 3.13.3b 两个必须知道的实现细节（踩过）
+#### 3.13.3b 换图只等 SaveComplete（2026-10-05 第二轮修复）
+
+    「换图（先存原档）」：等存储就绪 → 写 pending（带时间戳）→ 存原档
+      → **SaveComplete 一到立刻 Network.RestartGame()** → 落盘复查只打日志
+    兜底：面板挂 10 秒计时器，到点还没跳就 ModMiscSaveGraph.ForceSwitch() 强制重开
+
+* 早先版本在 SaveComplete 之后又串了“扫列表确认落盘 → 复查 pending → 才重开”两层异步门，
+  任何一环不回包换图就永远不发生（授权者实测过）⇒ 现在**只等 SaveComplete**；
+* `SaveCurrentGame` 的两个回调分工：`OnSaved(found=nil, node)` = 回执（立刻）、
+  `OnChecked(found, node)` = 落盘复查结果（异步，可能不来，只用来更新界面文案）；
+* `sg_pending` 带写入时间戳，超过 900 秒判过期；`Events.ExitToMainMenu` 一到就清 pending ——
+  否则“退出到主界面另开新局”会把陈旧关系认成自己的来源（授权者实测过）；
+* `Game:SetProperty` 是**第三条通道**（授权者提议）：存档时和 CustomData 一起写本局节点身份，
+  随档走、新局不继承、只在 gameplay 可读；`GetCurrentNodeId()` 以 CustomData 优先、property 兜底。
+
+#### 3.13.3c 存储内存表是「每 context 一份」（踩过）
 
 1. **存储内存表是「每 context 一份」**：换图重开后面板是新上下文，`ModMiscStore` 的表是空的，
    不 `Refresh()` 就读不到 `sg_head` / `sg_pending` ⇒ 新局会把自己当树根（“分支不知道自己是谁”）。

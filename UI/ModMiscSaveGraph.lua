@@ -27,12 +27,23 @@
 --   每次写出 M 档就把主线头推进到它；B 档不动主线头。
 --
 -- 【换图流程】（一个按钮：先存原档 → 记关系 → 重开）
---   ① 存原档：按上面的规则自动判 M/B（在主线上就是 M），档名带好父子关系；
---   ② 写“待接分支”到跨存档存储（`sg_pending` = `<原档id>|B|<stamp>`）—— 因为重开后
---      CustomData 不继承，只有存储通道能把关系带过去；
---   ③ `Network.RestartGame()`；
---   ④ 新局进游戏 → 开局探针读到“待接分支”：本局第一次存档自动挂到那个原档下、算**分支**，
---      之后在这一局里继续存就是这条分支的延续。
+--   ① 先算好节点，**先写“待接分支”**到跨存档存储（`sg_pending` = `<原档id>|B|<stamp>|<epoch>`）
+--      —— 因为重开后 CustomData / 游戏状态都不继承，只有存储通道能把关系带过去；
+--   ② 存原档：按上面的规则自动判 M/B（在主线上就是 M），档名带好父子关系；
+--   ③ `Events.SaveComplete` 一回执就 `Network.RestartGame()`。
+--      ⚠️ 这里**只等 SaveComplete**：早先版本还串了一层“扫存档列表确认落盘”的异步门，
+--      那层门一旦不回调，换图就永远不会发生（授权者实测：点了换图没跳转）。
+--      扫列表现在只用来打日志；面板另挂 10 秒兜底计时器，SaveComplete 不来也能跳。
+--   ④ 新局进游戏 → 开局探针读到“待接分支”，**立刻固化成本局来源**（写进 CustomData 与
+--      Game:SetProperty 两条通道）并消费掉存储里那条；之后本局存档就挂到原档下、算**分支**。
+--
+-- 【三条通道各管什么】（2026-10-05 定稿）
+--   * 存档文件名（通道 C）：关系树的**唯一**持久载体，跨进程、跨存档都在；
+--   * CustomData + `Game:SetProperty`：**本局节点身份**，随档保存、读档还原、**新局不继承**
+--     （两条都写、互为校验；SetProperty 是授权者提议的单向通道：只能在 gameplay 读，
+--      前端拿不到，也不会像全局存储那样串到别的局）；
+--   * ModMiscStore（跨存档存储）：只用来跨过“重开”这一瞬间带**待接分支**，
+--     并且**带有效期**（默认 900 秒）+ 退出到主菜单即清 —— 否则新开的局会被误判成分支。
 --
 -- 【当前节点怎么知道】（关键）**随档保存**：存档前把节点身份写进 CustomData
 --   （`ModMiscSaveGraph_*`），CustomData 随普通存档序列化、读档原样还原（第 21 条）
@@ -66,6 +77,14 @@ local MODMISC_KIND_BRANCH = "B"
 -- 跨存档存储（ModMiscStore，通道 C）里的键
 local MODMISC_STORE_KEY_MAINLINE_HEAD = "sg_head"
 local MODMISC_STORE_KEY_PENDING = "sg_pending"
+
+-- 待接分支的有效期（秒）。换图重开是“写了 pending → 几秒后新局起来”，
+-- 正常远小于这个窗口；超过就当成陈旧数据丢掉 —— 否则“退出到主界面另开新局”
+-- 会被上一次没走完的换图误判成分支（授权者 2026-10-05 实测到的现象）。
+local MODMISC_PENDING_MAX_AGE = 900
+
+-- 存档失败/回执丢失时的自愈：超过这个秒数还没等到 SaveComplete 就丢弃待回执状态
+local MODMISC_SAVE_PENDING_TIMEOUT = 60
 
 -- CustomData 键前缀：随档保存，读档后就知道“我在哪个节点”
 local MODMISC_CD_PREFIX = "ModMiscSaveGraph_"
@@ -210,8 +229,62 @@ local function WriteCustomDataValue(key, value)
     return ok
 end
 
+-- ===========================================================================
+-- 单向通道：Game:SetProperty（gameplay 侧）
+--
+-- 授权者 2026-10-05 提议：把分支树的识别特征存进 **Game:SetProperty** ——
+--   * 它是**游戏状态**的一部分：存档即带走、读档原样还原；
+--   * 它**不会被带到新局**（新局状态是全新的）⇒ 不会像全局存储那样“串味”；
+--   * 它只在 gameplay 层可读，前端拿不到 —— 天然是**单向**的。
+-- 本 mod 已经把它封装好了（ModTool_DataStore.lua，键前缀 kocmoca_modmisctool_），
+-- 这里直接经 ExposedMembers.ModMiscToolScript.SetData / GetData 用，不再自己搓一遍。
+-- ===========================================================================
+local MODMISC_PROPERTY_KEY = "savegraph_node"
+
+local function GetGameplayMembers()
+    return ExposedMembers ~= nil and ExposedMembers.ModMiscToolScript or nil
+end
+
+local function BuildNodePayload(node)
+    return table.concat({
+        tostring(node.Id or ""),
+        tostring(node.Parent or MODMISC_SAVE_ROOT_PARENT),
+        tostring(node.Kind or MODMISC_KIND_BRANCH),
+        tostring(node.Stamp or ""),
+    }, "|")
+end
+
+local function WriteNodeProperty(node)
+    local members = GetGameplayMembers()
+    if members == nil or members.SetData == nil then return false, "gameplay SetData 不可用" end
+    local ok, err = pcall(members.SetData, MODMISC_PROPERTY_KEY, BuildNodePayload(node))
+    if not ok then return false, tostring(err) end
+    return true
+end
+
+local function ReadNodeProperty()
+    local members = GetGameplayMembers()
+    if members == nil or members.GetData == nil then return nil end
+    local ok, payload = pcall(members.GetData, MODMISC_PROPERTY_KEY)
+    if not ok or payload == nil or tostring(payload) == "" then return nil end
+    local id, parent, kind, stamp = tostring(payload):match("^([^|]*)|([^|]*)|([^|]*)|(.*)$")
+    if id == nil or id == "" then return nil end
+    return {
+        Id = id,
+        Parent = (parent ~= nil and parent ~= "" and parent ~= MODMISC_SAVE_ROOT_PARENT) and parent or nil,
+        Kind = (kind ~= nil and kind ~= "") and kind or MODMISC_KIND_BRANCH,
+        Stamp = stamp,
+    }
+end
+
+-- 本局是哪个节点：CustomData（UI 侧写入，已验证）优先，Game:SetProperty（gameplay 侧）
+-- 兜底 —— 两条通道写的是同一份身份，互为交叉校验。
 function API.GetCurrentNodeId()
-    return ReadCustomDataValue("NodeId")
+    local fromCustomData = ReadCustomDataValue("NodeId")
+    if fromCustomData ~= nil then return fromCustomData, "customdata" end
+    local fromProperty = ReadNodeProperty()
+    if fromProperty ~= nil then return fromProperty.Id, "property" end
+    return nil, "none"
 end
 
 -- “本局来源”：换图重开后，开局探针把待接分支固化到 CustomData 里（随档保存），
@@ -237,18 +310,34 @@ function API.GetMainlineHeadId()
     return tostring(value)
 end
 
--- 待接分支：`<原档id>|<kind>|<stamp>`（换图重开前写入，新局第一次存档消费掉）
+-- 待接分支：`<原档id>|<kind>|<stamp>|<写入的 epoch 秒>`
+-- （换图重开前写入，新局开局时固化成本局来源并消费掉）
 function API.GetPendingBranch()
     local store = GetStore()
     if store == nil or store.Get == nil then return nil end
     local value = store.Get(MODMISC_STORE_KEY_PENDING)
     if value == nil or tostring(value) == "" then return nil end
-    local parent, kind, stamp = tostring(value):match("^([^|]+)|([^|]*)|(.*)$")
+    local parent, kind, stamp, writtenAt = tostring(value):match("^([^|]+)|([^|]*)|([^|]*)|(.*)$")
     if parent == nil then return nil end
+
+    local writtenEpoch = tonumber(writtenAt)
+    if writtenEpoch ~= nil then
+        local now = TryCall(function() return os.time() end)
+        if now ~= nil and (now - writtenEpoch) > MODMISC_PENDING_MAX_AGE then
+            Log("待接分支已过期（写入于 " .. tostring(writtenEpoch) .. "，" .. tostring(now - writtenEpoch)
+                .. " 秒前 > " .. tostring(MODMISC_PENDING_MAX_AGE) .. " 秒）→ 丢弃，避免误判分支")
+            -- 用表字段调用：ClearPendingBranch 的 local 声明在本函数之后
+            -- （直接写名字会被 Lua 5.1 解析成全局 nil —— 本项目踩过的坑）
+            API.ClearPendingBranch("过期")
+            return nil
+        end
+    end
+
     return {
         Parent = (parent ~= MODMISC_SAVE_ROOT_PARENT) and parent or nil,
         Kind = (kind ~= nil and kind ~= "") and kind or MODMISC_KIND_BRANCH,
         Stamp = stamp,
+        WrittenAt = writtenEpoch,
     }
 end
 
@@ -257,17 +346,23 @@ local function SetPendingBranch(parentId, kind, stamp)
     if store == nil or store.Save == nil then return false end
     local parent = parentId
     if parent == nil or tostring(parent) == "" then parent = MODMISC_SAVE_ROOT_PARENT end
+    local now = TryCall(function() return os.time() end) or 0
     local payload = tostring(parent) .. "|" .. tostring(kind or MODMISC_KIND_BRANCH)
-        .. "|" .. tostring(stamp or "")
+        .. "|" .. tostring(stamp or "") .. "|" .. tostring(now)
     return store.Save(MODMISC_STORE_KEY_PENDING, payload)
 end
 
-local function ClearPendingBranch()
+function API.ClearPendingBranch(reason)
     local store = GetStore()
     if store == nil then return false end
+    Log("清除待接分支（" .. tostring(reason or "?") .. "）")
     if store.Remove ~= nil then return store.Remove(MODMISC_STORE_KEY_PENDING) end
     if store.Save ~= nil then return store.Save(MODMISC_STORE_KEY_PENDING, "") end
     return false
+end
+
+local function ClearPendingBranch(reason)
+    return API.ClearPendingBranch(reason)
 end
 
 local function SetMainlineHead(nodeId)
@@ -486,6 +581,8 @@ function API.DescribeContext()
         .. MODMISC_SAVE_SEP .. "T<turn>" .. MODMISC_SAVE_SEP .. "<map>"
         .. MODMISC_SAVE_SEP .. "<stamp>")
     table.insert(lines, "current=" .. tostring(API.GetCurrentNodeId())
+        .. "(" .. tostring(select(2, API.GetCurrentNodeId())) .. ")"
+        .. " property=" .. tostring(ReadNodeProperty() ~= nil and ReadNodeProperty().Id or "nil")
         .. " head=" .. tostring(API.GetMainlineHeadId()))
 
     local pending = API.GetPendingBranch()
@@ -604,7 +701,14 @@ local function OnSaveGraphSaveComplete(...)
         ClearPendingBranch()
     end
 
-    -- 复查列表：文件真的落盘了才会出现在里面（UI.QuerySaveGameList 是 [已验证可用] 接口）
+    -- ⚠️ 先回调 OnSaved：换图就靠它立刻重开，**绝不能**再串一层扫描（扫描不回包 = 换图不跳转，
+    -- 授权者 2026-10-05 实测的那个问题）。found 传 nil 表示“落盘还没复查”。
+    if pending.OnSaved ~= nil then
+        pcall(pending.OnSaved, nil, pending.Node)
+    end
+
+    -- 复查列表只用来打日志 + 给可选的 OnChecked 回调（文件真的落盘了才会出现在列表里，
+    -- UI.QuerySaveGameList 是 [已验证可用] 接口）
     API.Refresh(function(nodes)
         local found = false
         for _, node in ipairs(nodes) do
@@ -612,14 +716,16 @@ local function OnSaveGraphSaveComplete(...)
         end
         Log("落盘复查：节点 " .. tostring(pending.Node.Id)
             .. (found and " 已在存档列表里" or " 没在列表里（可能还没写完 / 写失败）"))
-        if pending.OnSaved ~= nil then
-            pcall(pending.OnSaved, found, pending.Node)
+        if pending.OnChecked ~= nil then
+            pcall(pending.OnChecked, found, pending.Node)
         end
     end)
 end
 
 -- 按既定节点写一档：写 CustomData 身份 → Network.SaveGame → 等 SaveComplete → 复查落盘
--- opts = { Reason = "manual"|"switch", OnSaved = function(found, node) end }
+-- opts = { Reason = "manual"|"switch",
+--          OnSaved = function(found, node) end,    -- SaveComplete 回执（立刻）
+--          OnChecked = function(found, node) end }  -- 落盘复查结果（异步，可能不来）
 local function SaveNode(node, opts)
     local options = opts or {}
     if Network == nil or Network.SaveGame == nil then
@@ -627,8 +733,19 @@ local function SaveNode(node, opts)
         return false, "Network.SaveGame 不可用"
     end
     if m_SavePending ~= nil then
-        Log("存档失败：上一笔存档还在等 SaveComplete")
-        return false, "上一笔存档还没回执"
+        -- 自愈：SaveComplete 有可能永远不来（引擎不给回执 / 上下文被顶掉）。
+        -- 卡在这里会让之后每一次存档与换图都被拒，所以超时后丢弃旧状态、继续走。
+        local age = (TryCall(function() return os.time() end) or 0) - (m_SavePending.StartedAt or 0)
+        if age > MODMISC_SAVE_PENDING_TIMEOUT then
+            Log("警告：上一笔存档等回执已超时 " .. tostring(age) .. " 秒，丢弃该状态继续")
+            m_SavePending = nil
+            if Events ~= nil and Events.SaveComplete ~= nil then
+                Events.SaveComplete.Remove(OnSaveGraphSaveComplete)
+            end
+        else
+            Log("存档失败：上一笔存档还在等 SaveComplete（" .. tostring(age) .. " 秒）")
+            return false, "上一笔存档还没回执"
+        end
     end
 
     local name = API.BuildSaveName(node)
@@ -637,11 +754,16 @@ local function SaveNode(node, opts)
         return false, "档名构造失败"
     end
 
-    -- ① 节点身份写进 CustomData（随这一档保存；读档后就知道“我在哪个节点”）
+    -- ① 节点身份写进两条“随档走”的通道（读档后就能知道“我在哪个节点”）：
+    --    * CustomData（UI 侧，第 21 条已验证）
+    --    * Game:SetProperty（gameplay 侧，授权者提议的单向通道；新局不会继承）
     WriteCustomDataValue("NodeId", node.Id)
     WriteCustomDataValue("ParentId", node.Parent or MODMISC_SAVE_ROOT_PARENT)
     WriteCustomDataValue("Kind", node.Kind)
     WriteCustomDataValue("Stamp", node.Stamp)
+    local propertyOk, propertyErr = WriteNodeProperty(node)
+    Log("节点身份已写入：customdata=ok property=" .. tostring(propertyOk)
+        .. (propertyOk and "" or ("（" .. tostring(propertyErr) .. "）")))
 
     local saveFile = BuildGameSaveFile()
     if saveFile == nil then
@@ -652,7 +774,13 @@ local function SaveNode(node, opts)
     saveFile.IsAutosave = false
     saveFile.IsQuicksave = false
 
-    m_SavePending = { Node = node, OnSaved = options.OnSaved, Reason = options.Reason }
+    m_SavePending = {
+        Node = node,
+        OnSaved = options.OnSaved,      -- SaveComplete 一到就回调（found 为 nil = 还没复查落盘）
+        OnChecked = options.OnChecked,  -- 存档列表复查完再回调一次（found = 真的在列表里）
+        Reason = options.Reason,
+        StartedAt = TryCall(function() return os.time() end) or 0,
+    }
     if Events ~= nil and Events.SaveComplete ~= nil then
         Events.SaveComplete.Add(OnSaveGraphSaveComplete)
     else
@@ -672,7 +800,7 @@ local function SaveNode(node, opts)
     return true, name
 end
 
--- options = { Reason = "manual"|"switch", OnSaved = function(found, node) end }
+-- options = { Reason = "manual"|"switch", OnSaved = ..., OnChecked = ... }
 -- 返回 (true, nil) = 请求已受理（真正开写前会先等跨存档存储就绪）；
 -- 真正写完看 options.OnSaved(found, node)。
 function API.SaveCurrentGame(options)
@@ -695,11 +823,19 @@ end
 -- 换图：先存原档 → 记待接分支 → RestartGame
 -- ===========================================================================
 
+local m_SwitchIssued = false
+
 local function DoRestart(node, reason)
+    if m_SwitchIssued then
+        Log("换图已经在进行中（" .. tostring(reason) .. "），忽略重复请求")
+        return false
+    end
+    m_SwitchIssued = true
     Log("换图：" .. tostring(reason) .. "；即将调用 Network.RestartGame()（原档 "
         .. tostring(node ~= nil and node.Id or "?") .. "）")
     local ok, err = pcall(function() return Network.RestartGame() end)
     if not ok then
+        m_SwitchIssued = false
         Log("Network.RestartGame 调用失败 -> " .. tostring(err))
         return false
     end
@@ -707,9 +843,18 @@ local function DoRestart(node, reason)
     return true
 end
 
--- 重开前确认「待接分支」真的落到磁盘上（Refresh 会把磁盘上的档重新解进内存表，
--- 扫描后还能读到 pending ⇒ 文件在盘上）。两次都读不到就记日志并照样重开：
--- 玩家要的是换图，关系丢一条边不会损坏任何档。
+-- 兜底入口：面板挂的计时器超时后调它（SaveComplete 一直不来时不至于卡死）
+function API.ForceSwitch(reason)
+    Log("换图兜底触发：" .. tostring(reason))
+    return DoRestart(m_SavePending ~= nil and m_SavePending.Node or nil, tostring(reason))
+end
+
+function API.IsSwitchPending()
+    return m_SwitchIssued
+end
+
+-- 换图前“确认待接分支落盘”的检查：**只记日志，不再当作门**。
+-- 保留它是为了排查（想手动确认时也能调）。当前换图流程走 DoRestart 直跳。
 local function VerifyPendingThenRestart(node, attempt)
     local store = GetStore()
     if store == nil or store.Refresh == nil then
@@ -762,14 +907,17 @@ function API.SwitchMap()
         SetPendingBranch(node.Id, MODMISC_KIND_BRANCH, node.Stamp)
         Log("换图：待接分支已写入存储（parent=" .. tostring(node.Id) .. "，新局算分支）")
 
-        -- ② 存原档；③ 落盘后再确认待接分支 → 重开（顺序不能反：原档没落盘就重开 = 原档丢失）
+        -- ② 存原档；③ SaveComplete 一回执就换图。
+        -- ⚠️ 不再多套一层“等存储扫描确认 pending”的异步门：那层门一旦不回调，
+        --    换图就永远不会发生（授权者 2026-10-05 实测：点了换图没跳转）。
+        --    pending 在存档**之前**就写好了，SaveComplete 又证明原档已落盘，足够开跳；
+        --    扫列表只用来打日志，成败都不拦路。
         SaveNode(node, {
             Reason = "switch",
             OnSaved = function(found, savedNode)
-                Log("原档 " .. tostring(savedNode.Id)
-                    .. (found and " 已在存档列表里" or " 未在列表里（可能还没写完）")
-                    .. "，准备换图")
-                VerifyPendingThenRestart(savedNode, 0)
+                -- found 这里是 nil（还没复查落盘）：SaveComplete 就足够证明存档写完了
+                Log("原档 " .. tostring(savedNode.Id) .. " 已回执，准备换图（不等落盘复查）")
+                DoRestart(savedNode, "存档回执已到")
             end,
         })
     end)

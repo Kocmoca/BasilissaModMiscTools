@@ -578,6 +578,32 @@ ModMiscTurnEra.SetStartEra("ERA_MEDIEVAL")    -- 下一局开始年代（GAME_ST
 **回归**：桩环境新增两组用例 —— ⑩开局固化（探针把 pending 写进 CustomData 并消费存储条目）、
 ⑪面板 context 完全没扫过存储时存档仍判为 `[B] parent=原档`（修复前这里正是当树根）。
 
+### 14.2c 实机第二轮反馈与修复（2026-10-05）：换图不跳转 / 退出后新开档被认成分支
+
+授权者实机：
+1. **「保存后点切换没有自动跳转」**；
+2. **「退出到主界面新开存档被识别为分支」**。
+
+两个现象是**同一条因果链**，另有各自独立的一处设计问题：
+
+| # | 根因 | 修法 |
+|---|---|---|
+| 1 | 换图流程里串了**第二层异步门**：`SaveComplete` → 扫存档列表 → 复查存储 pending → 才重开。任何一环不回包，换图就永远不发生（第一层是 `OnSaved` 也在扫描回调里） | ① `OnSaved` 改成 **SaveComplete 一到就回调**（found 传 nil 表示“还没复查”）；② `SwitchMap` 收到回执**直接 `RestartGame`**，落盘复查只打日志、不拦路；③ 面板另挂 **10 秒兜底计时器**（`ContextPtr:SetRefreshHandler`），到点还没跳就 `ForceSwitch` 强制重开（`m_SwitchIssued` 防重复） |
+| 2 | 换图没跳成 ⇒ `sg_pending` 留在跨存档存储里；玩家退出到主菜单另开新局时，开局探针把这条**陈旧**的关系认成了本局来源 ⇒ 新档挂成分支 | ① 挂 `Events.ExitToMainMenu` → 退出即 `ClearPendingBranch("退出到主菜单")`；② pending 载荷带写入时间戳，超过 **900 秒**判过期并丢弃；③ 新局开局固化后立刻消费掉 pending（上一轮已有） |
+| 3 | `SaveComplete` 一旦丢失，`m_SavePending` 永远非空 ⇒ 之后每次存档/换图都被“上一笔还在等回执”拒掉 | `SaveNode` 加自愈：等回执超过 **60 秒**就丢弃旧状态继续（日志写明） |
+
+另外按授权者提议接入**第三条通道**：
+
+* **`Game:SetProperty`（gameplay 侧单向通道）** —— 存档时把「本局节点身份」同时写进
+  `CustomData` 与 `Game:SetProperty`（用现成的 `ModMiscToolData` 封装，经 ExposedMembers 调用）。
+  它随档保存、读档还原、**新局不继承**，且**只在 gameplay 可读、前端拿不到**；
+  `GetCurrentNodeId()` 以 CustomData 优先、property 兜底，两条互为交叉校验。
+  日志：`节点身份已写入：customdata=ok property=true`，探测行 `current=<id>(customdata|property) property=<id>`。
+
+**回归**：新增 `sg2_harness`（面板问题专用）四组用例 ——
+① 扫描永不回包时换图仍跳转；② `SaveComplete` 不来时 `ForceSwitch` 兜底且不重复跳；
+③ 过期 pending 被丢弃、新档回到树根；④ 退出清理生效；⑤ CustomData 读不到时靠 property 认出本局节点。
+
 ### 14.3 Lua.log 判定表
 
 | 日志表现 | 结论 |
@@ -594,3 +620,10 @@ ModMiscTurnEra.SetStartEra("ERA_MEDIEVAL")    -- 下一局开始年代（GAME_ST
 | `判定：… 来源=root => parent=nil kind=M` | 认成了树根（新装 / 老档 / 换图关系没带过来时才会这样） |
 | `已消费待接分支（本局第一次存档，父=<id>）` | 分支挂上去了（第 56 条收尾） |
 | `警告：跨存档存储不可用（…），存档照旧但关系可能判错` | 存储用不了时的降级路径（不拦玩家） |
+| `原档 <id> 已回执，准备换图（不等落盘复查）` | **换图只等 SaveComplete**（第二轮修复后的正常形态） |
+| `换图兜底触发：面板兜底计时器超时` | SaveComplete 没来，面板兜底强制重开（仍然会跳） |
+| `换图已经在进行中（…），忽略重复请求` | `ForceSwitch` 与正常路径撞车时的去重 |
+| `待接分支已过期（… 秒前 > 900 秒）→ 丢弃，避免误判分支` | 陈旧 pending 被清掉（新开档不会再被认成分支） |
+| `清除待接分支（退出到主菜单）` | 退出即清，另开新局不会被误挂 |
+| `节点身份已写入：customdata=ok property=true` | 两条“随档走”的通道都写成功 |
+| `警告：上一笔存档等回执已超时 N 秒，丢弃该状态继续` | 回执丢失后的自愈 |

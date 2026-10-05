@@ -549,4 +549,15 @@ ExposedMembers.ModMiscToolUI.RunCrossSaveProbeUI = RunCrossSaveProbeUI
 		ExposedMembers.ModMiscToolUI.StoreGetBuildTag = function() return ModMiscStore.BuildTag end
 	end
 end
+-- 退出到主菜单 = 这一局到此为止：把「待接分支」清掉。
+-- 不清的话，之后新开的一局会把上一次没走完的换图关系认成自己的来源
+-- —— 授权者 2026-10-05 实测到的“退出到主界面新开存档被识别为分支”。
+if Events.ExitToMainMenu ~= nil and Events.ExitToMainMenu.Add ~= nil then
+	Events.ExitToMainMenu.Add(function()
+		if ModMiscSaveGraph ~= nil and ModMiscSaveGraph.ClearPendingBranch ~= nil then
+			pcall(ModMiscSaveGraph.ClearPendingBranch, "退出到主菜单")
+		end
+	end)
+end
+
 Events.LoadGameViewStateDone.Add(Initialize)

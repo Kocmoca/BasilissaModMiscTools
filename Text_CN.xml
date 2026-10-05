@@ -562,6 +562,12 @@
 		<Replace Tag="LOC_MODMISC_SAVEPANEL_ERROR" Language="zh_Hans_CN">
 			<Text>{1_Action} 失败：{2_Detail}</Text>
 		</Replace>
+		<Replace Tag="LOC_MODMISC_SAVEPANEL_SWITCH_FALLBACK" Language="zh_Hans_CN">
+			<Text>还没跳转——正在强制换图。</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_SAVEPANEL_SAVED_ACKED" Language="zh_Hans_CN">
+			<Text>已收到存档回执，正在复查落盘…</Text>
+		</Replace>
 </LocalizedText>
 
 
