@@ -514,7 +514,7 @@
 			<Text>刷新列表</Text>
 		</Replace>
 		<Replace Tag="LOC_MODMISC_SAVEPANEL_INFO" Language="zh_Hans_CN">
-			<Text>本局：{1_Current}　｜　来源：{2_Incoming}　｜　主线头：{3_Head}　｜　待接分支：{4_Pending}</Text>
+			<Text>本局：{1_Current}　｜　来源：{2_Incoming}　｜　逻辑回合：{3_Logical}　｜　主线头：{4_Head}　｜　待接分支：{5_Pending}</Text>
 		</Replace>
 		<Replace Tag="LOC_MODMISC_SAVEPANEL_NONE" Language="zh_Hans_CN">
 			<Text>无</Text>
@@ -550,8 +550,8 @@
 			<Text>列表里还没看到</Text>
 		</Replace>
 		<Replace Tag="LOC_MODMISC_SAVEPANEL_NODE_DETAIL" Language="zh_Hans_CN">
-			<Text>节点 {1_Id}｜父 {2_Parent}｜类型 {3_Kind}｜回合 {4_Turn}｜地图 {5_Map}｜时间 {6_Stamp}
-{7_Raw}</Text>
+			<Text>节点 {1_Id}｜父 {2_Parent}｜类型 {3_Kind}｜引擎回合 {4_Turn}｜逻辑回合 {5_Logical}｜地图 {6_Map}｜时间 {7_Stamp}
+{8_Raw}</Text>
 		</Replace>
 		<Replace Tag="LOC_MODMISC_SAVEPANEL_ERROR" Language="zh_Hans_CN">
 			<Text>{1_Action} 失败：{2_Detail}</Text>
@@ -576,6 +576,97 @@
 		</Replace>
 		<Replace Tag="LOC_MODMISC_SAVEPANEL_SWITCH_NOW_DETAIL" Language="zh_Hans_CN">
 			<Text>按钮回调里直接调 Network.RestartGame()。要是游戏没重启，看日志里这次调用的 result。</Text>
+		</Replace>
+		<!-- 存档面板：跨存档事件（目标玩家 / 类型 / 内容 / 接受回合 + 发送与读档） -->
+		<Replace Tag="LOC_MODMISC_SAVEPANEL_EVENT_PLAYER" Language="zh_Hans_CN">
+			<Text>目标玩家</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_SAVEPANEL_EVENT_PLAYER_NONE" Language="zh_Hans_CN">
+			<Text>未选择玩家</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_SAVEPANEL_EVENT_TYPE" Language="zh_Hans_CN">
+			<Text>事件类型</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_SAVEPANEL_EVENT_DETAIL" Language="zh_Hans_CN">
+			<Text>内容</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_SAVEPANEL_EVENT_DETAIL_NONE" Language="zh_Hans_CN">
+			<Text>未选择内容</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_SAVEPANEL_EVENT_TURN" Language="zh_Hans_CN">
+			<Text>接受回合</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_SAVEPANEL_EVENT_TURN_NONE" Language="zh_Hans_CN">
+			<Text>未选择接受回合</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_SAVEPANEL_TURN_NOW" Language="zh_Hans_CN">
+			<Text>逻辑回合 {1_Turn}</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_SAVEPANEL_TURN_PLUS" Language="zh_Hans_CN">
+			<Text>逻辑回合 {1_Turn}（+{2_Offset}）</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_SAVEPANEL_EVENT_SEND" Language="zh_Hans_CN">
+			<Text>发送事件到选中存档</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_SAVEPANEL_LOAD" Language="zh_Hans_CN">
+			<Text>载入选中存档</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_SAVEPANEL_NO_SELECTION" Language="zh_Hans_CN">
+			<Text>还没选中存档</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_SAVEPANEL_NO_SELECTION_DETAIL" Language="zh_Hans_CN">
+			<Text>先在上面的关系树里点一条存档——「发送事件」和「载入」都作用于选中的那条。</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_SAVEPANEL_SELECTED" Language="zh_Hans_CN">
+			<Text>已选中：{1_Id}（逻辑回合 {2_Logical}）</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_SAVEPANEL_SELECTED_MARK" Language="zh_Hans_CN">
+			<Text>已选中</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_SAVEPANEL_LOGICAL" Language="zh_Hans_CN">
+			<Text>{1_Logical}（引擎 {2_Engine}，偏移 +{3_Offset}）</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_SAVEPANEL_EVENT_SENT" Language="zh_Hans_CN">
+			<Text>已发往 {1_Target}：{2_Type} {3_Detail}，接受回合 {4_Turn}</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_SAVEPANEL_EVENT_SENT_DETAIL" Language="zh_Hans_CN">
+			<Text>信箱键 {1_Key}</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_SAVEPANEL_LOAD_CONFIRM" Language="zh_Hans_CN">
+			<Text>载入这条存档？当前这一局会被整局顶掉。
+{1_Name}</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_SAVEPANEL_NO_OPTIONS" Language="zh_Hans_CN">
+			<Text>没有可选项</Text>
+		</Replace>
+
+		<!-- 跨存档事件：类型名与默认提示文案（其它 mod 可用 RegisterTurnEventTextResolver 覆盖） -->
+		<Replace Tag="LOC_MODMISC_TURNEVENT_TYPE_GOLD" Language="zh_Hans_CN">
+			<Text>金币</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_TURNEVENT_TYPE_UNIT" Language="zh_Hans_CN">
+			<Text>单位</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_TURNEVENT_TYPE_RESOURCE" Language="zh_Hans_CN">
+			<Text>资源</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_TURNEVENT_TITLE" Language="zh_Hans_CN">
+			<Text>跨存档事件</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_TURNEVENT_GOLD" Language="zh_Hans_CN">
+			<Text>来自 {1_From}：金币 {3_Amount}（通道 {4_Result}）</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_TURNEVENT_UNIT" Language="zh_Hans_CN">
+			<Text>来自 {1_From}：单位 {2_Detail}（通道 {4_Result}）</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_TURNEVENT_RESOURCE" Language="zh_Hans_CN">
+			<Text>来自 {1_From}：资源 {2_Detail} x{3_Amount}（通道 {4_Result}）</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_TURNEVENT_OVERDUE_SUFFIX" Language="zh_Hans_CN">
+			<Text>（补发——本回合一并送达）</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_TURNEVENT_UNKNOWN" Language="zh_Hans_CN">
+			<Text>来自 {1_From}：{2_Detail}</Text>
 		</Replace>
 </LocalizedText>
 

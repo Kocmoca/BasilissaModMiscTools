@@ -95,6 +95,10 @@ local MODMISC_SAVE_PENDING_TIMEOUT = 20
 -- 这个秒数只用来判断“原档是不是还在写”（还在写就先别重开，免得把存档截断）
 local MODMISC_SWITCH_SAVE_GRACE = 12
 
+-- 事件信箱：键前缀 + 值里的分隔符
+local MODMISC_EVENT_KEY_PREFIX = "ev_"
+local MODMISC_EVENT_VALUE_SEP = "|"
+
 -- CustomData 键前缀：随档保存，读档后就知道“我在哪个节点”
 local MODMISC_CD_PREFIX = "ModMiscSaveGraph_"
 
@@ -199,14 +203,16 @@ local function BuildStamp()
     return ToBase36(ReadClock() or 0)
 end
 
--- node = { Id, Parent, Kind, Turn, Map, Stamp }（Parent 为 nil 时写成 0）
+-- node = { Id, Parent, Kind, Turn, Map, Stamp, Logical }
+-- 档名：MMT~<id>~<parent>~<kind>~T<引擎回合>~<map>~<stamp>[~L<逻辑回合>]
+--   末尾的 L 字段是 2026-10-05 加的“回合同步（纯逻辑）”，老档名没有 → 解析时可选。
 function API.BuildSaveName(node)
     if node == nil or node.Id == nil then return nil end
     local parent = node.Parent
     if parent == nil or tostring(parent) == "" then parent = MODMISC_SAVE_ROOT_PARENT end
     local kind = tostring(node.Kind or MODMISC_KIND_BRANCH)
     local turn = tonumber(node.Turn) or 0
-    return table.concat({
+    local fields = {
         MODMISC_SAVE_PREFIX,
         SanitizeToken(node.Id),
         SanitizeToken(parent),
@@ -214,7 +220,11 @@ function API.BuildSaveName(node)
         "T" .. string.format("%03d", turn),
         SanitizeToken(node.Map),
         SanitizeToken(node.Stamp),
-    }, MODMISC_SAVE_SEP)
+    }
+    if tonumber(node.Logical) ~= nil then
+        table.insert(fields, "L" .. string.format("%03d", tonumber(node.Logical)))
+    end
+    return table.concat(fields, MODMISC_SAVE_SEP)
 end
 
 -- 存档列表里的 Name 带扩展名（普通档是 xxx.Civ6Save），比对/解析前先剥掉。
@@ -236,22 +246,27 @@ function API.ParseSaveName(rawName)
     if name:sub(1, #MODMISC_SAVE_PREFIX) ~= MODMISC_SAVE_PREFIX then
         return nil, "不是本 mod 的档"
     end
-    local id, parent, kind, turnText, map, stamp = name:match(
-        "^" .. MODMISC_SAVE_PREFIX .. MODMISC_SAVE_SEP .. "([^" .. MODMISC_SAVE_SEP .. "]+)"
-        .. MODMISC_SAVE_SEP .. "([^" .. MODMISC_SAVE_SEP .. "]+)"
-        .. MODMISC_SAVE_SEP .. "([^" .. MODMISC_SAVE_SEP .. "]+)"
-        .. MODMISC_SAVE_SEP .. "T(%d+)"
-        .. MODMISC_SAVE_SEP .. "([^" .. MODMISC_SAVE_SEP .. "]+)"
-        .. MODMISC_SAVE_SEP .. "([^" .. MODMISC_SAVE_SEP .. "]+)$")
-    if id == nil then return nil, "格式不符" end
+    -- 按字段切（不要用固定段数的模式：老档名少一个 L 字段就整条匹配不上）
+    local fields = SplitFields(name, MODMISC_SAVE_SEP)
+    if fields[1] ~= MODMISC_SAVE_PREFIX or #fields < 7 then return nil, "格式不符" end
+
+    local id, parent, kind = fields[2], fields[3], fields[4]
+    local turnText = fields[5]
+    local map, stamp = fields[6], fields[7]
+    local logicalText = fields[8]
+    if id == nil or id == "" or turnText == nil or turnText:sub(1, 1) ~= "T" then
+        return nil, "格式不符"
+    end
 
     local node = {
         Id = id,
         Parent = (parent ~= MODMISC_SAVE_ROOT_PARENT) and parent or nil,
         Kind = kind,
-        Turn = tonumber(turnText),
+        Turn = tonumber(turnText:sub(2)),
         Map = map,
         Stamp = stamp,
+        Logical = (logicalText ~= nil and logicalText:sub(1, 1) == "L")
+            and tonumber(logicalText:sub(2)) or nil,
         RawName = name,
         Depth = 0,
         Children = {},
@@ -296,12 +311,16 @@ local function GetGameplayMembers()
     return ExposedMembers ~= nil and ExposedMembers.ModMiscToolScript or nil
 end
 
+-- 身份载荷：id|parent|kind|stamp|logical|offset
+--   offset 是“回合同步”的关键：逻辑回合 = 引擎回合 + offset（纯逻辑，不动引擎回合）
 local function BuildNodePayload(node)
     return table.concat({
         tostring(node.Id or ""),
         tostring(node.Parent or MODMISC_SAVE_ROOT_PARENT),
         tostring(node.Kind or MODMISC_KIND_BRANCH),
         tostring(node.Stamp or ""),
+        tostring(node.Logical or ""),
+        tostring(node.Offset or ""),
     }, "|")
 end
 
@@ -329,6 +348,8 @@ local function ReadNodeProperty()
         Parent = (parent ~= nil and parent ~= "" and parent ~= MODMISC_SAVE_ROOT_PARENT) and parent or nil,
         Kind = (kind ~= nil and kind ~= "") and kind or MODMISC_KIND_BRANCH,
         Stamp = stamp,
+        Logical = tonumber(fields[5]),
+        Offset = tonumber(fields[6]),
     }
 end
 
@@ -350,7 +371,56 @@ function API.GetIncomingBranch()
     return {
         Parent = (parent ~= MODMISC_SAVE_ROOT_PARENT) and parent or nil,
         Kind = ReadCustomDataValue("PendingKind") or MODMISC_KIND_BRANCH,
+        Logical = tonumber(ReadCustomDataValue("PendingLogical")),
     }
+end
+
+-- ===========================================================================
+-- 回合同步（**纯逻辑**，不做硬同步、不改引擎回合）
+--
+--   主线在第 18 逻辑回合开分支 → 分支引擎第 1 回合 = 逻辑第 18 回合
+--   ⇒ 偏移 offset = 18 - 1 = 17；分支引擎第 3 回合 = 逻辑第 20 回合
+--
+-- 偏移在本局内是常数（引擎回合与逻辑回合 1:1 走），所以只要在**开局**算一次并固化：
+--   * 本局已经存过档/读过本 mod 的档 → CustomData / Game:SetProperty 里有 Offset；
+--   * 刚接手换图分支（incoming）→ offset = 起点逻辑回合 - 1；
+--   * 其余（根档 / 老档 / 非本 mod 档）→ offset = 0，逻辑回合就是引擎回合。
+-- ===========================================================================
+
+function API.GetLogicalTurnInfo()
+    local engineTurn = tonumber(TryCall(function() return Game.GetCurrentGameTurn() end)) or 1
+
+    -- ① 本局偏移（身份里带的，或开局固化下来的）
+    local offset = tonumber(ReadCustomDataValue("Offset"))
+    local source = "customdata"
+    if offset == nil then
+        local fromProperty = ReadNodeProperty()
+        if fromProperty ~= nil and fromProperty.Offset ~= nil then
+            offset = fromProperty.Offset
+            source = "property"
+        end
+    end
+
+    -- ② 刚接手换图分支：用起点逻辑回合算偏移，并固化
+    if offset == nil then
+        local incoming = API.GetIncomingBranch()
+        if incoming ~= nil and incoming.Logical ~= nil then
+            offset = incoming.Logical - 1
+            source = "incoming"
+            WriteCustomDataValue("Offset", offset)
+        end
+    end
+
+    if offset == nil then
+        offset = 0
+        source = "none"
+    end
+    return engineTurn + offset, engineTurn, offset, source
+end
+
+function API.GetLogicalTurn()
+    local logical = API.GetLogicalTurnInfo()
+    return logical
 end
 
 local function GetStore()
@@ -365,8 +435,9 @@ function API.GetMainlineHeadId()
     return tostring(value)
 end
 
--- 待接分支：`<原档id>|<kind>|<stamp>|<写入的 epoch 秒>`
--- （换图重开前写入，新局开局时固化成本局来源并消费掉）
+-- 待接分支：`<原档id>|<kind>|<stamp>|<写入的 epoch 秒>|<起点逻辑回合>`
+-- （换图重开前写入，新局开局时固化成本局来源并消费掉；
+--   最后那段就是“回合同步”的锚点：新局引擎第 1 回合 = 那个逻辑回合）
 function API.GetPendingBranch()
     local store = GetStore()
     if store == nil or store.Get == nil then return nil end
@@ -380,6 +451,7 @@ function API.GetPendingBranch()
     if parent == nil or parent == "" then return nil end
 
     local writtenEpoch = tonumber(fields[4])
+    local originLogical = tonumber(fields[5])
     if writtenEpoch ~= nil then
         local now = ReadClock()
         if now ~= nil and (now - writtenEpoch) > MODMISC_PENDING_MAX_AGE then
@@ -397,10 +469,11 @@ function API.GetPendingBranch()
         Kind = (kind ~= nil and kind ~= "") and kind or MODMISC_KIND_BRANCH,
         Stamp = stamp,
         WrittenAt = writtenEpoch,
+        Logical = originLogical,
     }
 end
 
-local function SetPendingBranch(parentId, kind, stamp)
+local function SetPendingBranch(parentId, kind, stamp, originLogical)
     local store = GetStore()
     if store == nil or store.Save == nil then return false end
     local parent = parentId
@@ -408,6 +481,7 @@ local function SetPendingBranch(parentId, kind, stamp)
     local now = ReadClock() or 0
     local payload = tostring(parent) .. "|" .. tostring(kind or MODMISC_KIND_BRANCH)
         .. "|" .. tostring(stamp or "") .. "|" .. tostring(now)
+        .. "|" .. tostring(originLogical or "")
     return store.Save(MODMISC_STORE_KEY_PENDING, payload)
 end
 
@@ -465,6 +539,11 @@ local function EnsureStoreReady(callback)
     end
 end
 
+-- 把就绪门暴露出去：其它模块（Support_UI / 面板）要做“依赖存储”的事情时也走它
+function API.WhenStoreReady(callback)
+    EnsureStoreReady(callback)
+end
+
 -- 这次存档算不算“延续主线”：主线头没记录时按延续处理（宁可当主线，也别把正常进度标成分支）
 local function IsMainlineHead(nodeId)
     if nodeId == nil then return true end
@@ -512,6 +591,9 @@ local function OnSaveGraphQueryResults(fileList, requestId)
             local name = entry ~= nil and entry.Name or nil
             local node = API.ParseSaveName(name)
             if node ~= nil then
+                -- 原始条目留着：读档就是把它原样交给 Network.LoadGame
+                -- （原版载入菜单也是这么干的：m_thisLoadFile = g_FileList[i]）
+                node.FileEntry = entry
                 table.insert(m_Nodes, node)
                 m_NodeById[node.Id] = node
             end
@@ -630,6 +712,195 @@ function API.DescribeTree()
 end
 
 -- ===========================================================================
+-- 从关系树里读档
+--
+-- 原版载入菜单的做法就是 `Network.LoadGame(g_FileList[i], serverType)` —— 直接把
+-- **存档列表里的原始条目**交给引擎，所以这里也照做（条目由 UI.QuerySaveGameList 拿到，
+-- 带扩展名、Location/Type/FileType/Directory 都在里面）。
+-- 对局内读普通档已验证可用（第 38 条），会把当前局整局顶掉 ⇒ 面板必须先弹确认。
+-- ===========================================================================
+
+function API.FindNode(nodeId)
+    if nodeId == nil then return nil end
+    return m_NodeById[tostring(nodeId)]
+end
+
+function API.LoadNode(nodeId, onIssued)
+    local node = API.FindNode(nodeId)
+    if node == nil then return false, "找不到节点 " .. tostring(nodeId) end
+    if node.FileEntry == nil then
+        return false, "这条档没有可用的存档条目（先点一次「刷新列表」再试）"
+    end
+    if Network == nil or Network.LoadGame == nil then
+        return false, "Network.LoadGame 不可用"
+    end
+    if ServerType == nil or ServerType.SERVER_TYPE_NONE == nil then
+        return false, "ServerType.SERVER_TYPE_NONE 不可用"
+    end
+
+    Log("即将调用 Network.LoadGame（节点 " .. tostring(nodeId)
+        .. "，档名 " .. tostring(node.RawName)
+        .. "，引擎回合 " .. tostring(node.Turn)
+        .. "，逻辑回合 " .. tostring(node.Logical or "?") .. "）")
+    local ok, err = pcall(Network.LoadGame, node.FileEntry, ServerType.SERVER_TYPE_NONE)
+    if not ok then
+        Log("Network.LoadGame 调用失败 -> " .. tostring(err))
+        return false, tostring(err)
+    end
+    Log("Network.LoadGame 调用已返回（没卡死）")
+    if onIssued ~= nil then pcall(onIssued, node) end
+    return true, node
+end
+
+-- ===========================================================================
+-- 事件信箱（发给某个存档节点的事件；一个事件一个键，走跨存档存储）
+--
+--   键：`ev_<目标节点id>_<序号>`；值：type|detail|amount|acceptTurn|fromNode|playerID|civ|stamp
+--   接收方开局时把发给**自己节点**的键全部取走，交给 gameplay 侧的回合事件列表，
+--   然后把这些键删掉（投递一次）。
+-- ===========================================================================
+
+function API.GetEventTypeKeys()
+    return MODMISC_EVENT_KEY_PREFIX, MODMISC_EVENT_VALUE_SEP
+end
+
+-- 本机玩家身份（事件要带上“发给谁”：玩家 id + 文明类型，方便跨分支对上号）
+function API.GetMyPlayerInfo()
+    local playerID = TryCall(function() return Game.GetLocalPlayer() end)
+    local civType = nil
+    if playerID ~= nil and PlayerConfigurations ~= nil and PlayerConfigurations[playerID] ~= nil then
+        civType = TryCall(function() return PlayerConfigurations[playerID]:GetCivilizationTypeName() end)
+    end
+    return playerID, civType
+end
+
+-- 发件：event = { Type, Detail, Amount, AcceptTurn, TargetPlayerID }
+function API.SendEvent(targetNodeId, event)
+    local store = GetStore()
+    if store == nil or store.Save == nil then return false, "跨存档存储不可用" end
+    if targetNodeId == nil or tostring(targetNodeId) == "" then return false, "没选目标存档" end
+    if type(event) ~= "table" or event.Type == nil then return false, "事件格式不对" end
+
+    local fromNode = API.GetCurrentNodeId() or "0"
+    local playerID, civType = API.GetMyPlayerInfo()
+    local targetPlayer = event.TargetPlayerID
+    if targetPlayer == nil then targetPlayer = playerID end
+    local acceptTurn = tonumber(event.AcceptTurn) or API.GetLogicalTurn()
+    local payload = table.concat({
+        tostring(event.Type),
+        tostring(event.Detail or ""),
+        tostring(tonumber(event.Amount) or 0),
+        tostring(acceptTurn),
+        tostring(fromNode),
+        tostring(targetPlayer or -1),
+        tostring(civType or ""),
+        tostring(BuildStamp()),
+    }, MODMISC_EVENT_VALUE_SEP)
+
+    local key = MODMISC_EVENT_KEY_PREFIX .. tostring(targetNodeId)
+        .. "_" .. tostring(TryCall(function() return os.time() end) or 0)
+        .. tostring(math.random(100, 999))
+    local ok = store.Save(key, payload)
+    Log("发件：" .. tostring(event.Type) .. " " .. tostring(event.Detail or "")
+        .. " x" .. tostring(event.Amount or "?") .. " → 节点 " .. tostring(targetNodeId)
+        .. "（接受逻辑回合 " .. tostring(acceptTurn) .. "）key=" .. tostring(key)
+        .. " 结果=" .. tostring(ok))
+    return ok, key
+end
+
+-- 收件：把发给 nodeId 的事件全部取出来（不删除；删不删由调用方决定）
+function API.FetchEventsForNode(nodeId)
+    local store = GetStore()
+    local events, keys = {}, {}
+    if store == nil or store.GetAll == nil or nodeId == nil then return events, keys end
+    local wantedPrefix = MODMISC_EVENT_KEY_PREFIX .. tostring(nodeId) .. "_"
+    for key, value in pairs(store.GetAll()) do
+        local keyText = tostring(key)
+        if keyText:sub(1, #wantedPrefix) == wantedPrefix then
+            local fields = SplitFields(value, MODMISC_EVENT_VALUE_SEP)
+            if fields[1] ~= nil and fields[1] ~= "" then
+                table.insert(events, {
+                    Type = fields[1],
+                    Detail = fields[2] or "",
+                    Amount = tonumber(fields[3]) or 0,
+                    AcceptTurn = tonumber(fields[4]),
+                    FromNode = fields[5] or "",
+                    FromPlayerID = tonumber(fields[6]),
+                    FromCiv = (fields[7] ~= nil and fields[7] ~= "") and fields[7] or nil,
+                    Stamp = fields[8] or "",
+                    MailKey = keyText,
+                })
+                table.insert(keys, keyText)
+            end
+        end
+    end
+    table.sort(events, function(a, b)
+        return (tonumber(a.AcceptTurn) or 0) < (tonumber(b.AcceptTurn) or 0)
+    end)
+    Log("收件：节点 " .. tostring(nodeId) .. " 有 " .. tostring(#events) .. " 条待取事件")
+    return events, keys
+end
+
+function API.DropEventKeys(keys)
+    local store = GetStore()
+    if store == nil or store.Remove == nil or type(keys) ~= "table" then return 0 end
+    local removed = 0
+    for _, key in ipairs(keys) do
+        if store.Remove(key) then removed = removed + 1 end
+    end
+    Log("已投递并清理 " .. tostring(removed) .. " 个信箱键")
+    return removed
+end
+
+-- ===========================================================================
+-- 收件：把发给本节点的事件交给 gameplay 的回合事件列表
+--
+-- 时机：开局（Support_UI 的探针）与面板刷新都可以调；内部先等跨存档存储就绪。
+-- 逻辑回合偏移也在这里推给 gameplay —— 事件要到点触发，靠的就是它换算。
+-- ===========================================================================
+
+function API.IntakeEvents(onDone)
+    API.WhenStoreReady(function()
+        local script = GetGameplayMembers()
+        local turnEvents = script ~= nil and script.TurnEvents or nil
+        if turnEvents == nil or turnEvents.AddIncoming == nil then
+            Log("收件跳过：gameplay 侧 TurnEvents 不可用")
+            if onDone ~= nil then pcall(onDone, 0, "no-gameplay-api") end
+            return
+        end
+
+        local logicalTurn, engineTurn, offset = API.GetLogicalTurnInfo()
+        if turnEvents.SetLogicalOffset ~= nil then
+            turnEvents.SetLogicalOffset(offset)
+        end
+
+        local nodeId = API.GetCurrentNodeId()
+        if nodeId == nil then
+            Log("收件跳过：本局还没有节点身份（第一次存档之后才会收到发给它的信箱）")
+            if onDone ~= nil then pcall(onDone, 0, "no-node") end
+            return
+        end
+
+        local events, keys = API.FetchEventsForNode(nodeId)
+        if #events == 0 then
+            if onDone ~= nil then pcall(onDone, 0, "empty") end
+            return
+        end
+
+        local added = 0
+        for _, event in ipairs(events) do
+            local ok = turnEvents.AddIncoming(event)
+            if ok then added = added + 1 end
+        end
+        API.DropEventKeys(keys)
+        Log("收件完成：节点 " .. tostring(nodeId) .. " 入列 " .. tostring(added) .. " 条"
+            .. "（本局逻辑回合 " .. tostring(logicalTurn) .. "，引擎 " .. tostring(engineTurn)
+            .. "，偏移 +" .. tostring(offset) .. "）")
+        if onDone ~= nil then pcall(onDone, added, "ok") end
+    end)
+end
+
+-- ===========================================================================
 -- 只读探测
 -- ===========================================================================
 
@@ -718,18 +989,23 @@ local function BuildNextNode()
     end
     -- 父来自“待接分支 / 本局来源” ⇒ 这是换图后新局的第一次存档，要消费掉存储里的 pending
     local consumedPending = (currentId == nil and parentSource ~= "root")
+    local logicalTurn, engineTurn, offset, logicalSource = API.GetLogicalTurnInfo()
     Log("判定：current=" .. tostring(currentId)
         .. " incoming=" .. (incoming ~= nil and tostring(incoming.Parent) or "nil")
         .. " head=" .. tostring(headId)
         .. " pending=" .. (pending ~= nil and tostring(pending.Parent) or "nil")
         .. " 来源=" .. tostring(parentSource)
         .. " => parent=" .. tostring(parentId) .. " kind=" .. tostring(kind)
-        .. " consumePending=" .. tostring(consumedPending))
+        .. " consumePending=" .. tostring(consumedPending)
+        .. " ｜逻辑回合=" .. tostring(logicalTurn) .. "（引擎 " .. tostring(engineTurn)
+        .. "，偏移 +" .. tostring(offset) .. "，来源 " .. tostring(logicalSource) .. "）")
     return {
         Id = BuildNodeId(),
         Parent = parentId,
         Kind = kind,
-        Turn = GetTurnNumber(),
+        Turn = engineTurn,
+        Logical = logicalTurn,
+        Offset = offset,
         Map = GetMapToken(),
         Stamp = BuildStamp(),
         ConsumedPending = consumedPending,
@@ -821,6 +1097,8 @@ local function SaveNode(node, opts)
     WriteCustomDataValue("ParentId", node.Parent or MODMISC_SAVE_ROOT_PARENT)
     WriteCustomDataValue("Kind", node.Kind)
     WriteCustomDataValue("Stamp", node.Stamp)
+    if node.Offset ~= nil then WriteCustomDataValue("Offset", node.Offset) end
+    if node.Logical ~= nil then WriteCustomDataValue("Logical", node.Logical) end
     local propertyOk, propertyErr = WriteNodeProperty(node)
     Log("节点身份已写入：customdata=ok property=" .. tostring(propertyOk)
         .. (propertyOk and "" or ("（" .. tostring(propertyErr) .. "）")))
@@ -904,8 +1182,9 @@ function API.PrepareSwitch()
 
     local node = BuildNextNode()
     -- 先写 pending：这是“新局算这条记录的分支”的唯一凭据，必须早于存档落盘
-    SetPendingBranch(node.Id, MODMISC_KIND_BRANCH, node.Stamp)
-    Log("换图[1/2]：待接分支已写入存储（parent=" .. tostring(node.Id) .. "，新局算分支）")
+    SetPendingBranch(node.Id, MODMISC_KIND_BRANCH, node.Stamp, node.Logical)
+    Log("换图[1/2]：待接分支已写入存储（parent=" .. tostring(node.Id) .. "，新局算分支，"
+        .. "起点逻辑回合=" .. tostring(node.Logical) .. "）")
 
     local started = SaveNode(node, {
         Reason = "switch",
@@ -994,6 +1273,11 @@ function API.ReportAfterLoad()
         if currentId == nil and pending ~= nil and pending.Parent ~= nil then
             WriteCustomDataValue("PendingParent", pending.Parent)
             WriteCustomDataValue("PendingKind", pending.Kind or MODMISC_KIND_BRANCH)
+            if pending.Logical ~= nil then
+                WriteCustomDataValue("PendingLogical", pending.Logical)
+                -- 顺手把本局偏移也固化：逻辑回合 = 引擎回合 + (起点逻辑回合 - 1)
+                WriteCustomDataValue("Offset", pending.Logical - 1)
+            end
             ClearPendingBranch("开局已固化成本局来源")
             Log("本局接手待接分支：parent=" .. tostring(pending.Parent)
                 .. " kind=" .. tostring(pending.Kind or MODMISC_KIND_BRANCH)

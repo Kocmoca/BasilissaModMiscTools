@@ -12,6 +12,7 @@ include('ModTool_TurnEraAPI.lua')
 -- **Initialize 直接中断** —— 后面所有暴露（WorldBuilderAPI、TurnEraAPI…）全部静默失效。
 -- 2026-10-05 实机日志抓到（表现为 Game:SetProperty 那条单向通道用不了）。
 include('ModTool_DataStore.lua')
+include('ModTool_TurnEvents.lua')
 
 local playerCitiesInfo = {}
 local defeatedPlayers = {}
@@ -599,6 +600,14 @@ function Initialize()
 			-- WorldBuilder（地图编辑器）接口模块：Gameplay 后端，UI 层通过它调用
 			Run = function()
 				ExposedMembers.ModMiscToolScript.WorldBuilderAPI = WorldBuilderAPI
+			end,
+		},
+		{
+			Name = "TurnEvents",
+			-- 回合事件（gameplay 后端）：收件入列 + 到点执行 + 文本事件广播。
+			-- 逻辑回合偏移由 UI 侧推过来（回合同步只做逻辑，不改引擎回合）。
+			Run = function()
+				ExposedMembers.ModMiscToolScript.TurnEvents = TurnEvents
 			end,
 		},
 		{

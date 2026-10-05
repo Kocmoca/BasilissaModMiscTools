@@ -380,8 +380,77 @@ function RestoreInGameUI()
 	return restored
 end
 
+-- ===========================================================================
+-- 回合事件：文本提示（默认文案在 LOC 里，其它 mod 可注册解析函数覆盖）
+--
+-- gameplay 侧每执行一条事件就广播一次 LuaEvents.ModMiscToolTurnEventFired，
+-- 一个回合执行完再广播一次 LuaEvents.ModMiscToolTurnEventBatch —— 这里把同一批的
+-- 文案攒起来，一次性弹一条，避免一个回合弹好几个窗。
+-- ===========================================================================
+local m_TurnEventTextResolvers = {}
+local m_PendingTurnEventTexts = {}
+
+function RegisterTurnEventTextResolver(resolver)
+	if type(resolver) ~= "function" then return false end
+	table.insert(m_TurnEventTextResolvers, resolver)
+	return true
+end
+
+local TURN_EVENT_DEFAULT_TEXT_KEYS = {
+	GOLD     = "LOC_MODMISC_TURNEVENT_GOLD",
+	UNIT     = "LOC_MODMISC_TURNEVENT_UNIT",
+	RESOURCE = "LOC_MODMISC_TURNEVENT_RESOURCE",
+}
+
+function BuildTurnEventText(eventType, detail, amount, fromNode, overdue, toPlayerID, result)
+	-- 先问外部解析器（谁先注册谁优先）
+	for _, resolver in ipairs(m_TurnEventTextResolvers) do
+		local ok, text = pcall(resolver, eventType, detail, amount, fromNode, overdue, toPlayerID, result)
+		if ok and text ~= nil and tostring(text) ~= "" then
+			return tostring(text)
+		end
+	end
+
+	local key = TURN_EVENT_DEFAULT_TEXT_KEYS[tostring(eventType)] or "LOC_MODMISC_TURNEVENT_UNKNOWN"
+	local text = Locale.Lookup(key, tostring(fromNode), tostring(detail or ""),
+		tostring(amount or 0), tostring(result or ""))
+	if overdue then
+		text = text .. Locale.Lookup("LOC_MODMISC_TURNEVENT_OVERDUE_SUFFIX")
+	end
+	return text
+end
+
+local function OnTurnEventFired(eventType, detail, amount, fromNode, overdue, toPlayerID, result)
+	local text = BuildTurnEventText(eventType, detail, amount, fromNode, overdue, toPlayerID, result)
+	table.insert(m_PendingTurnEventTexts, text)
+	print("[ModMiscTool][TurnEvent] 触发：" .. tostring(text))
+end
+
+local function OnTurnEventBatch(count, logicalTurn)
+	if #m_PendingTurnEventTexts == 0 then return end
+	local lines = m_PendingTurnEventTexts
+	m_PendingTurnEventTexts = {}
+	local body = table.concat(lines, "\n")
+	local title = Locale.Lookup("LOC_MODMISC_TURNEVENT_TITLE")
+	local ok, err = pcall(function()
+		local popup = PopupDialogInGame:new("UnitPanelPopup")
+		popup:ShowOkDialog(title .. "\n" .. body)
+	end)
+	if not ok then
+		print("[ModMiscTool][TurnEvent] 弹窗失败 -> " .. tostring(err) .. "（文案已打进日志）")
+	end
+end
+
 function Initialize()
 	InitializeAllUnitPromotions()
+
+	-- 回合事件的文本提示：订阅 gameplay 侧广播（同一批攒起来弹一条）
+	if LuaEvents ~= nil and LuaEvents.ModMiscToolTurnEventFired ~= nil then
+		LuaEvents.ModMiscToolTurnEventFired.Add(OnTurnEventFired)
+	end
+	if LuaEvents ~= nil and LuaEvents.ModMiscToolTurnEventBatch ~= nil then
+		LuaEvents.ModMiscToolTurnEventBatch.Add(OnTurnEventBatch)
+	end
 
 	-- ===========================================================================
 	-- [跨存档存储·对局内] 对局内能不能用同一套「存档名」通道读写
@@ -440,6 +509,17 @@ function Initialize()
 		local ok, err = pcall(ModMiscCreateGame.ReportAfterCreateInGame)
 		if not ok then
 			print("[ModMiscTool][CreateGame] 开局探针失败 -> " .. tostring(err))
+		end
+	end
+
+	-- 回合事件：本局开局收件（把发给本节点的事件拉进 gameplay 的回合事件列表）。
+	-- 逻辑回合偏移也在里面推给 gameplay —— 事件要到点触发靠它换算。
+	if ModMiscSaveGraph ~= nil and ModMiscSaveGraph.IntakeEvents ~= nil then
+		local ok, err = pcall(ModMiscSaveGraph.IntakeEvents, function(added, how)
+			print("[ModMiscTool][TurnEvent] 开局收件：" .. tostring(added) .. " 条（" .. tostring(how) .. "）")
+		end)
+		if not ok then
+			print("[ModMiscTool][TurnEvent] 开局收件失败 -> " .. tostring(err))
 		end
 	end
 
@@ -521,6 +601,11 @@ ExposedMembers.ModMiscToolUI.RunCrossSaveProbeUI = RunCrossSaveProbeUI
 		ExposedMembers.ModMiscToolUI.GetPersistentAssetCount = ModMiscAssetStore.GetCount
 		ExposedMembers.ModMiscToolUI.GetPersistentAssets = ModMiscAssetStore.GetAll
 	end
+
+	-- 回合事件文本：其它 mod 注册解析函数就能覆盖/补充默认文案
+	-- （签名 (eventType, detail, amount, fromNode, overdue, toPlayerID, result) → 文本或 nil）
+	ExposedMembers.ModMiscToolUI.RegisterTurnEventTextResolver = RegisterTurnEventTextResolver
+	ExposedMembers.ModMiscToolUI.BuildTurnEventText = BuildTurnEventText
 
 	-- 存档关系树 + 换图（成品功能）：接口与格式说明见 UI/ModMiscSaveGraph.lua
 	if ModMiscSaveGraph ~= nil then

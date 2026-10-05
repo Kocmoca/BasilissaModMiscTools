@@ -514,7 +514,7 @@
 			<Text>Refresh list</Text>
 		</Row>
 		<Row Tag="LOC_MODMISC_SAVEPANEL_INFO">
-			<Text>This game: {1_Current}   |   Origin: {2_Incoming}   |   Mainline head: {3_Head}   |   Pending: {4_Pending}</Text>
+			<Text>This game: {1_Current}   |   Origin: {2_Incoming}   |   Logical turn: {3_Logical}   |   Mainline head: {4_Head}   |   Pending: {5_Pending}</Text>
 		</Row>
 		<Row Tag="LOC_MODMISC_SAVEPANEL_NONE">
 			<Text>none</Text>
@@ -550,8 +550,8 @@
 			<Text>not seen in the list yet</Text>
 		</Row>
 		<Row Tag="LOC_MODMISC_SAVEPANEL_NODE_DETAIL">
-			<Text>node {1_Id} | parent {2_Parent} | kind {3_Kind} | turn {4_Turn} | map {5_Map} | stamp {6_Stamp}
-{7_Raw}</Text>
+			<Text>node {1_Id} | parent {2_Parent} | kind {3_Kind} | engine turn {4_Turn} | logical turn {5_Logical} | map {6_Map} | stamp {7_Stamp}
+{8_Raw}</Text>
 		</Row>
 		<Row Tag="LOC_MODMISC_SAVEPANEL_ERROR">
 			<Text>{1_Action} failed: {2_Detail}</Text>
@@ -576,6 +576,97 @@
 		</Row>
 		<Row Tag="LOC_MODMISC_SAVEPANEL_SWITCH_NOW_DETAIL">
 			<Text>Calling Network.RestartGame() directly from the button - if the game does not restart, check the log line for the call's result.</Text>
+		</Row>
+		<!-- 存档面板：跨存档事件（目标玩家 / 类型 / 内容 / 接受回合 + 发送与读档） -->
+		<Row Tag="LOC_MODMISC_SAVEPANEL_EVENT_PLAYER">
+			<Text>Target player</Text>
+		</Row>
+		<Row Tag="LOC_MODMISC_SAVEPANEL_EVENT_PLAYER_NONE">
+			<Text>no player selected</Text>
+		</Row>
+		<Row Tag="LOC_MODMISC_SAVEPANEL_EVENT_TYPE">
+			<Text>Event type</Text>
+		</Row>
+		<Row Tag="LOC_MODMISC_SAVEPANEL_EVENT_DETAIL">
+			<Text>Content</Text>
+		</Row>
+		<Row Tag="LOC_MODMISC_SAVEPANEL_EVENT_DETAIL_NONE">
+			<Text>no content selected</Text>
+		</Row>
+		<Row Tag="LOC_MODMISC_SAVEPANEL_EVENT_TURN">
+			<Text>Accept turn</Text>
+		</Row>
+		<Row Tag="LOC_MODMISC_SAVEPANEL_EVENT_TURN_NONE">
+			<Text>no accept turn selected</Text>
+		</Row>
+		<Row Tag="LOC_MODMISC_SAVEPANEL_TURN_NOW">
+			<Text>logical turn {1_Turn}</Text>
+		</Row>
+		<Row Tag="LOC_MODMISC_SAVEPANEL_TURN_PLUS">
+			<Text>logical turn {1_Turn} (+{2_Offset})</Text>
+		</Row>
+		<Row Tag="LOC_MODMISC_SAVEPANEL_EVENT_SEND">
+			<Text>Send event to selection</Text>
+		</Row>
+		<Row Tag="LOC_MODMISC_SAVEPANEL_LOAD">
+			<Text>Load selected</Text>
+		</Row>
+		<Row Tag="LOC_MODMISC_SAVEPANEL_NO_SELECTION">
+			<Text>No save selected</Text>
+		</Row>
+		<Row Tag="LOC_MODMISC_SAVEPANEL_NO_SELECTION_DETAIL">
+			<Text>Tap a save in the tree above first - both "send event" and "load" act on the selected one.</Text>
+		</Row>
+		<Row Tag="LOC_MODMISC_SAVEPANEL_SELECTED">
+			<Text>Selected: {1_Id} (logical turn {2_Logical})</Text>
+		</Row>
+		<Row Tag="LOC_MODMISC_SAVEPANEL_SELECTED_MARK">
+			<Text>selected</Text>
+		</Row>
+		<Row Tag="LOC_MODMISC_SAVEPANEL_LOGICAL">
+			<Text>{1_Logical} (engine {2_Engine}, +{3_Offset})</Text>
+		</Row>
+		<Row Tag="LOC_MODMISC_SAVEPANEL_EVENT_SENT">
+			<Text>Event sent to {1_Target}: {2_Type} {3_Detail}, accept turn {4_Turn}</Text>
+		</Row>
+		<Row Tag="LOC_MODMISC_SAVEPANEL_EVENT_SENT_DETAIL">
+			<Text>mailbox key {1_Key}</Text>
+		</Row>
+		<Row Tag="LOC_MODMISC_SAVEPANEL_LOAD_CONFIRM">
+			<Text>Load this save? The current game will be replaced.
+{1_Name}</Text>
+		</Row>
+		<Row Tag="LOC_MODMISC_SAVEPANEL_NO_OPTIONS">
+			<Text>No options available</Text>
+		</Row>
+
+		<!-- 跨存档事件：类型名与默认提示文案（其它 mod 可用 RegisterTurnEventTextResolver 覆盖） -->
+		<Row Tag="LOC_MODMISC_TURNEVENT_TYPE_GOLD">
+			<Text>Gold</Text>
+		</Row>
+		<Row Tag="LOC_MODMISC_TURNEVENT_TYPE_UNIT">
+			<Text>Unit</Text>
+		</Row>
+		<Row Tag="LOC_MODMISC_TURNEVENT_TYPE_RESOURCE">
+			<Text>Resource</Text>
+		</Row>
+		<Row Tag="LOC_MODMISC_TURNEVENT_TITLE">
+			<Text>Cross-save event</Text>
+		</Row>
+		<Row Tag="LOC_MODMISC_TURNEVENT_GOLD">
+			<Text>From {1_From}: {3_Amount} gold (channel {4_Result})</Text>
+		</Row>
+		<Row Tag="LOC_MODMISC_TURNEVENT_UNIT">
+			<Text>From {1_From}: unit {2_Detail} (channel {4_Result})</Text>
+		</Row>
+		<Row Tag="LOC_MODMISC_TURNEVENT_RESOURCE">
+			<Text>From {1_From}: resource {2_Detail} x{3_Amount} (channel {4_Result})</Text>
+		</Row>
+		<Row Tag="LOC_MODMISC_TURNEVENT_OVERDUE_SUFFIX">
+			<Text>  (overdue - delivered this turn)</Text>
+		</Row>
+		<Row Tag="LOC_MODMISC_TURNEVENT_UNKNOWN">
+			<Text>From {1_From}: {2_Detail}</Text>
 		</Row>
 </BaseGameText>
 

@@ -27,6 +27,24 @@ print("[ModMiscTool][SavePanel] panel loading build=" .. tostring(MODMISC_BUILD_
 local m_Registered = false
 local m_EntryIM = nil
 
+-- 事件：预设类型（金币 / 单位 / 资源）+ 内容（金额 / 单位类型 / 资源类型）+ 接受回合
+local EVENT_TYPE_DEFS = {
+    { Key = "GOLD",     Text = "LOC_MODMISC_TURNEVENT_TYPE_GOLD",     DetailKind = "amount" },
+    { Key = "UNIT",     Text = "LOC_MODMISC_TURNEVENT_TYPE_UNIT",     DetailKind = "unit" },
+    { Key = "RESOURCE", Text = "LOC_MODMISC_TURNEVENT_TYPE_RESOURCE", DetailKind = "resource" },
+}
+local GOLD_AMOUNTS = { 50, 100, 200, 500 }
+local EVENT_TURN_OFFSETS = { 0, 5, 10 }
+local EVENT_LIST_MAX = 80
+
+local m_SelectedNode = nil        -- 关系树里选中的节点（发送事件 / 读档的目标）
+local m_EventTypeKey = "GOLD"
+local m_EventDetailEntry = nil
+local m_EventTurnEntry = nil
+local m_EventPlayerID = nil
+local m_OptionIM = nil
+local m_OpenSelectorKey = nil
+
 -- 换图 = **两步式**（不依赖引擎事件、不依赖按帧回调、不依赖时钟）：
 --   第一次点「换图」：写待接分支 + 存原档（异步）→ 状态行提示“再点一次就切换”
 --   第二次点「换图」：在**按钮回调里直接 Network.RestartGame()** —— 完全复刻唯一被实机
@@ -95,8 +113,19 @@ local function UpdateInfoLine()
     if pending ~= nil then
         pendingText = tostring(pending.Parent) .. " → " .. tostring(pending.Kind)
     end
+    -- 回合同步（纯逻辑）：逻辑回合 = 引擎回合 + 偏移
+    local logicalTurn, engineTurn, offset = nil, nil, nil
+    if ModMiscSaveGraph.GetLogicalTurnInfo ~= nil then
+        logicalTurn, engineTurn, offset = ModMiscSaveGraph.GetLogicalTurnInfo()
+    end
+    local logicalText = Locale.Lookup("LOC_MODMISC_SAVEPANEL_NONE")
+    if logicalTurn ~= nil then
+        logicalText = Locale.Lookup("LOC_MODMISC_SAVEPANEL_LOGICAL",
+            tostring(logicalTurn), tostring(engineTurn), tostring(offset or 0))
+    end
+
     Controls.ModMiscSaveInfo:SetText(Locale.Lookup("LOC_MODMISC_SAVEPANEL_INFO",
-        DescribeId(current), incomingText, DescribeId(head), pendingText))
+        DescribeId(current), incomingText, logicalText, DescribeId(head), pendingText))
 end
 
 -- 一条关系档的显示文本：缩进 + [M/B] + id + T回合 + 地图 + 时间 + 标记
@@ -106,9 +135,14 @@ local function BuildEntryText(line)
     local marks = {}
     if node.IsCurrent then table.insert(marks, Locale.Lookup("LOC_MODMISC_SAVEPANEL_CURRENT")) end
     if node.Orphan then table.insert(marks, Locale.Lookup("LOC_MODMISC_SAVEPANEL_ORPHAN")) end
+    if m_SelectedNode ~= nil and m_SelectedNode.Id == node.Id then
+        table.insert(marks, Locale.Lookup("LOC_MODMISC_SAVEPANEL_SELECTED_MARK"))
+    end
     local markText = (#marks > 0) and ("  · " .. table.concat(marks, " · ")) or ""
-    return string.format("%s[%s] %s  T%s  %s  %s%s", indent, tostring(node.Kind), tostring(node.Id),
-        tostring(node.Turn or "?"), tostring(node.Map), tostring(node.Stamp), markText)
+    -- T = 引擎回合；L = 逻辑回合（回合同步，纯逻辑；老档没有记 → 显示 -）
+    return string.format("%s[%s] %s  T%s/L%s  %s  %s%s", indent, tostring(node.Kind), tostring(node.Id),
+        tostring(node.Turn or "?"), tostring(node.Logical or "-"),
+        tostring(node.Map), tostring(node.Stamp), markText)
 end
 
 local function RenderTree()
@@ -126,16 +160,305 @@ local function RenderTree()
         instance.EntryLabel:SetText(BuildEntryText(line))
         instance.EntryButton:SetDisabled(false)
         instance.EntryButton:ClearCallback(Mouse.eLClick)
+        local currentNode = line.Node
         instance.EntryButton:RegisterCallback(Mouse.eLClick, function()
-            local node = line.Node
+            -- 点一条 = 选中它（发送事件 / 读档都作用于选中的这条）
+            m_SelectedNode = currentNode
+            local logicalText = currentNode.Logical ~= nil and tostring(currentNode.Logical) or "-"
             SetDetail(Locale.Lookup("LOC_MODMISC_SAVEPANEL_NODE_DETAIL",
-                tostring(node.Id), tostring(node.Parent or ModMiscSaveGraph.Prefix .. "-root"),
-                tostring(node.Kind), tostring(node.Turn or "?"), tostring(node.Map),
-                tostring(node.Stamp), tostring(node.RawName)))
+                tostring(currentNode.Id), tostring(currentNode.Parent or ModMiscSaveGraph.Prefix .. "-root"),
+                tostring(currentNode.Kind), tostring(currentNode.Turn or "?"), logicalText,
+                tostring(currentNode.Map), tostring(currentNode.Stamp), tostring(currentNode.RawName)))
+            SetStatus(Locale.Lookup("LOC_MODMISC_SAVEPANEL_SELECTED", tostring(currentNode.Id), logicalText))
+            RenderTree()
         end)
     end
     Controls.ModMiscSaveList:CalculateSize()
     Controls.ModMiscSaveList:ReprocessAnchoring()
+end
+
+-- ===========================================================================
+-- 选择器（事件的目标玩家 / 类型 / 内容 / 接受回合）
+--
+-- 引擎的 SimplePullDown 在 reparent 过的面板里点不开（本项目踩过），所以自绘：
+-- 一个 GridButton 显示当前选择，点开在它下方（或上方）铺列表，选中即收起。
+-- ===========================================================================
+
+local function BuildEventPlayerEntries()
+    local entries = {}
+    for playerID = 0, GameDefines.MAX_PLAYERS - 1 do
+        if Players[playerID] ~= nil then
+            local config = PlayerConfigurations[playerID]
+            local name = tostring(playerID)
+            local civ = ""
+            if config ~= nil then
+                local ok, value = pcall(function() return config:GetPlayerName() end)
+                if ok and value ~= nil and value ~= "" then name = Locale.Lookup(value) end
+                local ok2, value2 = pcall(function() return config:GetCivilizationShortDescription() end)
+                if ok2 and value2 ~= nil then civ = value2 end
+            end
+            table.insert(entries, {
+                PlayerID = playerID,
+                Text = string.format("%d · %s · %s", playerID, name, civ),
+            })
+        end
+    end
+    return entries
+end
+
+local function BuildEventTypeEntries()
+    local entries = {}
+    for _, def in ipairs(EVENT_TYPE_DEFS) do
+        table.insert(entries, { Key = def.Key, DetailKind = def.DetailKind, Text = Locale.Lookup(def.Text) })
+    end
+    return entries
+end
+
+-- 内容列表随事件类型变：金币给金额档位，单位/资源从 GameInfo 取（数据驱动）
+local function BuildEventDetailEntries()
+    local entries = {}
+    local eventType = m_EventTypeKey or "GOLD"
+    if eventType == "GOLD" then
+        for _, amount in ipairs(GOLD_AMOUNTS) do
+            table.insert(entries, { Key = tostring(amount), Amount = amount, Text = tostring(amount) })
+        end
+        return entries
+    end
+
+    local rows = {}
+    if eventType == "UNIT" then
+        for row in GameInfo.Units() do
+            if row.Domain == "DOMAIN_LAND" then
+                table.insert(rows, { Key = row.UnitType, Text = Locale.Lookup(row.Name) .. " (" .. tostring(row.UnitType) .. ")" })
+            end
+        end
+    else
+        for row in GameInfo.Resources() do
+            table.insert(rows, { Key = row.ResourceType, Text = Locale.Lookup(row.Name) .. " (" .. tostring(row.ResourceType) .. ")" })
+        end
+    end
+    table.sort(rows, function(a, b) return tostring(a.Text) < tostring(b.Text) end)
+    for _, row in ipairs(rows) do
+        row.Amount = 1
+        table.insert(entries, row)
+        if #entries >= EVENT_LIST_MAX then break end
+    end
+    return entries
+end
+
+local function BuildEventTurnEntries()
+    local logicalTurn = ModMiscSaveGraph ~= nil and ModMiscSaveGraph.GetLogicalTurn() or 1
+    local entries = {}
+    for _, turnOffset in ipairs(EVENT_TURN_OFFSETS) do
+        local targetTurn = logicalTurn + turnOffset
+        local text = Locale.Lookup("LOC_MODMISC_SAVEPANEL_TURN_NOW", tostring(targetTurn))
+        if turnOffset > 0 then
+            text = Locale.Lookup("LOC_MODMISC_SAVEPANEL_TURN_PLUS", tostring(targetTurn), tostring(turnOffset))
+        end
+        table.insert(entries, {
+            Key = tostring(turnOffset), TurnOffset = turnOffset, Turn = targetTurn, Text = text,
+        })
+    end
+    return entries
+end
+
+local function FindSelected(entries, isSelected)
+    for _, entry in ipairs(entries) do
+        if isSelected(entry) then return entry end
+    end
+    return nil
+end
+
+local m_Selectors = {}
+local m_SelectorOrder = { "eventPlayer", "eventType", "eventDetail", "eventTurn" }
+
+local function RefreshSelectorButtons()
+    for _, key in ipairs(m_SelectorOrder) do
+        local selector = m_Selectors[key]
+        if selector ~= nil and selector.button ~= nil then
+            selector.button:SetText(selector.getLabel())
+        end
+    end
+end
+
+local function CloseOptionList()
+    Controls.ModMiscSaveOptionPanel:SetHide(true)
+    m_OpenSelectorKey = nil
+end
+
+local function OpenOptionList(key)
+    local selector = m_Selectors[key]
+    if selector == nil then return end
+    local entries = selector.getEntries()
+    if entries == nil or #entries == 0 then
+        SetStatus(Locale.Lookup("LOC_MODMISC_SAVEPANEL_NO_OPTIONS"))
+        return
+    end
+
+    m_OptionIM:ResetInstances()
+    for _, entry in ipairs(entries) do
+        local instance = m_OptionIM:GetInstance()
+        instance.EntryLabel:SetText(selector.getEntryText(entry))
+        instance.EntryButton:SetSelected(selector.isSelected(entry))
+        instance.EntryButton:ClearCallback(Mouse.eLClick)
+        instance.EntryButton:RegisterCallback(Mouse.eLClick, function()
+            selector.onSelect(entry)
+            RefreshSelectorButtons()
+            CloseOptionList()
+        end)
+    end
+
+    local button = selector.button
+    local optionX = button:GetOffsetX()
+    local buttonY = button:GetOffsetY()
+    local wanted = #entries * 50 + 16
+    local roomBelow = Controls.ModMiscSaveRoot:GetSizeY() - (buttonY + button:GetSizeY()) - 20
+    local roomAbove = buttonY - 14
+    local openUpward = (roomBelow < wanted) and (roomAbove > roomBelow)
+    local optionHeight = math.min(wanted, math.max(100, openUpward and roomAbove or roomBelow))
+    local optionY = buttonY + button:GetSizeY() + 4
+    if openUpward then optionY = buttonY - optionHeight - 4 end
+    if optionY < 10 then optionY = 10 end
+
+    local panel = Controls.ModMiscSaveOptionPanel
+    panel:SetSizeVal(button:GetSizeX(), optionHeight)
+    panel:SetOffsetVal(optionX, optionY)
+    panel:SetHide(false)
+    Controls.ModMiscSaveOptionScroll:CalculateSize()
+    Controls.ModMiscSaveOptionScroll:CalculateInternalSize()
+    m_OpenSelectorKey = key
+end
+
+local function ToggleOptionList(key)
+    if m_OpenSelectorKey == key then
+        CloseOptionList()
+    else
+        CloseOptionList()
+        OpenOptionList(key)
+    end
+end
+
+local function GetEventDetailLabel()
+    if m_EventDetailEntry == nil then
+        return Locale.Lookup("LOC_MODMISC_SAVEPANEL_EVENT_DETAIL_NONE")
+    end
+    return m_EventDetailEntry.Text
+end
+
+local function GetEventTurnLabel()
+    if m_EventTurnEntry == nil then
+        return Locale.Lookup("LOC_MODMISC_SAVEPANEL_EVENT_TURN_NONE")
+    end
+    return m_EventTurnEntry.Text
+end
+
+local function BuildSelectors()
+    m_Selectors = {
+        eventPlayer = {
+            button = Controls.ModMiscSaveEventPlayerButton,
+            getEntries = BuildEventPlayerEntries,
+            getEntryText = function(entry) return entry.Text end,
+            getLabel = function()
+                local entry = FindSelected(BuildEventPlayerEntries(), function(e) return e.PlayerID == m_EventPlayerID end)
+                if entry ~= nil then return entry.Text end
+                return Locale.Lookup("LOC_MODMISC_SAVEPANEL_EVENT_PLAYER_NONE")
+            end,
+            isSelected = function(entry) return entry.PlayerID == m_EventPlayerID end,
+            onSelect = function(entry) m_EventPlayerID = entry.PlayerID end,
+        },
+        eventType = {
+            button = Controls.ModMiscSaveEventTypeButton,
+            getEntries = BuildEventTypeEntries,
+            getEntryText = function(entry) return entry.Text end,
+            getLabel = function()
+                local entry = FindSelected(BuildEventTypeEntries(), function(e) return e.Key == m_EventTypeKey end)
+                return entry ~= nil and entry.Text or tostring(m_EventTypeKey)
+            end,
+            isSelected = function(entry) return entry.Key == m_EventTypeKey end,
+            onSelect = function(entry)
+                m_EventTypeKey = entry.Key
+                m_EventDetailEntry = nil      -- 换类型就重选内容
+            end,
+        },
+        eventDetail = {
+            button = Controls.ModMiscSaveEventDetailButton,
+            getEntries = BuildEventDetailEntries,
+            getEntryText = function(entry) return entry.Text end,
+            getLabel = GetEventDetailLabel,
+            isSelected = function(entry) return entry == m_EventDetailEntry end,
+            onSelect = function(entry) m_EventDetailEntry = entry end,
+        },
+        eventTurn = {
+            button = Controls.ModMiscSaveEventTurnButton,
+            getEntries = BuildEventTurnEntries,
+            getEntryText = function(entry) return entry.Text end,
+            getLabel = GetEventTurnLabel,
+            isSelected = function(entry) return m_EventTurnEntry ~= nil and entry.Key == m_EventTurnEntry.Key end,
+            onSelect = function(entry) m_EventTurnEntry = entry end,
+        },
+    }
+end
+
+local function SelectEventDefaultsIfNeeded()
+    if m_EventPlayerID == nil then
+        local localPlayer = Game.GetLocalPlayer()
+        m_EventPlayerID = (localPlayer ~= nil and localPlayer >= 0) and localPlayer or 0
+    end
+    if m_EventDetailEntry == nil then
+        local entries = BuildEventDetailEntries()
+        if #entries > 0 then m_EventDetailEntry = entries[1] end
+    end
+    if m_EventTurnEntry == nil then
+        local entries = BuildEventTurnEntries()
+        if #entries > 0 then m_EventTurnEntry = entries[1] end
+    end
+end
+
+local function DoSendEvent()
+    if m_SelectedNode == nil then
+        Report(Locale.Lookup("LOC_MODMISC_SAVEPANEL_NO_SELECTION"),
+            Locale.Lookup("LOC_MODMISC_SAVEPANEL_NO_SELECTION_DETAIL"))
+        return
+    end
+    SelectEventDefaultsIfNeeded()
+
+    local detailEntry = m_EventDetailEntry
+    local turnEntry = m_EventTurnEntry
+    local event = {
+        Type = m_EventTypeKey or "GOLD",
+        Detail = detailEntry ~= nil and tostring(detailEntry.Key) or "",
+        Amount = detailEntry ~= nil and (tonumber(detailEntry.Amount) or 1) or 1,
+        AcceptTurn = turnEntry ~= nil and tonumber(turnEntry.Turn) or ModMiscSaveGraph.GetLogicalTurn(),
+        TargetPlayerID = m_EventPlayerID,
+    }
+    local ok, keyOrErr = ModMiscSaveGraph.SendEvent(m_SelectedNode.Id, event)
+    if not ok then
+        ReportError("SendEvent", keyOrErr)
+        return
+    end
+    Report(Locale.Lookup("LOC_MODMISC_SAVEPANEL_EVENT_SENT",
+            tostring(m_SelectedNode.Id), tostring(event.Type),
+            tostring(event.Detail ~= "" and event.Detail or event.Amount),
+            tostring(event.AcceptTurn)),
+        Locale.Lookup("LOC_MODMISC_SAVEPANEL_EVENT_SENT_DETAIL", tostring(keyOrErr)))
+end
+
+local function DoLoadSelected()
+    if m_SelectedNode == nil then
+        Report(Locale.Lookup("LOC_MODMISC_SAVEPANEL_NO_SELECTION"),
+            Locale.Lookup("LOC_MODMISC_SAVEPANEL_NO_SELECTION_DETAIL"))
+        return
+    end
+    local node = m_SelectedNode
+    local text = Locale.Lookup("LOC_MODMISC_SAVEPANEL_LOAD_CONFIRM", tostring(node.RawName or node.Id))
+    local ok, err = pcall(function()
+        local popup = PopupDialogInGame:new("UnitPanelPopup")
+        popup:ShowOkCancelDialog(text, function()
+            local loadOk, loadErr = ModMiscSaveGraph.LoadNode(node.Id)
+            if not loadOk then ReportError("LoadNode", loadErr) end
+        end)
+    end)
+    if not ok then ReportError("LoadConfirm", err) end
 end
 
 local function RefreshAll(onDone)
@@ -149,6 +472,8 @@ local function RefreshAll(onDone)
     ModMiscSaveGraph.Refresh(function(nodes)
         RenderTree()
         UpdateInfoLine()
+        SelectEventDefaultsIfNeeded()
+        RefreshSelectorButtons()
         local count = nodes ~= nil and #nodes or 0
         SetStatus(Locale.Lookup("LOC_MODMISC_SAVEPANEL_SCANNED", count))
         if onDone ~= nil then pcall(onDone, count) end
@@ -236,11 +561,15 @@ function OpenModMiscSavePanel()
     local panelRoot = AttachPanelToInGame()
     panelRoot:SetHide(false)
     SetStatus(Locale.Lookup("LOC_MODMISC_SAVEPANEL_READY"))
+    CloseOptionList()
+    SelectEventDefaultsIfNeeded()
+    RefreshSelectorButtons()
     RefreshAll()   -- 内含跨存档存储扫描：新 context 必须先读起来才知道主线头 / 待接分支
     Log("面板已打开")
 end
 
 function CloseModMiscSavePanel()
+    CloseOptionList()
     Controls.ModMiscSaveRoot:SetHide(true)
 end
 
@@ -262,7 +591,25 @@ function OnInit()
     Controls.ModMiscSaveRoot:SetHide(true)
     m_EntryIM = InstanceManager:new("ModMiscSaveEntry", "EntryButton", Controls.ModMiscSaveList)
 
+    m_OptionIM = InstanceManager:new("ModMiscSaveOptionEntry", "EntryButton",
+        Controls.ModMiscSaveOptionList)
+    BuildSelectors()
+    SelectEventDefaultsIfNeeded()
+    RefreshSelectorButtons()
+
     Controls.ModMiscSaveClose:RegisterCallback(Mouse.eLClick, CloseModMiscSavePanel)
+    Controls.ModMiscSaveEventPlayerButton:RegisterCallback(Mouse.eLClick,
+        function() ToggleOptionList("eventPlayer") end)
+    Controls.ModMiscSaveEventTypeButton:RegisterCallback(Mouse.eLClick,
+        function() ToggleOptionList("eventType") end)
+    Controls.ModMiscSaveEventDetailButton:RegisterCallback(Mouse.eLClick,
+        function() ToggleOptionList("eventDetail") end)
+    Controls.ModMiscSaveEventTurnButton:RegisterCallback(Mouse.eLClick,
+        function() ToggleOptionList("eventTurn") end)
+    Controls.ModMiscSaveEventSend:RegisterCallback(Mouse.eLClick,
+        function() SafeCall("SendEvent", DoSendEvent) end)
+    Controls.ModMiscSaveLoadSelected:RegisterCallback(Mouse.eLClick,
+        function() SafeCall("LoadSelected", DoLoadSelected) end)
     Controls.ModMiscSaveCurrent:RegisterCallback(Mouse.eLClick,
         function() SafeCall("Save", DoSave) end)
     Controls.ModMiscSaveSwitchMap:RegisterCallback(Mouse.eLClick,

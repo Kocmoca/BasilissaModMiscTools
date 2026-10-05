@@ -1255,6 +1255,61 @@ gameplay 侧要换图，走 `ExposedMembers.ModMiscToolScript.WorldBuilderAPI.Se
 「存档」/「换图（先存原档）」/「刷新列表」。日志前缀 `[ModMiscTool][SaveGraph]` 与
 `[ModMiscTool][SavePanel]`。
 
+------------------------------------------------------------------------------
+### 3.14 从关系树读档 / 回合同步（逻辑）/ 跨存档事件
+------------------------------------------------------------------------------
+
+#### 3.14.1 从关系树读档
+
+    ModMiscSaveGraph.LoadNode(nodeId)     -- 把列表里的原始条目交给 Network.LoadGame
+                                           -- （原版载入菜单也是这么干的）
+    ModMiscSaveGraph.FindNode(nodeId)     -- 按 id 取节点（含 FileEntry / Turn / Logical）
+
+面板：在关系树里点一条 → 「载入选中存档」→ 确认弹窗 → 读档（会把当前局整局顶掉）。
+
+#### 3.14.2 回合同步（**纯逻辑**，不做硬同步）
+
+    逻辑回合 = 引擎回合 + offset
+    offset：一局内是常数，开局算一次；分支的偏移 = 起点逻辑回合 - 1
+            （主线第 18 逻辑回合开的分支：引擎第 1 回合 = 逻辑第 18 回合，引擎第 3 回合 = 逻辑第 20 回合）
+
+    ModMiscSaveGraph.GetLogicalTurn()            当前逻辑回合
+    ModMiscSaveGraph.GetLogicalTurnInfo()        返回 logical, engine, offset, source
+    TurnEvents.SetLogicalOffset(offset)          gameplay 侧设置（UI 开局时推过去）
+    TurnEvents.GetLogicalTurn()                  gameplay 侧换算
+
+固化位置：`CustomData.Offset`（随档）+ `Game:SetProperty(turnevents_offset)`；
+档名末尾可选 `~L<逻辑回合>`，身份载荷第 5/6 段是 logical/offset（老档没有 → 显示 `-`，不猜）。
+
+#### 3.14.3 跨存档事件
+
+    ModMiscSaveGraph.SendEvent(targetNodeId, event)     发件（写进信箱）
+        event = { Type = "GOLD"|"UNIT"|"RESOURCE", Detail = <单位/资源类型名>,
+                  Amount = <数量>, AcceptTurn = <接受逻辑回合>, TargetPlayerID = <玩家 id> }
+    ModMiscSaveGraph.FetchEventsForNode(nodeId)         收件（返回事件数组 + 信箱键）
+    ModMiscSaveGraph.DropEventKeys(keys)                投递后清理
+    ModMiscSaveGraph.IntakeEvents(onDone)               收件 → 交给 gameplay 的回合事件列表
+
+    ExposedMembers.ModMiscToolScript.TurnEvents（gameplay）：
+        SetLogicalOffset(offset) / GetLogicalOffset() / GetLogicalTurn()
+        AddIncoming(event)      入列（过期 ⇒ 排到下一回合触发）
+        GetAll() / Clear() / ProcessDue(reason) / ExecuteEvent(event)
+
+**信箱**：跨存档存储键 `ev_<目标节点id>_<序号>`，值
+`type|detail|amount|acceptTurn|fromNode|playerID|civ|stamp`（一个事件一个键，投递即删）。
+
+**发放通道**：金币 = `ChangeGoldBalance`；单位 = `UnitManager.InitUnit` 落在接收方首都（没首都顺延）；
+资源 = 先探 `GetResources():ChangeResourceAmount`，不行就 `WorldBuilderAPI.SetResourceType` 落到首都附近的地块。
+
+**文本提示（其它 mod 可定义）**：
+
+    LuaEvents.ModMiscToolTurnEventFired.Call(type, detail, amount, fromNode, overdue, toPlayerID, result)
+    LuaEvents.ModMiscToolTurnEventBatch.Call(count, logicalTurn)
+    ExposedMembers.ModMiscToolUI.RegisterTurnEventTextResolver(fn)
+        fn(eventType, detail, amount, fromNode, overdue, toPlayerID, result) -> 文本或 nil
+
+默认文案：`LOC_MODMISC_TURNEVENT_{GOLD,UNIT,RESOURCE,UNKNOWN,TITLE,OVERDUE_SUFFIX}`。
+
 ==============================================================================
 ## 四、数据库表（供其他 mod 插入数据）
 ==============================================================================

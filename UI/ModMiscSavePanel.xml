@@ -2,17 +2,21 @@
 <!--
   Mod Misc Tool: 存档与换图（成品面板）
 
-  做什么：
-    * 按固定格式（MMT~id~parent~kind~T回合~地图~时间）给当前局存档，并记住它与上一档的关系；
-    * 「换图」= 先存原档 → 记下“新局算这条线的分支” → Network.RestartGame()
-      （换图只能靠重开：对局内换地图脚本/改配置实测都不生效，见 API_Verification_Status.md 第 12、13 节）；
-    * 把本 mod 的关系档按主线 / 分支渲染成树，标出“本局”与“父档不在列表”的档。
+  三块功能：
+    1. 存档 / 换图：按固定格式（MMT~id~parent~kind~T引擎回合~地图~时间[~L逻辑回合]）存档；
+       换图 = 两步（先存原档 → 再点一次直接重开，重开只在按钮回调里调）。
+    2. 关系树：本 mod 格式的档按主线 / 分支渲染，标出「本局」「父档不在列表」「逻辑回合」；
+       点一条选中它，可以「载入选中存档」（会顶掉当前局，先弹确认）。
+    3. 跨存档事件：给**选中存档**发一条事件（预设：单位 / 金币 / 资源），
+       附带“接受回合”（逻辑回合）；接收方读档后拉进回合事件列表，到点触发并弹文本提示。
+       回合同步是**纯逻辑**的：逻辑回合 = 引擎回合 + 偏移（分支从主线某回合分叉时记下的偏移），
+       不做任何硬同步、不改引擎回合。
 
-  关系信息只存在于**存档文件名**里（跨存档唯一可用通道），所以格式不能改着玩；
-  游戏自带存档菜单存的档不带这个格式，不会进这棵树。
+  关系信息只存在于**存档文件名**里（跨存档唯一可用通道）；游戏自带存档菜单存的档不带这个格式，
+  不会进这棵树。
 -->
 <Context>
-    <Container ID="ModMiscSaveRoot" Anchor="C,C" Size="900,760" ConsumeMouse="1" Hidden="1">
+    <Container ID="ModMiscSaveRoot" Anchor="C,C" Size="900,900" ConsumeMouse="1" Hidden="1">
         <Box Anchor="C,C" Size="parent,parent" Color="20,20,30,248">
             <Grid Anchor="C,C" Size="parent+16,parent+16" Style="ScreenFrame" />
 
@@ -28,12 +32,12 @@
             <Label ID="ModMiscSaveStatus" Anchor="L,T" Offset="20,64" Size="parent-40,32"
                    FontSize="22" Color="225,225,225,255" WrapWidth="860" VerticalAlignment="Center" />
 
-            <Label ID="ModMiscSaveInfo" Anchor="L,T" Offset="20,100" Size="parent-40,56"
+            <Label ID="ModMiscSaveInfo" Anchor="L,T" Offset="20,100" Size="parent-40,50"
                    FontSize="22" Color="180,205,230,255" WrapWidth="860" VerticalAlignment="Top"
                    String="" />
 
-            <!-- 关系树（本 mod 格式的档才在这里；点一条看详情） -->
-            <Container ID="ModMiscSaveListFrame" Anchor="L,T" Offset="20,162" Size="parent-40,392" ConsumeMouse="1">
+            <!-- 关系树（本 mod 格式的档才在这里；点一条选中它） -->
+            <Container ID="ModMiscSaveListFrame" Anchor="L,T" Offset="20,156" Size="parent-40,200" ConsumeMouse="1">
                 <Box Anchor="L,T" Size="parent,parent" Color="10,18,28,235">
                     <Grid Anchor="C,C" Size="parent+8,parent+8" Style="ScreenFrame" />
                     <ScrollPanel ID="ModMiscSaveScroll" Anchor="C,T" Size="parent-8,parent-8"
@@ -44,24 +48,75 @@
                 </Box>
             </Container>
 
-            <GridButton ID="ModMiscSaveCurrent" Anchor="L,T" Offset="20,566" Size="280,58"
-                        Style="ButtonControl" FontSize="26" String="LOC_MODMISC_SAVEPANEL_SAVE" />
-            <GridButton ID="ModMiscSaveSwitchMap" Anchor="L,T" Offset="310,566" Size="280,58"
-                        Style="ButtonControl" FontSize="26" String="LOC_MODMISC_SAVEPANEL_SWITCH" />
-            <GridButton ID="ModMiscSaveRefresh" Anchor="L,T" Offset="600,566" Size="280,58"
-                        Style="ButtonControl" FontSize="26" String="LOC_MODMISC_SAVEPANEL_REFRESH" />
+            <!-- 事件：目标玩家 / 类型 / 内容 / 接受回合 -->
+            <Label ID="ModMiscSaveEventPlayerLabel" Anchor="L,T" Offset="20,366" Size="170,52"
+                   FontSize="24" Color="225,225,225,255" VerticalAlignment="Center"
+                   String="LOC_MODMISC_SAVEPANEL_EVENT_PLAYER" />
+            <GridButton ID="ModMiscSaveEventPlayerButton" Anchor="L,T" Offset="200,366" Size="660,52"
+                        Style="ButtonControl" FontSize="24" String="" />
 
-            <Label ID="ModMiscSaveDetail" Anchor="L,T" Offset="20,636" Size="parent-40,104"
+            <Label ID="ModMiscSaveEventTypeLabel" Anchor="L,T" Offset="20,426" Size="170,52"
+                   FontSize="24" Color="225,225,225,255" VerticalAlignment="Center"
+                   String="LOC_MODMISC_SAVEPANEL_EVENT_TYPE" />
+            <GridButton ID="ModMiscSaveEventTypeButton" Anchor="L,T" Offset="200,426" Size="660,52"
+                        Style="ButtonControl" FontSize="24" String="" />
+
+            <Label ID="ModMiscSaveEventDetailLabel" Anchor="L,T" Offset="20,486" Size="170,52"
+                   FontSize="24" Color="225,225,225,255" VerticalAlignment="Center"
+                   String="LOC_MODMISC_SAVEPANEL_EVENT_DETAIL" />
+            <GridButton ID="ModMiscSaveEventDetailButton" Anchor="L,T" Offset="200,486" Size="660,52"
+                        Style="ButtonControl" FontSize="24" String="" />
+
+            <Label ID="ModMiscSaveEventTurnLabel" Anchor="L,T" Offset="20,546" Size="170,52"
+                   FontSize="24" Color="225,225,225,255" VerticalAlignment="Center"
+                   String="LOC_MODMISC_SAVEPANEL_EVENT_TURN" />
+            <GridButton ID="ModMiscSaveEventTurnButton" Anchor="L,T" Offset="200,546" Size="280,52"
+                        Style="ButtonControl" FontSize="24" String="" />
+            <GridButton ID="ModMiscSaveEventSend" Anchor="L,T" Offset="490,546" Size="370,52"
+                        Style="ButtonControl" FontSize="24" String="LOC_MODMISC_SAVEPANEL_EVENT_SEND" />
+
+            <!-- 操作按钮 -->
+            <GridButton ID="ModMiscSaveCurrent" Anchor="L,T" Offset="20,612" Size="280,58"
+                        Style="ButtonControl" FontSize="25" String="LOC_MODMISC_SAVEPANEL_SAVE" />
+            <GridButton ID="ModMiscSaveSwitchMap" Anchor="L,T" Offset="310,612" Size="280,58"
+                        Style="ButtonControl" FontSize="25" String="LOC_MODMISC_SAVEPANEL_SWITCH" />
+            <GridButton ID="ModMiscSaveLoadSelected" Anchor="L,T" Offset="600,612" Size="280,58"
+                        Style="ButtonControl" FontSize="25" String="LOC_MODMISC_SAVEPANEL_LOAD" />
+
+            <GridButton ID="ModMiscSaveRefresh" Anchor="L,T" Offset="20,678" Size="280,58"
+                        Style="ButtonControl" FontSize="25" String="LOC_MODMISC_SAVEPANEL_REFRESH" />
+
+            <Label ID="ModMiscSaveDetail" Anchor="L,T" Offset="20,748" Size="parent-40,140"
                    FontSize="22" Color="225,225,225,255" WrapWidth="860" VerticalAlignment="Top"
                    String="" />
+
+            <!-- 展开的选项列表（选择器共用；按钮在哪就贴在它下面/上面） -->
+            <Container ID="ModMiscSaveOptionPanel" Anchor="L,T" Size="660,300" ConsumeMouse="1" Hidden="1">
+                <Box Anchor="L,T" Size="parent,parent" Color="10,18,28,252">
+                    <Grid Anchor="C,C" Size="parent+8,parent+8" Style="ScreenFrame" />
+                    <ScrollPanel ID="ModMiscSaveOptionScroll" Anchor="C,T" Size="parent-8,parent-8"
+                                 Vertical="1" AutoScrollBar="0">
+                        <Stack ID="ModMiscSaveOptionList" StackGrowth="Bottom" Anchor="C,T" StackPadding="2" />
+                        <ScrollBar Anchor="R,C" Size="11,parent" Offset="2,0" AnchorSide="O,I" Style="ScrollVerticalBar" />
+                    </ScrollPanel>
+                </Box>
+            </Container>
         </Box>
     </Container>
 
-    <!-- 关系树条目模板：GridButton 里放一行文字（缩进用全角空格拼在 Lua 侧） -->
+    <!-- 关系树条目模板：GridButton 里放一行文字（缩进用空格拼在 Lua 侧） -->
     <Instance Name="ModMiscSaveEntry">
         <GridButton ID="EntryButton" Size="840,52" Style="ButtonControl" Anchor="C,T">
             <Label ID="EntryLabel" Anchor="L,C" Offset="14,0" Size="parent-28,parent"
                    FontSize="23" Color="225,225,225,255" VerticalAlignment="Center" TruncateWidth="810" />
+        </GridButton>
+    </Instance>
+
+    <!-- 选项列表条目模板 -->
+    <Instance Name="ModMiscSaveOptionEntry">
+        <GridButton ID="EntryButton" Size="620,48" Style="ButtonControl" Anchor="C,T">
+            <Label ID="EntryLabel" Anchor="L,C" Offset="12,0" Size="parent-24,parent"
+                   FontSize="24" Color="225,225,225,255" VerticalAlignment="Center" TruncateWidth="590" />
         </GridButton>
     </Instance>
 </Context>

@@ -749,3 +749,57 @@ modinfo 的 ImportFiles 里登记了），于是 `ModMiscToolData` 是 nil → �
 | `清除待接分支（退出到主菜单）` | 退出即清，另开新局不会被误挂 |
 | `节点身份已写入：customdata=ok property=true` | 两条“随档走”的通道都写成功 |
 | `警告：上一笔存档等回执已超时 N 秒，丢弃该状态继续` | 回执丢失后的自愈 |
+
+---
+
+## 15. 读档 / 回合同步（逻辑）/ 跨存档事件（2026-10-05，**待实机**）
+
+三块一起做的，都建立在已经跑通的关系树之上：**从树里读档**、**逻辑回合同步**、**给某个存档发事件**。
+
+### 15.1 从关系树读档
+
+| # | 接口 / 方法 | 状态 | 备注 |
+|---|---|---|---|
+| 58 | 对局内 `Network.LoadGame(<存档列表条目>, ServerType.SERVER_TYPE_NONE)` | `[待实机]`（接口本身见第 38 条 `[部分可用]`） | 原版载入菜单就是 `m_thisLoadFile = g_FileList[i]` 然后 `Network.LoadGame(m_thisLoadFile, serverType)`（`LoadGameMenu.lua:108/121`）—— 我们照做：把 `UI.QuerySaveGameList` 拿到的**原始条目**原样交回去。会把当前局整局顶掉，所以面板先弹 `ShowOkCancelDialog` 确认。 |
+
+### 15.2 回合同步（**纯逻辑，不做硬同步** —— 授权者明确）
+
+**定义**：主线在第 18 逻辑回合开分支 → 分支引擎第 1 回合 = 逻辑第 18 回合
+⇒ 偏移 `offset = 18 - 1 = 17`，于是**分支引擎第 3 回合 = 逻辑第 20 回合**。
+
+* `逻辑回合 = 引擎回合 + offset`；offset 在一局内是常数（两者 1:1 走），开局算一次就固化；
+* 固化位置：`CustomData.Offset`（随档）与 `Game:SetProperty`（`turnevents_offset`，gameplay 侧）；
+* 分支偏移的来源：换图时写进 pending 载荷的第 5 段（起点逻辑回合），新局开局固化成
+  `CustomData.PendingLogical` 与 `Offset = 起点逻辑回合 - 1`；
+* 节点身份也带上了逻辑回合：档名末尾可选 `~L<逻辑回合>`、身份载荷第 5/6 段（logical/offset）；
+  **老档名没有这一段 → 解析容忍，显示 `-`**（不猜、不硬算）；
+* **绝不改引擎回合**：第 47 条已证伪，这里只是换算与显示。
+
+### 15.3 跨存档事件（预设：单位 / 金币 / 资源）
+
+**信箱**：跨存档存储（通道 C）里的键 `ev_<目标节点id>_<序号>`，
+值 `type|detail|amount|acceptTurn|fromNode|playerID|civ|stamp`（一个事件一个键，投递即删）。
+
+```
+发送方：面板选「目标玩家 / 事件类型 / 内容 / 接受回合」→ SendEvent(选中节点, event)
+接收方：开局收件（Support_UI 探针 → ModMiscSaveGraph.IntakeEvents）
+        → 交给 gameplay 的回合事件列表（Game:SetProperty，随档保存）
+        → 每回合开始（Events.LocalPlayerTurnBegin）结算到点事件 → 执行 + 广播文本事件
+```
+
+| # | 行为 | 状态 | 备注 |
+|---|---|---|---|
+| 59 | 接受回合规则 | `[待实机]` | 接受回合 < 当前逻辑回合 ⇒ 标记 `Overdue` 并排到**下一回合**（授权者口径）；否则到那一回合触发。 |
+| 60 | 金币发放 `player:GetTreasury():ChangeGoldBalance(n)` | `[待实机]`（游戏自带场景脚本在用，属已验证写法） | 本 mod 直接复用 `ChangePlayerGoldAmount`（`ModTool_Support_Functions.lua`）。 |
+| 61 | 单位发放 `UnitManager.InitUnit(playerID, unitType, x, y)` 落在**接收方首都** | `[待实机]` | 没有首都 → **顺延**到下一回合（不丢事件）。 |
+| 62 | 资源发放 | `[待实机·两条通道]` | ① 库存通道 `player:GetResources():ChangeResourceAmount(idx, n)` —— **引擎里没有任何调用点/文档**，先探一手；② 不行就落到地图：`WorldBuilderAPI.SetResourceType(plot, idx, n)`（已封装、已验证通道），在首都附近找自己的陆地放。日志里的 `通道=` 会写清楚走的哪条。 |
+| 63 | 事件文本提示可由其它 mod 定义 | `[待实机]` | gameplay 侧每条执行完广播 `LuaEvents.ModMiscToolTurnEventFired(type, detail, amount, fromNode, overdue, toPlayerID, result)`，一批执行完再广播 `LuaEvents.ModMiscToolTurnEventBatch(count, logicalTurn)`；UI 侧（Support_UI）默认按类型组 LOC 文案并弹一条汇总弹窗，其它 mod 可用 `ExposedMembers.ModMiscToolUI.RegisterTurnEventTextResolver(fn)` 覆盖文案。 |
+
+### 15.4 这一块的实现位置
+
+| 文件 | 职责 |
+|---|---|
+| `UI/ModMiscSaveGraph.lua` | 逻辑回合换算、读档、事件发件/收件（信箱）、关系树 |
+| `ModTool_TurnEvents.lua`（gameplay） | 回合事件列表（`Game:SetProperty`）、到点结算、三种发放、文本广播 |
+| `UI/ModMiscSavePanel.lua` | 关系树选中、四个选择器（玩家/类型/内容/接受回合）、发送事件、载入选中 |
+| `UI/Support_UI.lua` | 开局收件、文本解析器注册、默认文案 + 弹窗 |
