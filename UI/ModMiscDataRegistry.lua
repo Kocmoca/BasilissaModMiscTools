@@ -10,6 +10,8 @@
 --   Lifecycle  permanent（永久）/ session（进程内）/ ephemeral（用后即焚）
 --   Channel    small（存档名编码，~100B/键、不用载入可读）/ big（配置组大通道，1MB 已验证）
 --              / carrier（载体存档，随档走但要载入才能读）；session 固定 memory
+--              persave 要指定在哪一侧：save = UI 的 CustomData，property = gameplay 的
+--              Game:SetProperty（两者互不可见，别混用同一个键）
 --   Owner      谁负责（出问题找谁、面板上显示）
 --   Version    结构版本；改了结构就 +1，并给 Migrate
 --   TTL        仅 ephemeral：多久没动就算过期（GC 清）
@@ -99,6 +101,14 @@ Register({
     Name = "probe_*", Lifecycle = "ephemeral", Channel = "small",
     Owner = "诊断探针", Version = 1, Type = "string", TTL = 3600, MaxBytes = 96,
     Describe = "开局/读档探针写的小标记（selftest/ingame 这类；1 小时过期）",
+})
+
+-- gameplay 侧的随档存储（Game:SetProperty）：DataStore 的公开 API 用的就是这条。
+-- **通配**：外部 mod 可以拿任意 key 存东西（API 是通用的，不能要求每个 key 都来登记）。
+Register({
+    Name = "ds_*", Lifecycle = "persave", Channel = "property",
+    Owner = "DataStore（gameplay 侧公开 API）", Version = 1, Type = "any",
+    Describe = "对局内 SetData/GetData 的随档数据（数字/字符串/表都行；本档内持久、新局不继承）",
 })
 
 Register({

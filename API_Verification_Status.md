@@ -908,6 +908,7 @@ Support_UI: [TurnEvent] 开局收件：0 条（no-node）
 | 81 | 通道 G：`UserConfiguration.SetValue` 存自定义键 | `[已实机失败]` | 实机：写 4096 B **不报错**，但立刻读回是 `[没有这个键]` ⇒ 值没留下（`GetValue` 对未注册键返回 nil）。与通道 F 同因：引擎只认自己那套键。 |
 | 83 | **通用数据协议 `ModMiscDataProtocol`**（生命周期/类型/通道/审计/GC） | `[已落地·桩测试全绿]` | 三条铁律：没登记不许写 / 永久数据必须写 Owner+Version / 用后即焚真的焚。信封 `MMT1|生命周期|版本|时间|类型|长度|负载`，值编码长度前缀（二进制安全），解码严格、绝不返回半截。`SaveTree` = 头记录指向分片。 |
 | 84 | **数据登记表 `ModMiscDataRegistry`** | `[已落地]` | 现有 9 条数据集全部登记（`sg_head`/`sg_pending`/`ev_*`/`evb_*`/`blob*`/`carrier*`/`panel`/`probe`/`nameprobe`）。加新数据 = 加一行。 |
+| 90 | **gameplay 侧存储（DataStore）走协议**：新增 `property` 通道（`Game:SetProperty`） | `[已落地·84 项全绿]` | `ds_*` 通配登记（persave/property/any）；`SetData/GetData` API 不变；探针载荷改成表；审计按登记项通道读，标「随档·UI」/「随档·gameplay」。 |
 | 89 | **换图交接（地图间数据传输）走协议**：ephemeral 交接单 + ephemeral 大载荷 + persave 身份 | `[已落地·9 项断言全绿]` | 交接单 `sg_pending`（ephemeral/small，TTL 900s，带 FromMap/ToMap/PayloadKey）；载荷 `xmap_*`（ephemeral/big，读走即删）；身份 `sgnode`（persave）；换图**不新增永久数据**（断言盯住）。`OnMapHandoff` 可注册接收方，已挂 ExposedMembers。 |
 | 88 | **存储调用全面迁移到协议**（旧的拼串/散键/回退链已删） | `[已落地·12 套桩测试全绿]` | 主线头/待接分支/事件信箱/事件大载荷/本局身份/资产记录/建局侧城邦数量/UI 数据/探针 全部走 `DataProtocol`；新增 `persave` 生命周期与 `save`(CustomData) 通道；小通道新增**自动溢出**（超单键上限自动分片，逻辑键不变）。 |
 | 87 | 协议**保真**（混合表/精度/共享引用/环/元表类）与**检测**（误领/丢包/损坏） | `[已落地·75+58 项全绿]` | 数字用 `%.17g`；共享子表与环用引用还原成同一张表；元表只存类名、解码侧 `RegisterClass` 装回、没登记就明确报告；信封 v2 带**数据集名**（拦误领）与**校验和**（拦静默损坏）；v1 兼容读。 |
@@ -1566,3 +1567,45 @@ MMT2|生命周期|版本|写入时间|类型|<名字长度>:<数据集名>|<校�
 
 顺带把建局侧的 `cg_marker`（创建新局/换图前打的时间戳标记）也迁到协议（persave 表），
 它是“这局是不是全新的”判据，语义上正好属于随档数据。
+
+### 19.12 gameplay 侧存储（DataStore）也迁到协议：新增 `property` 通道（2026-10-05）
+
+授权者：`DataStore` 这个 Lua 文件与文档也要更新。于是把**gameplay 侧**的随档存储也纳入同一套协议。
+
+#### 新增通道：`property`（gameplay 专用）
+
+| 通道 | 引擎 API | 谁能用 | 语义 |
+|---|---|---|---|
+| `save` | `WriteCustomData` / `ReadCustomData` | 前端 / 对局内 **UI** | 随档（写进 game parameters，**写后要存档才落盘**） |
+| `property` | `Game:SetProperty` / `Game:GetProperty` | **gameplay 脚本** | 随档（游戏状态的一部分，存档即带走、读档自动还原） |
+
+两者**互不可见**（同名的键在两边读不到对方），协议里靠 `persave` 登记项显式声明在哪一侧：
+`Channel = "save"`（UI）或 `"property"`（gameplay），不写默认 `save`。
+审计（面板「数据协议 → 审计」）会分别标成「随档·UI(CustomData)」/「随档·gameplay(Game:SetProperty)」，
+并按各自的通道去读 —— 这一条正是本轮抓到的 bug：审计原来写死读 `save` 通道，gameplay 那一侧永远显示为空。
+
+#### `ModTool_DataStore.lua` 的变化
+
+* 不再自己拼键拼串、不再直接 `Game:SetProperty`：一律 `DataProtocol.Save/Load/Remove`；
+* 键：`ds_<key>`（登记项 **`ds_*` 通配**，因为 `SetData(key, value)` 是**通用公开 API**，
+  不可能要求每个 key 都来登记）；类型标 `any`（数字/字符串/表都行，协议负责编解码）；
+* 值类型从“拼串 + 猜”变成协议原类型：数字按 `%.17g` 精确还原，表支持嵌套与共享引用；
+* 探针（开局读一次、读不到才写）：载荷从 `ds=1;t=…;turn=…` 拼串改成表
+  `{At, Nonce, Turn}`；那条“UI 的键 gameplay 读不到”的边界检查改成读 UI 探针的新键 `svprobe`
+  （仍然预期 nil）；
+* 文件头注释重写成“只看这一页就够”的规则：键/生命周期/通道/值类型/能力边界（随档、不跨档、
+  与 UI 互不可见）；
+* gameplay 侧 `include("ModMiscDataProtocol")` / `include("ModMiscDataRegistry")`（VFS 按文件名解析，
+  和现有 `include("ModMiscStore")` 一个写法）；时钟用守卫（gameplay 不保证有 `os`）。
+
+#### 测试（`devtools/dp_harness.lua` 第 23 节）
+
+`property` 通道可用 ✓｜原始键确实写进 `Game:SetProperty` ✓｜表结构读回一致 ✓｜
+数字保真（`0.1+0.2`）✓｜删除 = 写 nil ✓｜审计能列出 property 条目并标明“gameplay”侧 ✓；
+另有一组**两个存储互不可见**的断言：UI 键不在 property 里、gameplay 键不在 CustomData 里、
+各自读各自的值 ✓。桩测试总数 **84 项**，全绿。
+
+#### 相关文档
+
+* `API_Documentation.txt` 的 §3.12「跨存档 / 随档数据」一节已按同样口径改写
+  （`SetData/GetData` 的语义、`ds_*` 通配登记、以及“两个存储互不可见”）。

@@ -78,7 +78,7 @@ local DP_LIFECYCLE = { Permanent = "permanent", PerSave = "persave",
 -- 通道：
 --   save   引擎的 CustomData（UI 侧唯一可用的随档存储；gameplay 侧的 Game:SetProperty 在别的上下文）
 local DP_CHANNEL = { Memory = "memory", Small = "small", Big = "big",
-                     Carrier = "carrier", Save = "save" }
+                     Carrier = "carrier", Save = "save", Property = "property" }
 
 local m_Registry = {}          -- name -> spec
 local m_Order = {}             -- 登记顺序（面板按这个列）
@@ -382,7 +382,12 @@ M.ParseEnvelope = ParseEnvelope
 local function ChannelAvailable(channel)
     if channel == DP_CHANNEL.Memory then return true end
     if channel == DP_CHANNEL.Save then
+        -- UI 侧的随档存储：引擎的 CustomData（写进 game parameters，随档落盘）
         return WriteCustomData ~= nil and ReadCustomData ~= nil
+    end
+    if channel == DP_CHANNEL.Property then
+        -- gameplay 侧的随档存储：Game:SetProperty/GetProperty（API 只在 gameplay 上下文有）
+        return Game ~= nil and Game.SetProperty ~= nil and Game.GetProperty ~= nil
     end
     if channel == DP_CHANNEL.Small then
         return ModMiscStore ~= nil and ModMiscStore.Save ~= nil
@@ -477,6 +482,12 @@ local function ChannelWrite(channel, key, text)
         if not ok then return false, "CustomData 写入失败: " .. tostring(err) end
         return true
     end
+    if channel == DP_CHANNEL.Property then
+        if Game == nil or Game.SetProperty == nil then return false, "property 通道不可用" end
+        local ok, err = pcall(function() Game:SetProperty(key, text) end)
+        if not ok then return false, "Game:SetProperty 失败: " .. tostring(err) end
+        return true
+    end
     return false, "不支持的通道: " .. tostring(channel)
 end
 
@@ -498,6 +509,12 @@ local function ChannelRead(channel, key)
         if not ok then return nil, "CustomData 读取失败: " .. tostring(value) end
         return value
     end
+    if channel == DP_CHANNEL.Property then
+        if Game == nil or Game.GetProperty == nil then return nil, "property 通道不可用" end
+        local ok, value = pcall(function() return Game:GetProperty(key) end)
+        if not ok then return nil, "Game:GetProperty 失败: " .. tostring(value) end
+        return value
+    end
     return nil, "不支持的通道: " .. tostring(channel)
 end
 
@@ -515,6 +532,11 @@ local function ChannelRemove(channel, key)
     end
     if channel == DP_CHANNEL.Save then
         local ok = pcall(WriteCustomData, key, "")
+        return ok and true or false
+    end
+    if channel == DP_CHANNEL.Property then
+        -- 引擎把 nil 当删除（沿用 DataStore 那边一直用的办法；实测前先按删除用）
+        local ok = pcall(function() Game:SetProperty(key, nil) end)
         return ok and true or false
     end
     return false
@@ -536,7 +558,12 @@ local function ValidateSpec(spec)
     if lifecycle == DP_LIFECYCLE.Session then
         spec.Channel = DP_CHANNEL.Memory
     elseif lifecycle == DP_LIFECYCLE.PerSave then
-        spec.Channel = DP_CHANNEL.Save          -- 随档数据固定走 CustomData
+        -- 随档数据：**UI 侧**走 CustomData（save），**gameplay 侧**走 Game:SetProperty（property）。
+        -- 两个存储互不可见，所以由登记项显式声明自己在哪一侧；不写默认 save。
+        if spec.Channel == nil then spec.Channel = DP_CHANNEL.Save end
+        if spec.Channel ~= DP_CHANNEL.Save and spec.Channel ~= DP_CHANNEL.Property then
+            return false, "随档数据的通道只能是 save（UI CustomData）或 property（gameplay）"
+        end
     elseif spec.Channel == nil then
         return false, "落盘的条目必须指定通道（small/big/carrier）"
     elseif spec.Channel ~= DP_CHANNEL.Small and spec.Channel ~= DP_CHANNEL.Big
@@ -904,8 +931,10 @@ function M.Audit()
             entry.Present = (m_Session[spec.Name] ~= nil)
             entry.Note = "内存"
         elseif spec.Lifecycle == DP_LIFECYCLE.PerSave then
-            local text = ChannelRead(DP_CHANNEL.Save, spec.Name)
-            entry.Channel = DP_CHANNEL.Save
+            -- 随档数据分两侧：UI 走 CustomData（save），gameplay 走 Game:SetProperty（property）
+            -- —— 审计必须**按登记项自己的通道**去读，写死 save 会看不到 gameplay 那一侧
+            local text = ChannelRead(spec.Channel or DP_CHANNEL.Save, spec.Name)
+            entry.Channel = spec.Channel or DP_CHANNEL.Save
             if text ~= nil and type(text) == "string" then
                 local envelope = ParseEnvelope(text)
                 entry.Present = true
@@ -915,7 +944,8 @@ function M.Audit()
                     entry.ValueType = envelope.ValueType
                 end
             end
-            entry.Note = "随档（新局不继承）"
+            entry.Note = (spec.Channel == DP_CHANNEL.Property and "随档·gameplay(Game:SetProperty)"
+                or "随档·UI(CustomData)") .. "（新局不继承）"
         elseif spec.Name:sub(-1) == "*" then
             -- 通配数据集：按真实键逐条列（别只报 "evb_* 不存在" 这种没用的结论）
             local keys = EnumerateKeys(spec)

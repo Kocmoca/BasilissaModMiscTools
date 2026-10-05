@@ -1050,7 +1050,8 @@ gameplay 侧要换图，走 `ExposedMembers.ModMiscToolScript.WorldBuilderAPI.Se
 
 #### 3.11.3 证据链（怎么判断调用之后到底进了哪一局）
 
-`ArmMarker` 把「调用前的快照」写进 CustomData；CustomData **随局随档、新局不继承**
+`ArmMarker` 把「调用前的快照」写进 `cg_marker`（协议 persave 表，UI 侧 CustomData）；
+随档数据 **随局随档、新局不继承**
 （已验证），于是：
 
 * 标记**读不到** → 现在这局是**新建的**；
@@ -1150,6 +1151,29 @@ gameplay 侧要换图，走 `ExposedMembers.ModMiscToolScript.WorldBuilderAPI.Se
     ModMiscTurnEra.AdjustTurn(10)                 -- 试写回合
     ModMiscTurnEra.SetStartEra("ERA_MEDIEVAL")    -- 试写下一局开始年代
 
+#### 3.12.5 gameplay 侧随档数据（ModTool_DataStore）
+
+对局内 gameplay 脚本要“存数据且自动落盘”，唯一途径是 `Game:SetProperty`（游戏状态的一部分）。
+2026-10-05 起它也走**通用数据协议**（`ModMiscDataProtocol` + `ModMiscDataRegistry`）：
+
+    ModMiscToolData.SetData(key, value) / GetData(key) / HasData(key) / RemoveData(key)
+    ModMiscToolData.BuildKey(key)      -- 键统一是 ds_<key>
+
+| 项 | 值 |
+|---|---|
+| 登记项 | **`ds_*`（通配）** —— `SetData` 是通用公开 API，不可能要求每个 key 都来登记；类型 `any` |
+| 生命周期 | **persave**（随档：存档带走、读档还原、**新局不继承**） |
+| 通道 | **`property`** = `Game:SetProperty/GetProperty`（**gameplay 专用**；UI 端没有这个 API） |
+| 值 | 数字 / 字符串 / 表都行；协议负责编解码（数字 `%.17g` 精确、表支持嵌套与共享引用），并带数据集名与校验和 |
+
+**两个随档存储互不可见**（实机确认）：UI 侧走 `save` 通道（引擎 CustomData，要用
+`SetModMiscCustomData/GetModMiscCustomData`），gameplay 侧走 `property` 通道（本节的 API）。
+同名的键在两边读不到对方 —— 面板「数据协议 → 审计」会分别标成
+「随档·UI(CustomData)」/「随档·gameplay(Game:SetProperty)」。
+
+**能力边界（不变）**：✅ 随档落盘；❌ 不跨存档、不跨新局；❌ 与 UI 侧互不可见。
+要跨存档请用 small / big / carrier 那几条通道（§3.13.12）。
+
 ------------------------------------------------------------------------------
 ### 3.13 存档关系与换图（ModMiscSaveGraph / ModMiscSavePanel，**成品功能**）
 ------------------------------------------------------------------------------
@@ -1163,7 +1187,8 @@ gameplay 侧要换图，走 `ExposedMembers.ModMiscToolScript.WorldBuilderAPI.Se
 * 唯一能换的是**同一地图脚本重新生成（换种子）**，靠 `Network.RestartGame()`；
 * 重开 = 丢掉当前世界 ⇒ **必须先存档**，而且这份原档要能找回来；
 * 跨存档唯一可用通道是**存档文件名**（通道 C）⇒ 关系信息写在档名里；
-* CustomData 随档保存但**不跨新局** ⇒ 节点身份用 CustomData 带，换图后的父子关系用存储通道带。
+* 随档数据（UI 侧 CustomData / gameplay 侧 SetProperty）**不跨新局** ⇒ 节点身份用随档身份
+  `sgnode`（协议 persave 通道）带，换图后的父子关系用存储通道带。
 
 #### 3.13.1 档名格式（**不可随意改**，解析全靠它）
 
@@ -1186,7 +1211,8 @@ gameplay 侧要换图，走 `ExposedMembers.ModMiscToolScript.WorldBuilderAPI.Se
 * 当前节点不是主线头（例如读了一档旧档继续玩 = SL）→ `B`：它从主线分叉出去；
 * 没有当前节点（新局第一次存档）→ 有“待接分支”就接它（换图后的新局），否则当树根。
 
-每次写出 `M` 档就把主线头推进到它；`B` 档不动主线头。**当前节点**来自随档保存的 CustomData
+每次写出 `M` 档就把主线头推进到它；`B` 档不动主线头。**当前节点**来自随档身份 `sgnode`
+（协议 persave 通道；UI 侧 CustomData）
 （`ModMiscSaveGraph_NodeId` 等）⇒ 读档进游戏就知道自己在哪个节点。
 
 #### 3.13.3 换图流程（面板上一个按钮）
@@ -1228,7 +1254,8 @@ gameplay 侧要换图，走 `ExposedMembers.ModMiscToolScript.WorldBuilderAPI.Se
 1. **存储内存表是「每 context 一份」**：换图重开后面板是新上下文，`ModMiscStore` 的表是空的，
    不 `Refresh()` 就读不到 `sg_head` / `sg_pending` ⇒ 新局会把自己当树根（“分支不知道自己是谁”）。
    模块里统一走 `EnsureStoreReady()` 门：没就绪就等扫描完再决定，绝不拿空数据做判断。
-2. **开局固化**：新局启动时探针把“本局来源（parent + kind）”写进 **CustomData**（随档保存），
+2. **开局固化**：新局启动时探针把“本局来源（parent + kind + 地图 + 回合偏移）”
+   写进随档身份 **`sgnode`**（协议 persave 通道），
    并消费掉存储里的 pending ⇒ 之后存档只依赖 CustomData（跨 context 必然可见），
    也不必担心“玩家退出后另开新局”被陈旧 pending 误挂成分支。
 
@@ -1497,7 +1524,8 @@ API_Verification_Status.md §18.4/§18.6。
     TurnEvents.SetLogicalOffset(offset)          gameplay 侧设置（UI 开局时推过去）
     TurnEvents.GetLogicalTurn()                  gameplay 侧换算
 
-固化位置：`CustomData.Offset`（随档）+ `Game:SetProperty(turnevents_offset)`；
+固化位置：随档身份 `sgnode` 的 `Offset` 字段（UI 侧 CustomData，协议 persave）
++ `Game:SetProperty(turnevents_offset)`（gameplay 侧）；
 档名末尾可选 `~L<逻辑回合>`，身份载荷第 5/6 段是 logical/offset（老档没有 → 显示 `-`，不猜）。
 
 #### 3.14.2b 存档策略：一条线一个档（原地覆盖）
