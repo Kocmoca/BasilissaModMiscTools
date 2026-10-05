@@ -57,7 +57,9 @@ local MODGROUP_STORE_BUILD_TAG = "2026-10-05-A"
 
 local MODGROUP_PREFIX = "MMTSTORE~"        -- 我们的组名前缀，也是唯一的“这是我们的数据”判据
 local MODGROUP_PROBE_KEY = "probe"         -- 自检用的 key
-local MODGROUP_DEFAULT_CHUNK_BYTES = 600   -- 每片原始字节数（hex 后 ×2 = 1200 字符）
+-- 每片原始字节数（hex 后 ×2 = 1200 字符）。实机已验证 1224 字符的名字能被引擎原样存下，
+-- 所以这个值可以由面板的「分片」选择器调大；具体能到多少由「名字上限」探针量出来。
+local MODGROUP_DEFAULT_CHUNK_BYTES = 600
 local MODGROUP_MAX_CHUNKS = 400            -- 防御：一个 key 最多多少片（别把模组界面刷爆）
 
 -- ===========================================================================
@@ -197,6 +199,16 @@ ModMiscModGroupStore.BuildTag = MODGROUP_STORE_BUILD_TAG
 ModMiscModGroupStore.Prefix = MODGROUP_PREFIX
 ModMiscModGroupStore.DefaultChunkBytes = MODGROUP_DEFAULT_CHUNK_BYTES
 ModMiscModGroupStore.ProbeKey = MODGROUP_PROBE_KEY
+-- 面板上的「分片」选择器用它改默认分片大小（名字越长片越少）
+function ModMiscModGroupStore.SetDefaultChunkBytes(bytes)
+    bytes = tonumber(bytes)
+    if bytes ~= nil and bytes >= 16 then
+        MODGROUP_DEFAULT_CHUNK_BYTES = bytes
+        ModMiscModGroupStore.DefaultChunkBytes = bytes
+        return true
+    end
+    return false
+end
 
 function ModMiscModGroupStore.IsAvailable()
     if Modding == nil or Modding.GetModGroups == nil then return false end
@@ -459,8 +471,91 @@ end
 
 ModMiscModGroupStore.BuildPayload = BuildProbePayload
 
+-- ===========================================================================
+-- 名字长度上限探针（授权者关心“modgroupname 能不能到 1G”，先用它把真实上限量出来）
+--
+-- 做法：拿**一个**组来试——组名 = MMTSTORE~<probe 的 key>~001~<hex(载荷)>，
+-- 载荷取 1KB → 2KB → … 逐级往上（hex 后名字长度 = 2×载荷 + 前缀开销），
+-- 每级写完**读回这个名字**，比对“引擎实际存下的名字长度”和“载荷能不能逐字还原”：
+--   * 读回名字变短 ⇒ 引擎截断了名字，这一级就是上限（上一级就是可用的最大名字）；
+--   * 读回一致但载荷还原不了 ⇒ 引擎在更下层做了手脚，同样记为失败。
+-- 跑完把探测键的组删掉、并把玩家选中的组恢复回去。
+--
+-- 【为什么重要】分片数 × 每片名字长度 = 单键容量。名字越长，片数越少：
+-- 每个片都是一条配置组（还会把启用项复制一份），片太多会拖慢模组界面与数据库。
+-- ===========================================================================
+function ModMiscModGroupStore.ProbeNameCeiling(sizes)
+    sizes = sizes or { 1024, 2048, 4096, 8192, 16384, 32768, 65536 }
+    local probeKey = "nameprobe"
+    local report = { Tag = MODGROUP_STORE_BUILD_TAG, Steps = {},
+                     Available = ModMiscModGroupStore.IsAvailable() }
+    if not report.Available then
+        report.Error = "Modding 组接口不可用"
+        return report
+    end
+
+    local origin = GetCurrentGroup()
+    RemoveByKey(probeKey, true, origin)          -- 先清掉上次探测留下的
+
+    for _, size in ipairs(sizes) do
+        local payload = BuildProbePayload(size)
+        local name = BuildGroupName(probeKey, 1, payload)
+        local step = { Payload = size, NameLength = #name }
+        local source = GetCurrentGroup()
+        local ok, err = pcall(function() return Modding.CreateModGroup(name, source) end)
+        if not ok then
+            step.Error = "建组失败: " .. tostring(err)
+            table.insert(report.Steps, step)
+            report.FirstFailure = step
+            break
+        end
+        -- 读回：找到这条探测组，量名字长度、还原载荷
+        local ours = ModMiscModGroupStore.ListOurs() or {}
+        local found = nil
+        for _, group in ipairs(ours) do
+            if tostring(group.Key) == probeKey then found = group break end
+        end
+        if found == nil then
+            step.Error = "写完却读不到这条组"
+            table.insert(report.Steps, step)
+            report.FirstFailure = step
+            break
+        end
+        step.ReadNameLength = #found.Name
+        local parsed = ParseGroupName(found.Name)
+        local back = parsed ~= nil and DecodeText(parsed.PayloadHex) or nil
+        step.ReadPayload = back ~= nil and #back or nil
+        step.Truncated = (#found.Name < #name)
+        step.Match = (back == payload)
+        if not step.Match then
+            step.Error = step.Truncated
+                and ("名字被截断：写 " .. tostring(#name) .. " 字符，存下 "
+                     .. tostring(#found.Name) .. " 字符")
+                or "载荷还原不一致"
+        end
+        table.insert(report.Steps, step)
+        Log("名字探针 载荷=" .. tostring(size) .. "B 名字=" .. tostring(#name)
+            .. " 字符 读回=" .. tostring(step.ReadNameLength) .. " 字符 一致="
+            .. tostring(step.Match))
+        if not step.Match then
+            report.FirstFailure = step
+            break
+        end
+        report.LastSuccess = step
+        -- 下一级要重新建（改值=删旧建新）
+        RemoveByKey(probeKey, true, origin)
+    end
+
+    local removed, reason, failed, info = ModMiscModGroupStore.ClearAll(origin)
+    report.CleanupRemoved = removed
+    report.CleanupFailed = failed
+    report.CleanupError = reason
+    report.CurrentGroupUnchanged = (GetCurrentGroup() == origin)
+    return report
+end
+
 -- 自检：按尺寸阶梯写→读→逐字节比对，找出“能完整往返”的上限，然后清理
-function ModMiscModGroupStore.SelfTest(sizes)
+function ModMiscModGroupStore.SelfTest(sizes, chunkBytes)
     sizes = sizes or { 8, 64, 256, 1024, 4096, 16384 }
     local report = { Tag = MODGROUP_STORE_BUILD_TAG, Steps = {}, Available = ModMiscModGroupStore.IsAvailable() }
     if not report.Available then
@@ -474,7 +569,7 @@ function ModMiscModGroupStore.SelfTest(sizes)
         local payload = BuildProbePayload(size)
         local step = { Size = size, PayloadBytes = #payload }
         local ok, chunks, written = ModMiscModGroupStore.Save(MODGROUP_PROBE_KEY, payload,
-            MODGROUP_DEFAULT_CHUNK_BYTES)
+            chunkBytes or MODGROUP_DEFAULT_CHUNK_BYTES)
         step.Ok = ok and true or false
         step.Chunks = chunks
         step.Written = written

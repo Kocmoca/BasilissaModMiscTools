@@ -102,47 +102,53 @@
                         Style="ButtonControl" FontSize="26" String="LOC_MODMISC_AUTOMATION_TEST_MESSAGES" />
 
             <!-- ModGroup 存储（把数据写进「模组配置组」的名字 —— 数据库里 Name 是自由文本，
-                 不受存档名 255 字节限制）。尺寸可选到 1MB，用来摸这条通道的上限；
-                 数据片会出现在模组界面的配置组下拉框里，测完请点「配置组清理」。 -->
-            <Label ID="AutomationTestModGroupLabel" Anchor="L,T" Offset="20,706" Size="860,26"
+                 不受存档名 255 字节限制）。实机已验证：64KB/110 片跨进程读回逐字一致，
+                 组名 1224 字符被引擎原样存下。「名字上限」用来量真实上限，「分片」调每片字节数
+                 （名字越长片越少）。数据片会出现在模组界面下拉框里，测完请点「配置组清理」。 -->
+            <Label ID="AutomationTestModGroupLabel" Anchor="L,T" Offset="20,700" Size="860,24"
                    FontSize="22" Color="225,225,225,255" VerticalAlignment="Center"
                    String="LOC_MODMISC_AUTOMATION_TEST_MODGROUP_LABEL" />
-            <GridButton ID="AutomationTestModGroupSelfTest" Anchor="L,T" Offset="20,736" Size="205,54"
+            <GridButton ID="AutomationTestModGroupSelfTest" Anchor="L,T" Offset="20,728" Size="205,52"
                         Style="ButtonControl" FontSize="24"
                         String="LOC_MODMISC_AUTOMATION_TEST_MODGROUP_SELFTEST" />
-            <GridButton ID="AutomationTestModGroupWrite" Anchor="L,T" Offset="240,736" Size="205,54"
+            <GridButton ID="AutomationTestModGroupWrite" Anchor="L,T" Offset="240,728" Size="205,52"
                         Style="ButtonControl" FontSize="24"
                         String="LOC_MODMISC_AUTOMATION_TEST_MODGROUP_WRITE" />
-            <GridButton ID="AutomationTestModGroupRead" Anchor="L,T" Offset="460,736" Size="205,54"
+            <GridButton ID="AutomationTestModGroupRead" Anchor="L,T" Offset="460,728" Size="205,52"
                         Style="ButtonControl" FontSize="24"
                         String="LOC_MODMISC_AUTOMATION_TEST_MODGROUP_READ" />
-            <GridButton ID="AutomationTestModGroupSize" Anchor="L,T" Offset="680,736" Size="215,54"
+            <GridButton ID="AutomationTestModGroupSize" Anchor="L,T" Offset="680,728" Size="215,52"
                         Style="ButtonControl" FontSize="24" String="" />
-            <GridButton ID="AutomationTestModGroupInfo" Anchor="L,T" Offset="20,796" Size="205,54"
+            <GridButton ID="AutomationTestModGroupInfo" Anchor="L,T" Offset="20,786" Size="205,52"
                         Style="ButtonControl" FontSize="24"
                         String="LOC_MODMISC_AUTOMATION_TEST_MODGROUP_INFO" />
-            <GridButton ID="AutomationTestModGroupClear" Anchor="L,T" Offset="240,796" Size="205,54"
+            <GridButton ID="AutomationTestModGroupClear" Anchor="L,T" Offset="240,786" Size="205,52"
                         Style="ButtonControl" FontSize="24"
                         String="LOC_MODMISC_AUTOMATION_TEST_MODGROUP_CLEAR" />
-            <GridButton ID="AutomationTestNameStoreSelfTest" Anchor="L,T" Offset="460,796" Size="205,54"
+            <GridButton ID="AutomationTestModGroupNameCeiling" Anchor="L,T" Offset="460,786" Size="205,52"
                         Style="ButtonControl" FontSize="24"
-                        String="LOC_MODMISC_AUTOMATION_TEST_NAMESTORE_SELFTEST" />
-            <GridButton ID="AutomationTestNameStoreClear" Anchor="L,T" Offset="680,796" Size="215,54"
-                        Style="ButtonControl" FontSize="24"
-                        String="LOC_MODMISC_AUTOMATION_TEST_NAMESTORE_CLEAR" />
+                        String="LOC_MODMISC_AUTOMATION_TEST_MODGROUP_NAMECEIL" />
+            <GridButton ID="AutomationTestModGroupChunkSize" Anchor="L,T" Offset="680,786" Size="215,52"
+                        Style="ButtonControl" FontSize="24" String="" />
 
             <!-- 引擎设置类键值存储（Options.SetUserOption / UserConfiguration.SetValue）：
                  实机已证：useroption 被引擎拒（“not a registered option”）、userconfig 留不住值。
                  这两个按钮留着是为了随时复现结论。 -->
-            <Label ID="AutomationTestNameStoreLabel" Anchor="L,T" Offset="20,856" Size="860,26"
+            <Label ID="AutomationTestNameStoreLabel" Anchor="L,T" Offset="20,842" Size="860,24"
                    FontSize="22" Color="225,225,225,255" VerticalAlignment="Center"
                    String="LOC_MODMISC_AUTOMATION_TEST_NAMESTORE_LABEL" />
-            <GridButton ID="AutomationTestNameStoreWrite" Anchor="L,T" Offset="20,886" Size="205,54"
+            <GridButton ID="AutomationTestNameStoreSelfTest" Anchor="L,T" Offset="20,870" Size="205,52"
+                        Style="ButtonControl" FontSize="24"
+                        String="LOC_MODMISC_AUTOMATION_TEST_NAMESTORE_SELFTEST" />
+            <GridButton ID="AutomationTestNameStoreWrite" Anchor="L,T" Offset="240,870" Size="205,52"
                         Style="ButtonControl" FontSize="24"
                         String="LOC_MODMISC_AUTOMATION_TEST_NAMESTORE_WRITE" />
-            <GridButton ID="AutomationTestNameStoreRead" Anchor="L,T" Offset="240,886" Size="205,54"
+            <GridButton ID="AutomationTestNameStoreRead" Anchor="L,T" Offset="460,870" Size="205,52"
                         Style="ButtonControl" FontSize="24"
                         String="LOC_MODMISC_AUTOMATION_TEST_NAMESTORE_READ" />
+            <GridButton ID="AutomationTestNameStoreClear" Anchor="L,T" Offset="680,870" Size="215,52"
+                        Style="ButtonControl" FontSize="24"
+                        String="LOC_MODMISC_AUTOMATION_TEST_NAMESTORE_CLEAR" />
 
 
             <!-- ============================================================

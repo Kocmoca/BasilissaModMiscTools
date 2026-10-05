@@ -513,7 +513,7 @@ end
 
 local m_Selectors = {}
 local m_SelectorOrder = { "player", "turns", "assetCategory", "assetIndex", "mapScript",
-    "modGroupSize" }
+    "modGroupSize", "modGroupChunkSize" }
 
 local function CloseOptionList()
     Controls.AutomationTestOptionPanel:SetHide(true)
@@ -677,6 +677,20 @@ local function BuildSelectors()
             end,
             isSelected = function(entry) return entry.Turns == m_SelectedTurns end,
             onSelect = function(entry) m_SelectedTurns = entry.Turns end,
+        },
+        modGroupChunkSize = {
+            button = Controls.AutomationTestModGroupChunkSize,
+            getEntries = BuildModGroupChunkEntries,
+            getEntryText = function(entry) return entry.Text end,
+            getLabel = function()
+                local entry = GetSelectedModGroupChunkEntry()
+                return entry ~= nil and entry.Text or FormatByteSize(m_ModGroupChunkBytes)
+            end,
+            isSelected = function(entry) return entry.Bytes == m_ModGroupChunkBytes end,
+            onSelect = function(entry)
+                m_ModGroupChunkBytes = entry.Bytes
+                ApplyModGroupChunkBytes()
+            end,
         },
         modGroupSize = {
             button = Controls.AutomationTestModGroupSize,
@@ -1022,7 +1036,8 @@ local function ModGroupWrite()
     else
         payload = head
     end
-    local ok, chunks, bytes = ModMiscModGroupStore.Save(MODGROUP_PANEL_KEY, payload)
+    local ok, chunks, bytes = ModMiscModGroupStore.Save(MODGROUP_PANEL_KEY, payload,
+        m_ModGroupChunkBytes)
     if not ok then
         SetError("ModGroupWrite", tostring(chunks))
         return
@@ -1031,7 +1046,8 @@ local function ModGroupWrite()
     local readBack, readChunks = ModMiscModGroupStore.Load(MODGROUP_PANEL_KEY)
     local matched = (readBack == payload)
     local info = ModMiscModGroupStore.GetInfo()
-    local detail = "  写入 " .. tostring(bytes) .. "B / " .. tostring(chunks) .. " 片，读回 "
+    local detail = "  写入 " .. tostring(bytes) .. "B / " .. tostring(chunks) .. " 片（每片 "
+        .. FormatByteSize(m_ModGroupChunkBytes) .. "），读回 "
         .. tostring(readBack ~= nil and #readBack or 0) .. "B 一致=" .. tostring(matched)
         .. "\n  longestName=" .. tostring(info.MaxNameLength) .. " chars  repeats="
         .. tostring(info.Duplicates) .. "  currentIsOurs=" .. tostring(info.CurrentIsOurs)
@@ -1080,7 +1096,7 @@ local function ModGroupSelfTest()
         SetError("ModGroupSelfTest", "ModMiscModGroupStore 模块没加载")
         return
     end
-    local report = ModMiscModGroupStore.SelfTest()
+    local report = ModMiscModGroupStore.SelfTest(nil, m_ModGroupChunkBytes)
     if report.Error ~= nil then
         SetError("ModGroupSelfTest", tostring(report.Error))
         return
@@ -1102,6 +1118,38 @@ local function ModGroupSelfTest()
             table.concat(lines, "\n")),
         Locale.Lookup("LOC_MODMISC_AUTOMATION_TEST_MODGROUP_SELFTEST_SUMMARY",
             largest, tostring(report.CleanupRemoved)),
+        true)
+end
+
+-- 名字上限：逐级加大**单个组名**，量引擎实际能存多长（回答“modgroupname 能到多大”）
+local function ModGroupNameCeiling()
+    if ModMiscModGroupStore == nil then
+        SetError("ModGroupNameCeiling", "ModMiscModGroupStore 模块没加载")
+        return
+    end
+    if ModMiscModGroupStore.ProbeNameCeiling == nil then
+        SetError("ModGroupNameCeiling", "这个模块版本没有 ProbeNameCeiling")
+        return
+    end
+    local report = ModMiscModGroupStore.ProbeNameCeiling()
+    if report.Error ~= nil then
+        SetError("ModGroupNameCeiling", tostring(report.Error))
+        return
+    end
+    local lines = { "  build=" .. tostring(report.Tag) }
+    for _, step in ipairs(report.Steps or {}) do
+        table.insert(lines, "  载荷 " .. tostring(step.Payload) .. "B -> 名字 "
+            .. tostring(step.NameLength) .. " 字符，读回 " .. tostring(step.ReadNameLength)
+            .. " 字符 一致=" .. tostring(step.Match)
+            .. (step.Error ~= nil and ("  (" .. tostring(step.Error) .. ")") or ""))
+    end
+    table.insert(lines, "  清理 " .. tostring(report.CleanupRemoved) .. " 条，选中组未变="
+        .. tostring(report.CurrentGroupUnchanged))
+    local okName = report.LastSuccess ~= nil and tostring(report.LastSuccess.NameLength) or "无"
+    local okPayload = report.LastSuccess ~= nil and tostring(report.LastSuccess.Payload) or "无"
+    SetOutputDetail(Locale.Lookup("LOC_MODMISC_AUTOMATION_TEST_MODGROUP_NAMECEIL_TEXT",
+            table.concat(lines, "\n")),
+        Locale.Lookup("LOC_MODMISC_AUTOMATION_TEST_MODGROUP_NAMECEIL_SUMMARY", okName, okPayload),
         true)
 end
 
@@ -1553,7 +1601,7 @@ local PAGE_MAIN_CONTROLS = {
     -- ModGroup 存储（模组配置组名字通道）
     "AutomationTestModGroupLabel", "AutomationTestModGroupSelfTest", "AutomationTestModGroupWrite",
     "AutomationTestModGroupRead", "AutomationTestModGroupInfo", "AutomationTestModGroupClear",
-    "AutomationTestModGroupSize",
+    "AutomationTestModGroupSize", "AutomationTestModGroupNameCeiling", "AutomationTestModGroupChunkSize",
     -- 引擎设置类键值存储探针（Options.SetUserOption / UserConfiguration）
     "AutomationTestNameStoreLabel", "AutomationTestNameStoreWrite",
     "AutomationTestNameStoreSelfTest", "AutomationTestNameStoreRead", "AutomationTestNameStoreClear",
@@ -1604,6 +1652,7 @@ local function AttachPanelToInGame()
 end
 
 function OpenAutomationTestPanel()
+    ApplyModGroupChunkBytes()      -- 把面板上的分片大小同步给存储模块
     local panelRoot = AttachPanelToInGame()
     SelectFirstPlayerIfNeeded()
     SelectFirstMapScriptIfNeeded()
@@ -1676,6 +1725,10 @@ function OnInit()
         function() SafeCall("StoreWrite", StoreWrite) end)
     Controls.AutomationTestStoreRead:RegisterCallback(Mouse.eLClick,
         function() SafeCall("StoreRead", StoreRead) end)
+    Controls.AutomationTestModGroupNameCeiling:RegisterCallback(Mouse.eLClick,
+        function() SafeCall("ModGroupNameCeiling", ModGroupNameCeiling) end)
+    Controls.AutomationTestModGroupChunkSize:RegisterCallback(Mouse.eLClick,
+        function() SafeCall("ModGroupChunkSize", function() ToggleOptionList("modGroupChunkSize") end) end)
     Controls.AutomationTestModGroupSize:RegisterCallback(Mouse.eLClick,
         function() SafeCall("ModGroupSize", function() ToggleOptionList("modGroupSize") end) end)
     Controls.AutomationTestNameStoreWrite:RegisterCallback(Mouse.eLClick,

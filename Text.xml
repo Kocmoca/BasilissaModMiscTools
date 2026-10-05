@@ -385,6 +385,18 @@
 		<Row Tag="LOC_MODMISC_AUTOMATION_TEST_MODGROUP_CLEAR_SUMMARY">
 			<Text>Mod-group store: cleaned {1_Count} group(s)</Text>
 		</Row>
+		<Row Tag="LOC_MODMISC_AUTOMATION_TEST_MODGROUP_NAMECEIL">
+			<Text>Name ceiling</Text>
+		</Row>
+		<Row Tag="LOC_MODMISC_AUTOMATION_TEST_MODGROUP_NAMECEIL_TEXT">
+			<Text>Mod-group name ceiling: {1_Detail}</Text>
+		</Row>
+		<Row Tag="LOC_MODMISC_AUTOMATION_TEST_MODGROUP_NAMECEIL_SUMMARY">
+			<Text>Name ceiling: largest OK name {1_NameLen} chars (payload {2_Payload} B)</Text>
+		</Row>
+		<Row Tag="LOC_MODMISC_AUTOMATION_TEST_MODGROUP_CHUNK_LABEL">
+			<Text>Chunk {1_Size}</Text>
+		</Row>
 		<Row Tag="LOC_MODMISC_AUTOMATION_TEST_NAMESTORE_SELFTEST">
 			<Text>Settings store self-test</Text>
 		</Row>

@@ -385,6 +385,18 @@
 		<Replace Tag="LOC_MODMISC_AUTOMATION_TEST_MODGROUP_CLEAR_SUMMARY" Language="zh_Hans_CN">
 			<Text>配置组存储：已清理 {1_Count} 条</Text>
 		</Replace>
+		<Replace Tag="LOC_MODMISC_AUTOMATION_TEST_MODGROUP_NAMECEIL" Language="zh_Hans_CN">
+			<Text>名字上限</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_AUTOMATION_TEST_MODGROUP_NAMECEIL_TEXT" Language="zh_Hans_CN">
+			<Text>配置组名字上限：{1_Detail}</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_AUTOMATION_TEST_MODGROUP_NAMECEIL_SUMMARY" Language="zh_Hans_CN">
+			<Text>名字上限：最大可用名字 {1_NameLen} 字符（载荷 {2_Payload} 字节）</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_AUTOMATION_TEST_MODGROUP_CHUNK_LABEL" Language="zh_Hans_CN">
+			<Text>分片 {1_Size}</Text>
+		</Replace>
 		<Replace Tag="LOC_MODMISC_AUTOMATION_TEST_NAMESTORE_SELFTEST" Language="zh_Hans_CN">
 			<Text>设置存储自检</Text>
 		</Replace>
