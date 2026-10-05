@@ -412,6 +412,18 @@
 		<Replace Tag="LOC_MODMISC_AUTOMATION_TEST_NAMESTORE_CLEAR_SUMMARY" Language="zh_Hans_CN">
 			<Text>设置存储：探针键已清</Text>
 		</Replace>
+		<Replace Tag="LOC_MODMISC_AUTOMATION_TEST_NAMESTORE_LABEL" Language="zh_Hans_CN">
+			<Text>设置存储（玩家看不见：Options.SetUserOption / UserConfiguration.SetValue）</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_AUTOMATION_TEST_NAMESTORE_WRITE" Language="zh_Hans_CN">
+			<Text>设置存储写入（保留）</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_AUTOMATION_TEST_NAMESTORE_WRITTEN_TEXT" Language="zh_Hans_CN">
+			<Text>设置存储写入：{1_Detail}</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_AUTOMATION_TEST_NAMESTORE_WRITTEN_SUMMARY" Language="zh_Hans_CN">
+			<Text>设置存储：已写入 {1_Size} 到 {2_Channels} 个通道；值保留，便于重启后核对</Text>
+		</Replace>
 		<Replace Tag="LOC_MODMISC_AUTOMATION_TEST_VIEW_PLAYER" Language="zh_Hans_CN">
 			<Text>切到选中玩家视角</Text>
 		</Replace>

@@ -412,6 +412,18 @@
 		<Row Tag="LOC_MODMISC_AUTOMATION_TEST_NAMESTORE_CLEAR_SUMMARY">
 			<Text>Settings store: probe keys cleared</Text>
 		</Row>
+		<Row Tag="LOC_MODMISC_AUTOMATION_TEST_NAMESTORE_LABEL">
+			<Text>Settings store (invisible to the player: Options.SetUserOption / UserConfiguration.SetValue)</Text>
+		</Row>
+		<Row Tag="LOC_MODMISC_AUTOMATION_TEST_NAMESTORE_WRITE">
+			<Text>Settings store write (keep)</Text>
+		</Row>
+		<Row Tag="LOC_MODMISC_AUTOMATION_TEST_NAMESTORE_WRITTEN_TEXT">
+			<Text>Settings store write: {1_Detail}</Text>
+		</Row>
+		<Row Tag="LOC_MODMISC_AUTOMATION_TEST_NAMESTORE_WRITTEN_SUMMARY">
+			<Text>Settings store: wrote {1_Size} into {2_Channels} channel(s); value kept for the restart check</Text>
+		</Row>
 		<Row Tag="LOC_MODMISC_AUTOMATION_TEST_VIEW_PLAYER">
 			<Text>View Selected Player</Text>
 		</Row>

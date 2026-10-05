@@ -1359,11 +1359,16 @@ hex 后翻倍），所以大表格不能直接往一个键里塞。三条路子�
 
     ModMiscNameStoreProbe.GetChannels()                  两个通道的可用性
     ModMiscNameStoreProbe.GetInfo()                      当前值（跨进程验证就看这个）
+    ModMiscNameStoreProbe.BuildPayload(size, tag)        造一份**长度恰好 size 字节**的载荷
     ModMiscNameStoreProbe.Write/Read/Clear(channelId,…)  写 / 读 / 清（键 = MMTProbe）
     ModMiscNameStoreProbe.SelfTest(channelId, sizes)     尺寸阶梯写-读-比对 + 清理
 
 未知点：引擎认不认“自己不知道的键”、值能多长、会不会被当数字/布尔解释 —— 所以先做探针：
 写带 `os.time()` 的标记 → 立刻读回 → 报能否往返；跨进程验证 = 写完杀进程重开再点「读取」。
+
+面板（本轮先测这两条通道）：**尺寸**（64 B / 256 B / 1 KB / 4 KB / 16 KB / 64 KB / 256 KB / 1 MB，
+默认 4 KB）+ **写入（保留）**（写进去不清，专门给“重启后读取”用）+ **读取** + **自检**（自动清理）+ **清理**。
+测完务必清理：大值会留在用户选项文件里。
 
 ------------------------------------------------------------------------------
 ### 3.14 从关系树读档 / 回合同步（逻辑）/ 跨存档事件

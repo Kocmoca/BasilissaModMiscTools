@@ -512,7 +512,7 @@ end
 -- ===========================================================================
 
 local m_Selectors = {}
-local m_SelectorOrder = { "player", "turns", "assetCategory", "assetIndex", "mapScript" }
+local m_SelectorOrder = { "player", "turns", "assetCategory", "assetIndex", "mapScript", "nameStoreSize" }
 
 local function CloseOptionList()
     Controls.AutomationTestOptionPanel:SetHide(true)
@@ -608,6 +608,32 @@ local function GetSelectedAssetCategoryEntry()
     return FindEntry(BuildAssetCategoryEntries(), "Key", m_SelectedAssetCategoryKey)
 end
 
+-- 可测尺寸：从小往大；越往后越要小心（值最终落在用户选项文件里）
+local NAMESTORE_SIZE_STEPS = { 64, 256, 1024, 4096, 16384, 65536, 262144, 1048576 }
+local m_NameStoreSize = 4096
+
+local function FormatByteSize(size)
+    if size >= 1048576 and size % 1048576 == 0 then
+        return tostring(size / 1048576) .. " MB"
+    end
+    if size >= 1024 and size % 1024 == 0 then
+        return tostring(size / 1024) .. " KB"
+    end
+    return tostring(size) .. " B"
+end
+
+local function BuildNameStoreSizeEntries()
+    local entries = {}
+    for _, size in ipairs(NAMESTORE_SIZE_STEPS) do
+        table.insert(entries, { Size = size, Text = FormatByteSize(size) })
+    end
+    return entries
+end
+
+local function GetSelectedNameStoreSizeEntry()
+    return FindEntry(BuildNameStoreSizeEntries(), "Size", m_NameStoreSize)
+end
+
 local function SelectFirstPlayerIfNeeded()
     if m_SelectedPlayerIndex ~= nil then return end
 
@@ -647,6 +673,17 @@ local function BuildSelectors()
             end,
             isSelected = function(entry) return entry.Turns == m_SelectedTurns end,
             onSelect = function(entry) m_SelectedTurns = entry.Turns end,
+        },
+        nameStoreSize = {
+            button = Controls.AutomationTestNameStoreSize,
+            getEntries = BuildNameStoreSizeEntries,
+            getEntryText = function(entry) return entry.Text end,
+            getLabel = function()
+                local entry = GetSelectedNameStoreSizeEntry()
+                return entry ~= nil and entry.Text or FormatByteSize(m_NameStoreSize)
+            end,
+            isSelected = function(entry) return entry.Size == m_NameStoreSize end,
+            onSelect = function(entry) m_NameStoreSize = entry.Size end,
         },
         assetCategory = {
             button = Controls.AutomationTestAssetCategoryButton,
@@ -1063,10 +1100,49 @@ end
 -- ===========================================================================
 -- 引擎设置类键值存储探针（Options.SetUserOption / UserConfiguration.SetValue）
 --
+-- 本轮（授权者 2026-10-05）先测这两个**玩家界面看不见**的通道；
+-- 尺寸可选 + 「写入」会**保留**值，方便“杀进程重开 → 点读取”验证跨进程持久化。
+--
 -- 详见 UI/ModMiscNameStoreProbe.lua 顶部注释：这两处都是引擎自己会持久化的键值存储，
 -- 玩家界面上看不见；本轮只回答“能不能当跨存档通道”。
 -- 「读取」按钮是给跨进程验证用的：写完 → 杀进程重开 → 点它看值还在不在（值里带 os.time()）。
 -- ===========================================================================
+-- 「写入（保留）」：按选中尺寸给两个通道各写一份**长度恰好等于所选尺寸**的载荷。
+-- 写进去**不清**，值里带 os.time() —— 杀进程重开后点「读取」，看 t= 是不是这一轮的数字。
+local function NameStoreWrite()
+    if ModMiscNameStoreProbe == nil then
+        SetError("NameStoreWrite", "ModMiscNameStoreProbe 模块没加载")
+        return
+    end
+    local size = m_NameStoreSize or 4096
+    local lines = {}
+    local okCount = 0
+    for _, channel in ipairs(ModMiscNameStoreProbe.GetChannels()) do
+        if not channel.Available then
+            table.insert(lines, "  " .. tostring(channel.Id) .. "：不可用")
+        else
+            local payload = ModMiscNameStoreProbe.BuildPayload(size, channel.Id)
+            local ok, err = ModMiscNameStoreProbe.Write(channel.Id, nil, payload)
+            if not ok then
+                table.insert(lines, "  " .. tostring(channel.Id) .. " 写失败：" .. tostring(err))
+            else
+                local value, reason = ModMiscNameStoreProbe.Read(channel.Id)
+                local matched = (value == payload)
+                if matched then okCount = okCount + 1 end
+                table.insert(lines, "  " .. tostring(channel.Id) .. " 写入 " .. tostring(#payload)
+                    .. "B -> 读回 " .. tostring(value ~= nil and #value or 0) .. "B 一致="
+                    .. tostring(matched) .. (reason ~= nil and (" [" .. tostring(reason) .. "]") or ""))
+            end
+        end
+    end
+    table.insert(lines, "  （值已保留：杀进程重开后再点「读取」看 t= 是否还在）")
+    SetOutputDetail(Locale.Lookup("LOC_MODMISC_AUTOMATION_TEST_NAMESTORE_WRITTEN_TEXT",
+            table.concat(lines, "\n")),
+        Locale.Lookup("LOC_MODMISC_AUTOMATION_TEST_NAMESTORE_WRITTEN_SUMMARY",
+            FormatByteSize(size), tostring(okCount)),
+        true)
+end
+
 local function DescribeNameStoreReport(report)
     local lines = { "  " .. tostring(report.Id) .. "（" .. tostring(report.Describe) .. "）" }
     if report.Error ~= nil then
@@ -1448,6 +1524,7 @@ local PAGE_MAIN_CONTROLS = {
     "AutomationTestModGroupLabel", "AutomationTestModGroupSelfTest", "AutomationTestModGroupWrite",
     "AutomationTestModGroupRead", "AutomationTestModGroupInfo", "AutomationTestModGroupClear",
     -- 引擎设置类键值存储探针（Options.SetUserOption / UserConfiguration）
+    "AutomationTestNameStoreLabel", "AutomationTestNameStoreSize", "AutomationTestNameStoreWrite",
     "AutomationTestNameStoreSelfTest", "AutomationTestNameStoreRead", "AutomationTestNameStoreClear",
 }
 
@@ -1568,6 +1645,10 @@ function OnInit()
         function() SafeCall("StoreWrite", StoreWrite) end)
     Controls.AutomationTestStoreRead:RegisterCallback(Mouse.eLClick,
         function() SafeCall("StoreRead", StoreRead) end)
+    Controls.AutomationTestNameStoreSize:RegisterCallback(Mouse.eLClick,
+        function() SafeCall("NameStoreSize", function() ToggleOptionList("nameStoreSize") end) end)
+    Controls.AutomationTestNameStoreWrite:RegisterCallback(Mouse.eLClick,
+        function() SafeCall("NameStoreWrite", NameStoreWrite) end)
     Controls.AutomationTestNameStoreSelfTest:RegisterCallback(Mouse.eLClick,
         function() SafeCall("NameStoreSelfTest", NameStoreSelfTest) end)
     Controls.AutomationTestNameStoreRead:RegisterCallback(Mouse.eLClick,

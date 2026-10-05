@@ -36,6 +36,18 @@ local function Log(message)
     print("[ModMiscTool][NameStoreProbe] " .. tostring(message))
 end
 
+-- 造一份**长度恰好为 size 字节**的探针载荷：
+-- 前缀固定 "mmt=1;t=<时间>;tag=<通道>;n=<size>;"，其余用 'B' 补满。
+-- 面板的「写入」与自检都用它 ⇒ 报出来的尺寸就是真实写入的字节数，能直接比对。
+local function BuildPayload(size, tag)
+    size = tonumber(size) or 0
+    if size < 0 then size = 0 end
+    local head = NAMESTORE_PROBE_PREFIX .. ";t=" .. tostring(os.time())
+        .. ";tag=" .. tostring(tag or "-") .. ";n=" .. tostring(size) .. ";"
+    if #head >= size then return head:sub(1, size) end
+    return head .. string.rep("B", size - #head)
+end
+
 -- 数据驱动：加通道只改这张表
 local CHANNELS = {
     {
@@ -73,6 +85,8 @@ ModMiscNameStoreProbe = ModMiscNameStoreProbe or {}
 ModMiscNameStoreProbe.BuildTag = NAMESTORE_PROBE_BUILD_TAG
 ModMiscNameStoreProbe.Category = NAMESTORE_PROBE_CATEGORY
 ModMiscNameStoreProbe.Key = NAMESTORE_PROBE_KEY
+
+ModMiscNameStoreProbe.BuildPayload = BuildPayload
 
 function ModMiscNameStoreProbe.GetChannels()
     local out = {}
@@ -129,7 +143,7 @@ end
 
 -- 自检：按尺寸阶梯写→立刻读回→比对；跑完把探针键清空
 function ModMiscNameStoreProbe.SelfTest(channelId, sizes)
-    sizes = sizes or { 8, 64, 256, 1024, 4096 }
+    sizes = sizes or { 8, 64, 256, 1024, 4096, 16384 }
     local channel = FindChannel(channelId)
     local report = { Id = channelId, Tag = NAMESTORE_PROBE_BUILD_TAG, Steps = {} }
     if channel == nil then
@@ -144,8 +158,7 @@ function ModMiscNameStoreProbe.SelfTest(channelId, sizes)
     end
 
     for _, size in ipairs(sizes) do
-        local payload = NAMESTORE_PROBE_PREFIX .. ";t=" .. tostring(os.time()) .. ";n=" .. tostring(size)
-            .. ";" .. string.rep("B", math.max(0, size - 24))
+        local payload = BuildPayload(size, channelId)
         local step = { Size = size, Written = #payload }
         local ok, err = ModMiscNameStoreProbe.Write(channelId, NAMESTORE_PROBE_KEY, payload)
         step.Ok = ok and true or false
