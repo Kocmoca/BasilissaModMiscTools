@@ -13,6 +13,7 @@ include('ModTool_TurnEraAPI.lua')
 -- 2026-10-05 实机日志抓到（表现为 Game:SetProperty 那条单向通道用不了）。
 include('ModTool_DataStore.lua')
 include('ModTool_TurnEvents.lua')
+include('ModTool_TurnEventHandlers.lua')
 
 local playerCitiesInfo = {}
 local defeatedPlayers = {}
@@ -608,6 +609,14 @@ function Initialize()
 			-- 逻辑回合偏移由 UI 侧推过来（回合同步只做逻辑，不改引擎回合）。
 			Run = function()
 				ExposedMembers.ModMiscToolScript.TurnEvents = TurnEvents
+			end,
+		},
+		{
+			Name = "TurnEventHandlers",
+			-- 回合事件的**默认处理方式**（金币/单位/资源）—— 其它 mod 可 Disable 或用更高
+			-- 优先级的处理器接管；核心只做定时触发（见 ModTool_TurnEvents.lua 头注释）。
+			Run = function()
+				ExposedMembers.ModMiscToolScript.TurnEventHandlers = TurnEventHandlers
 			end,
 		},
 		{

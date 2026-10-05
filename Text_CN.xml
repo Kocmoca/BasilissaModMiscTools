@@ -654,13 +654,13 @@
 			<Text>跨存档事件</Text>
 		</Replace>
 		<Replace Tag="LOC_MODMISC_TURNEVENT_GOLD" Language="zh_Hans_CN">
-			<Text>来自 {1_From}：金币 {3_Amount}（通道 {4_Result}）</Text>
+			<Text>来自 {1_From}：金币 {3_Amount}（处理 {4_Result}）</Text>
 		</Replace>
 		<Replace Tag="LOC_MODMISC_TURNEVENT_UNIT" Language="zh_Hans_CN">
-			<Text>来自 {1_From}：单位 {2_Detail}（通道 {4_Result}）</Text>
+			<Text>来自 {1_From}：单位 {2_Detail}（处理 {4_Result}）</Text>
 		</Replace>
 		<Replace Tag="LOC_MODMISC_TURNEVENT_RESOURCE" Language="zh_Hans_CN">
-			<Text>来自 {1_From}：资源 {2_Detail} x{3_Amount}（通道 {4_Result}）</Text>
+			<Text>来自 {1_From}：资源 {2_Detail} x{3_Amount}（处理 {4_Result}）</Text>
 		</Replace>
 		<Replace Tag="LOC_MODMISC_TURNEVENT_OVERDUE_SUFFIX" Language="zh_Hans_CN">
 			<Text>（补发——本回合一并送达）</Text>

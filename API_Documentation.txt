@@ -1293,7 +1293,24 @@ gameplay 侧要换图，走 `ExposedMembers.ModMiscToolScript.WorldBuilderAPI.Se
     ExposedMembers.ModMiscToolScript.TurnEvents（gameplay）：
         SetLogicalOffset(offset) / GetLogicalOffset() / GetLogicalTurn()
         AddIncoming(event)      入列（过期 ⇒ 排到下一回合触发）
-        GetAll() / Clear() / ProcessDue(reason) / ExecuteEvent(event)
+        GetAll() / Clear() / ProcessDue(reason)
+        TriggerEvent(event)     **只触发**（问处理器），核心不自己执行
+        RegisterHandler(type, fn, priority) / UnregisterHandler(type, fn)
+        ClearHandlers(type) / GetHandlerTypes()
+
+    ExposedMembers.ModMiscToolScript.TurnEventHandlers（gameplay，**默认处理方式**）：
+        Enable() / Disable() / IsEnabled()   开关整套默认处理器
+        GetHandlers()                        当前注册情况（诊断）
+
+    **执行方式不写死**（授权者 2026-10-05 定）：核心只负责“到点触发 + 广播”，
+    触发之后干什么由处理器决定：
+        handler(event) → ("handled" | "defer" | "failed", detail)
+        * handled / failed → 出队（failed 的 detail 会进提示文案）
+        * defer            → 留在队里，下一回合再问（例如接收方还没首都）
+        * 其它/nil         → 这个处理器不管，继续问下一个
+        同类处理器按优先级降序询问；没有任何处理器认领 → **事件留在队列里**（不静默丢）。
+    默认那套（金币→国库、单位→首都、资源→库存或地图）只是当前测试框架的实现：
+    别的 mod 注册更高优先级即可接管，或先 Disable()/ClearHandlers() 再自己来。
 
 **信箱**：跨存档存储键 `ev_<目标节点id>_<序号>`，值
 `type|detail|amount|acceptTurn|fromNode|playerID|civ|stamp`（一个事件一个键，投递即删）。

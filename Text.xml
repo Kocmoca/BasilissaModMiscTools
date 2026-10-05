@@ -654,13 +654,13 @@
 			<Text>Cross-save event</Text>
 		</Row>
 		<Row Tag="LOC_MODMISC_TURNEVENT_GOLD">
-			<Text>From {1_From}: {3_Amount} gold (channel {4_Result})</Text>
+			<Text>From {1_From}: {3_Amount} gold (handler {4_Result})</Text>
 		</Row>
 		<Row Tag="LOC_MODMISC_TURNEVENT_UNIT">
-			<Text>From {1_From}: unit {2_Detail} (channel {4_Result})</Text>
+			<Text>From {1_From}: unit {2_Detail} (handler {4_Result})</Text>
 		</Row>
 		<Row Tag="LOC_MODMISC_TURNEVENT_RESOURCE">
-			<Text>From {1_From}: resource {2_Detail} x{3_Amount} (channel {4_Result})</Text>
+			<Text>From {1_From}: resource {2_Detail} x{3_Amount} (handler {4_Result})</Text>
 		</Row>
 		<Row Tag="LOC_MODMISC_TURNEVENT_OVERDUE_SUFFIX">
 			<Text>  (overdue - delivered this turn)</Text>

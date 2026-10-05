@@ -1,9 +1,13 @@
 -- ===========================================================================
 -- Mod Misc Tool: 回合事件（gameplay 后端）
 --
--- 【干什么】接收别的存档“发过来”的事件（预设类型：单位 / 金币 / 资源），
--- 存进**本局游戏状态**里的「回合事件列表」，到点（逻辑回合）自动执行，
--- 并通过 LuaEvents 广播一条文本事件，供其它 mod 定义提示文案。
+-- 【干什么】**只做定时触发**（授权者 2026-10-05 定）：
+--   接收别的存档“发过来”的事件 → 存进本局游戏状态里的「回合事件列表」→
+--   到点（逻辑回合）**触发** → 广播 LuaEvents 文本事件。
+--   **执行方式不写死**：触发之后“到底干什么”由注册进来的处理器决定，
+--   别的 mod 用 TurnEvents.RegisterHandler(类型, fn, 优先级) 就能接管/自定义。
+--   本 mod 自带一套“默认处理方式”（金币→国库、单位→首都、资源→库存或地图），
+--   见 ModTool_TurnEventHandlers.lua —— 它只是当前测试框架用的默认实现，可以关掉或覆盖。
 --
 -- 【为什么用 Game:SetProperty 存列表】它是游戏状态的一部分：随档保存、读档还原，
 -- 所以“已接收但还没到点”的事件会跟着存档走（也能被任何一次存档带走）。
@@ -24,12 +28,11 @@
 --   AcceptTurn 接受回合（逻辑）：到点或已过点就执行
 --   Overdue   收到时就已过期 ⇒ 下一回合触发（授权者定的口径），文案可标“补发”
 --
--- 【发放通道】
+-- 【处理方式（默认实现，可替换）】见 ModTool_TurnEventHandlers.lua：
 --   GOLD      player:GetTreasury():ChangeGoldBalance(n)（游戏自带场景脚本在用）
---   UNIT      首都地块上 UnitManager.InitUnit(playerID, unitType, x, y)；没有首都 → 顺延到下一回合
+--   UNIT      首都地块上 UnitManager.InitUnit(playerID, unitType, x, y)；没有首都 → defer（顺延）
 --   RESOURCE  ① 先探库存通道 player:GetResources():ChangeResourceAmount(idx, n)（引擎没有文档化写接口）
 --             ② 不行就落到地图上：WorldBuilderAPI.SetResourceType(plot, idx, n)（本 mod 已验证通道）
---             两条都没成 → 记失败并广播文本事件（不静默吞掉）
 --
 -- 【文本提示】执行/失败时广播：
 --   LuaEvents.ModMiscToolTurnEventFired.Call(type, detail, amount, fromNode, overdue, toPlayerID, result)
@@ -41,7 +44,8 @@
 --   AddIncoming(event)        收件：入列（过期则排到下一回合）
 --   GetAll() / Clear()        列表副本 / 清空
 --   ProcessDue(reason)        结算到点事件（每回合开始自动跑一次）
---   ExecuteEvent(event)       手动执行单条（面板/调试用）
+--   TriggerEvent(event)       触发单条（只问处理器，不自己执行）
+--   RegisterHandler(type, fn, priority) / UnregisterHandler / ClearHandlers / GetHandlerTypes
 -- ===========================================================================
 
 local MODMISC_TURNEVENTS_BUILD_TAG = "2026-10-05-A"
@@ -162,117 +166,118 @@ function API.AddIncoming(event)
 end
 
 -- ===========================================================================
--- 执行
+-- 处理器（**执行方式不写死** —— 授权者 2026-10-05 定）
+--
+-- 核心只负责：跨存档投递 + 按（逻辑）回合**定时触发** + 广播文本事件。
+-- “触发之后到底干什么”由**注册进来的处理器**决定，别的 mod 想怎么处理就怎么处理：
+--
+--     TurnEvents.RegisterHandler("GOLD", function(event) ... end, 优先级)
+--     TurnEvents.RegisterHandler("*",    function(event) ... end)   -- 通配，接所有类型
+--
+-- 处理器契约：handler(event) 返回 (status, detail)
+--     "handled"  已处理 → 出队，并按 detail 组提示文案
+--     "defer"    这次处理不了（例如首都还没建）→ 留在队里，下一回合再问
+--     "failed"   处理失败 → 出队，提示文案里带失败原因
+--     其它/nil   这个处理器不管这条 → 继续问下一个处理器
+-- 同类处理器按优先级从大到小依次询问；本 mod 自带的“默认处理方式”在
+-- ModTool_TurnEventHandlers.lua 里注册（金币/单位/资源），别的 mod 可以：
+--     * 注册更高优先级的处理器来接管某个类型；
+--     * 或 TurnEvents.ClearHandlers("GOLD") / TurnEventHandlers.Disable() 先清掉默认的。
 -- ===========================================================================
 
-local function ResolvePlayer(event)
-    local wantedID = tonumber(event.FromPlayerID)
-    local wantedCiv = event.FromCiv
+local m_Handlers = {}   -- [类型] = { { Fn, Priority }, ... }（按优先级降序）
 
-    if wantedID ~= nil and Players[wantedID] ~= nil then
-        local config = PlayerConfigurations ~= nil and PlayerConfigurations[wantedID] or nil
-        local civType = nil
-        if config ~= nil and config.GetCivilizationTypeName ~= nil then
-            local ok, value = pcall(function() return config:GetCivilizationTypeName() end)
-            if ok then civType = value end
-        end
-        if wantedCiv == nil or civType == nil or civType == wantedCiv then
-            return Players[wantedID], "id"
+function API.RegisterHandler(eventType, handler, priority)
+    if type(handler) ~= "function" then return false, "handler 不是函数" end
+    local key = tostring(eventType or "*")
+    m_Handlers[key] = m_Handlers[key] or {}
+    table.insert(m_Handlers[key], { Fn = handler, Priority = tonumber(priority) or 0, Type = key })
+    table.sort(m_Handlers[key], function(a, b) return a.Priority > b.Priority end)
+    Log("已注册处理器：类型=" .. key .. " 优先级=" .. tostring(priority or 0)
+        .. "（该类型现有 " .. tostring(#m_Handlers[key]) .. " 个）")
+    return true
+end
+
+function API.UnregisterHandler(eventType, handler)
+    local key = tostring(eventType or "*")
+    local list = m_Handlers[key]
+    if list == nil then return false end
+    for index = #list, 1, -1 do
+        if list[index].Fn == handler then
+            table.remove(list, index)
+            Log("已注销处理器：类型=" .. key)
+            return true
         end
     end
+    return false
+end
 
-    -- id 对不上（不同分支的玩家表可能不同）→ 按文明类型找
-    if wantedCiv ~= nil then
-        for playerID = 0, GameDefines.MAX_PLAYERS - 1 do
-            local player = Players[playerID]
-            if player ~= nil then
-                local config = PlayerConfigurations ~= nil and PlayerConfigurations[playerID] or nil
-                if config ~= nil and config.GetCivilizationTypeName ~= nil then
-                    local ok, civType = pcall(function() return config:GetCivilizationTypeName() end)
-                    if ok and civType == wantedCiv then
-                        return player, "civ"
-                    end
+function API.ClearHandlers(eventType)
+    local removed = 0
+    if eventType == nil then
+        for key, list in pairs(m_Handlers) do
+            removed = removed + #list
+            m_Handlers[key] = nil
+        end
+    else
+        local key = tostring(eventType)
+        if m_Handlers[key] ~= nil then
+            removed = #m_Handlers[key]
+            m_Handlers[key] = nil
+        end
+    end
+    Log("已清空处理器 " .. tostring(removed) .. " 个（类型=" .. tostring(eventType or "全部") .. "）")
+    return removed
+end
+
+function API.GetHandlerTypes()
+    local rows = {}
+    for key, list in pairs(m_Handlers) do
+        table.insert(rows, { Type = key, Count = #list })
+    end
+    table.sort(rows, function(a, b) return tostring(a.Type) < tostring(b.Type) end)
+    return rows
+end
+
+local function DispatchToHandlers(event)
+    local lists = { m_Handlers[tostring(event.Type)], m_Handlers["*"] }
+    for _, list in ipairs(lists) do
+        if list ~= nil then
+            for _, entry in ipairs(list) do
+                local ok, status, detail = pcall(entry.Fn, event)
+                if not ok then
+                    -- 处理器自己报错：当成 failed 出队，别把队列挂死
+                    return "failed", "handler-error:" .. tostring(status)
+                end
+                if status == "handled" or status == "defer" or status == "failed" then
+                    return status, detail
                 end
             end
         end
     end
+    return "no-handler", nil
+end
 
-    local localPlayerID = Game.GetLocalPlayer()
-    if localPlayerID ~= nil and localPlayerID >= 0 and Players[localPlayerID] ~= nil then
-        return Players[localPlayerID], "local-fallback"
+-- 触发一条事件：只问处理器，不问“该怎么执行”
+-- 返回 status("handled"/"defer"/"failed"/"no-handler"), detail
+function API.TriggerEvent(event)
+    if type(event) ~= "table" then return "failed", "事件格式不对" end
+    local status, detail = DispatchToHandlers(event)
+    if status == "no-handler" then
+        Log("没有处理器认领这条事件（类型 " .. tostring(event.Type)
+            .. "）→ 留在队列里，等注册了处理器的 mod 接手")
+    elseif status == "handled" then
+        Log("已触发并由处理器完成：" .. tostring(event.Type) .. " " .. tostring(event.Detail or "")
+            .. " x" .. tostring(event.Amount or "?") .. "（" .. tostring(detail or "") .. "）")
+    elseif status == "defer" then
+        Log("处理器要求顺延：" .. tostring(event.Type) .. " → " .. tostring(detail or ""))
+    else
+        Log("处理器报告失败：" .. tostring(event.Type) .. " → " .. tostring(detail or ""))
     end
-    return nil, "no-player"
+    return status, detail
 end
 
-local function GetPlayerCapital(player)
-    if player == nil then return nil end
-    local cities = player:GetCities()
-    if cities == nil then return nil end
-    return cities:GetCapitalCity()
-end
-
-local function ExecuteGold(player, event)
-    local amount = tonumber(event.Amount) or 0
-    if amount == 0 then return false, "amount=0" end
-    if ChangePlayerGoldAmount ~= nil then
-        local ok, err = pcall(ChangePlayerGoldAmount, player:GetID(), amount)
-        if not ok then return false, tostring(err) end
-        return true, "treasury"
-    end
-    local treasury = player:GetTreasury()
-    local ok, err = pcall(function() return treasury:ChangeGoldBalance(amount) end)
-    if not ok then return false, tostring(err) end
-    return true, "treasury"
-end
-
-local function ExecuteUnit(player, event)
-    local unitType = event.Detail
-    if unitType == nil or tostring(unitType) == "" then return false, "没给单位类型" end
-    local capital = GetPlayerCapital(player)
-    if capital == nil then return false, "no-capital" end
-    local playerID = player:GetID()
-    local x, y = capital:GetX(), capital:GetY()
-    local ok, err = pcall(UnitManager.InitUnit, playerID, tostring(unitType), x, y)
-    if not ok then return false, tostring(err) end
-    return true, "capital@" .. tostring(x) .. "," .. tostring(y)
-end
-
-local function ExecuteResource(player, event)
-    local resourceType = event.Detail
-    if resourceType == nil or tostring(resourceType) == "" then return false, "没给资源类型" end
-    local row = GameInfo.Resources[resourceType]
-    if row == nil then return false, "未知资源 " .. tostring(resourceType) end
-    local amount = tonumber(event.Amount) or 1
-
-    -- ① 库存通道（引擎没有文档化写接口，先探一手；有就用，符合“加进库存”的口径）
-    local resources = player:GetResources()
-    if resources ~= nil and resources.ChangeResourceAmount ~= nil then
-        local ok = pcall(function() return resources:ChangeResourceAmount(row.Index, amount) end)
-        if ok then return true, "stockpile" end
-    end
-
-    -- ② 地图通道：首都附近找一块自己的陆地放下去（WorldBuilderAPI 是已验证通道）
-    local capital = GetPlayerCapital(player)
-    if capital == nil then return false, "no-capital" end
-    local playerID = player:GetID()
-    if GetPlotsInRange == nil or WorldBuilderAPI == nil then return false, "地图通道不可用" end
-    local plotIndexes = GetPlotsInRange(capital:GetX(), capital:GetY(), 3)
-    for _, plotIndex in ipairs(plotIndexes) do
-        local plot = Map.GetPlotByIndex(plotIndex)
-        if plot ~= nil and not plot:IsWater() and plot:GetOwner() == playerID then
-            local ok = pcall(WorldBuilderAPI.SetResourceType, plot, row.Index, amount)
-            if ok then return true, "map@" .. tostring(plotIndex) end
-        end
-    end
-    return false, "首都附近没有可放资源的地块"
-end
-
-local EXECUTORS = {
-    GOLD = ExecuteGold,
-    UNIT = ExecuteUnit,
-    RESOURCE = ExecuteResource,
-}
-
+-- 文本事件：核心只把「触发了什么 + 处理器给的结果」广播出去，文案由 UI 侧/其它 mod 决定
 local function FireEventText(event, result)
     if LuaEvents == nil or LuaEvents.ModMiscToolTurnEventFired == nil then return end
     pcall(function()
@@ -281,24 +286,6 @@ local function FireEventText(event, result)
             tostring(event.FromNode or ""), event.Overdue == true,
             tonumber(event.FromPlayerID) or -1, tostring(result or ""))
     end)
-end
-
-function API.ExecuteEvent(event)
-    if type(event) ~= "table" then return false, "事件格式不对" end
-    local executor = EXECUTORS[tostring(event.Type)]
-    if executor == nil then return false, "未知事件类型 " .. tostring(event.Type) end
-
-    local player, how = ResolvePlayer(event)
-    if player == nil then return false, "找不到接收玩家（" .. tostring(how) .. "）" end
-    local ok, result = executor(player, event)
-    if ok then
-        Log("已执行：" .. tostring(event.Type) .. " " .. tostring(event.Detail or "")
-            .. " x" .. tostring(event.Amount or "?")
-            .. " → 玩家 " .. tostring(player:GetID()) .. "（" .. tostring(how) .. "）通道=" .. tostring(result))
-    else
-        Log("执行未完成：" .. tostring(event.Type) .. " → " .. tostring(result))
-    end
-    return ok, result, player:GetID()
 end
 
 -- 结算到点事件：每回合开始跑一次；面板也能手动触发
@@ -314,17 +301,16 @@ function API.ProcessDue(reason)
         if accept > currentTurn then
             table.insert(remaining, event)
         else
-            local ok, result = API.ExecuteEvent(event)
-            if ok then
+            local status, detail = API.TriggerEvent(event)
+            if status == "handled" then
                 executed = executed + 1
-                FireEventText(event, result)
-            elseif result == "no-capital" or result == "首都附近没有可放资源的地块" then
-                -- 还没条件发放（例如首都还没建）：顺延，别丢
-                Log("顺延到下一回合：" .. tostring(event.Type) .. " → " .. tostring(result))
-                table.insert(remaining, event)
+                FireEventText(event, detail)
+            elseif status == "failed" then
+                executed = executed + 1
+                FireEventText(event, "failed:" .. tostring(detail))
             else
-                executed = executed + 1
-                FireEventText(event, "failed:" .. tostring(result))
+                -- "defer"（处理器说这次不行）或 "no-handler"（还没人接手）：留在队里，下回合再试
+                table.insert(remaining, event)
             end
         end
     end

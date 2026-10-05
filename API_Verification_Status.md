@@ -775,7 +775,7 @@ modinfo 的 ImportFiles 里登记了），于是 `ModMiscToolData` 是 nil → �
   **老档名没有这一段 → 解析容忍，显示 `-`**（不猜、不硬算）；
 * **绝不改引擎回合**：第 47 条已证伪，这里只是换算与显示。
 
-### 15.3 跨存档事件（预设：单位 / 金币 / 资源）
+### 15.3 跨存档事件（核心**只做定时触发**，执行方式由处理器决定）
 
 **信箱**：跨存档存储（通道 C）里的键 `ev_<目标节点id>_<序号>`，
 值 `type|detail|amount|acceptTurn|fromNode|playerID|civ|stamp`（一个事件一个键，投递即删）。
@@ -790,9 +790,11 @@ modinfo 的 ImportFiles 里登记了），于是 `ModMiscToolData` 是 nil → �
 | # | 行为 | 状态 | 备注 |
 |---|---|---|---|
 | 59 | 接受回合规则 | `[待实机]` | 接受回合 < 当前逻辑回合 ⇒ 标记 `Overdue` 并排到**下一回合**（授权者口径）；否则到那一回合触发。 |
-| 60 | 金币发放 `player:GetTreasury():ChangeGoldBalance(n)` | `[待实机]`（游戏自带场景脚本在用，属已验证写法） | 本 mod 直接复用 `ChangePlayerGoldAmount`（`ModTool_Support_Functions.lua`）。 |
-| 61 | 单位发放 `UnitManager.InitUnit(playerID, unitType, x, y)` 落在**接收方首都** | `[待实机]` | 没有首都 → **顺延**到下一回合（不丢事件）。 |
-| 62 | 资源发放 | `[待实机·两条通道]` | ① 库存通道 `player:GetResources():ChangeResourceAmount(idx, n)` —— **引擎里没有任何调用点/文档**，先探一手；② 不行就落到地图：`WorldBuilderAPI.SetResourceType(plot, idx, n)`（已封装、已验证通道），在首都附近找自己的陆地放。日志里的 `通道=` 会写清楚走的哪条。 |
+| 60 | **处理器机制**：`TurnEvents.RegisterHandler(类型, fn, 优先级)` / `UnregisterHandler` / `ClearHandlers` / `GetHandlerTypes` | `[待实机]` | 核心触发时按**优先级降序**询问处理器（先具体类型，再 `"*"` 通配）；契约 `fn(event) → ("handled"|"defer"|"failed", detail)`；返回其它/nil = 这个处理器不管，继续问下一个；处理器自己报错按 `failed` 出队（不挂死队列）。<br>**没有任何处理器认领时事件留在队列里**（不静默丢），日志写明“等注册了处理器的 mod 接手”。 |
+| 61 | 默认处理方式（`ModTool_TurnEventHandlers.lua`，**当前测试框架用**）—— 金币 | `[待实机]` | `ChangePlayerGoldAmount` / `player:GetTreasury():ChangeGoldBalance(n)`（游戏自带场景脚本在用）。 |
+| 62 | 默认处理方式 —— 单位 | `[待实机]` | `UnitManager.InitUnit(playerID, unitType, x, y)` 落在**接收方首都**；没有首都 → 返回 `defer`（顺延到下一回合，事件不丢）。 |
+| 63 | 默认处理方式 —— 资源 | `[待实机·两条通道]` | ① 库存通道 `player:GetResources():ChangeResourceAmount(idx, n)` —— **引擎里没有任何调用点/文档**，先探一手；② 不行就落到地图：`WorldBuilderAPI.SetResourceType(plot, idx, n)`（已封装、已验证通道），在首都附近找自己的陆地放。日志/文案里的 `处理=` 会写清楚走的哪条。 |
+| 64 | 其它 mod 接管执行方式 | `[待实机]` | 两条路：① 注册更高优先级的处理器（默认是优先级 0，用 100 就能抢在前面）；② 先 `TurnEventHandlers.Disable()` 或 `TurnEvents.ClearHandlers("GOLD")` 再自己注册。整套默认处理器可用 `ExposedMembers.ModMiscToolScript.TurnEventHandlers.Enable/Disable()` 开关。 |
 | 63 | 事件文本提示可由其它 mod 定义 | `[待实机]` | gameplay 侧每条执行完广播 `LuaEvents.ModMiscToolTurnEventFired(type, detail, amount, fromNode, overdue, toPlayerID, result)`，一批执行完再广播 `LuaEvents.ModMiscToolTurnEventBatch(count, logicalTurn)`；UI 侧（Support_UI）默认按类型组 LOC 文案并弹一条汇总弹窗，其它 mod 可用 `ExposedMembers.ModMiscToolUI.RegisterTurnEventTextResolver(fn)` 覆盖文案。 |
 
 ### 15.4 这一块的实现位置
@@ -800,6 +802,7 @@ modinfo 的 ImportFiles 里登记了），于是 `ModMiscToolData` 是 nil → �
 | 文件 | 职责 |
 |---|---|
 | `UI/ModMiscSaveGraph.lua` | 逻辑回合换算、读档、事件发件/收件（信箱）、关系树 |
-| `ModTool_TurnEvents.lua`（gameplay） | 回合事件列表（`Game:SetProperty`）、到点结算、三种发放、文本广播 |
+| `ModTool_TurnEvents.lua`（gameplay） | 回合事件列表（`Game:SetProperty`）、到点**触发**、处理器注册表、文本广播 |
+| `ModTool_TurnEventHandlers.lua`（gameplay） | **默认处理方式**（金币/单位/资源）—— 当前测试框架用的实现，可关可换 |
 | `UI/ModMiscSavePanel.lua` | 关系树选中、四个选择器（玩家/类型/内容/接受回合）、发送事件、载入选中 |
 | `UI/Support_UI.lua` | 开局收件、文本解析器注册、默认文案 + 弹窗 |
