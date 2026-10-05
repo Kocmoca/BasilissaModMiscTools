@@ -1236,6 +1236,8 @@ local function SaveNode(node, opts)
         -- 卡在这里会让之后每一次存档与换图都被拒，所以超时后丢弃旧状态、继续走。
         local now, clockOk = NowOrExpired(m_SavePending.StartedAt)
         local age = now - (m_SavePending.StartedAt or 0)
+        -- 【实机反馈 2026-10-06】第一次按切换键写了档但没确认 ⇒ 之后每次按都被这里拦住、再也存不了。
+        -- 所以只在“刚发出去的 MODMISC_SAVE_PENDING_TIMEOUT 秒内”才拦，超时一律自愈放行。
         if (not clockOk) or age > MODMISC_SAVE_PENDING_TIMEOUT then
             Log("警告：上一笔存档等回执已超时 " .. tostring(age) .. " 秒，丢弃该状态继续")
             m_SavePending = nil
@@ -1305,12 +1307,25 @@ local function SaveNode(node, opts)
         .. " name=" .. name
         .. "（parent=" .. tostring(node.Parent or MODMISC_SAVE_ROOT_PARENT)
         .. " kind=" .. tostring(node.Kind) .. " turn=" .. tostring(node.Turn) .. "）")
+    -- 【诊断，实机 2026-10-06】把实际交给引擎的字段全打出来 + 引擎“最近一次存档名”回显：
+    -- 万一引擎改了名/换了目录，这两行能一眼看出来（否则只能猜）。
+    Log("  saveFile: Name=" .. tostring(saveFile.Name)
+        .. " Location=" .. tostring(saveFile.Location)
+        .. " Type=" .. tostring(saveFile.Type)
+        .. " FileType=" .. tostring(saveFile.FileType)
+        .. " Directory=" .. tostring(saveFile.Directory))
     local ok, err = pcall(Network.SaveGame, saveFile)
     if not ok then
         m_SavePending = nil
         Log("Network.SaveGame 调用失败 -> " .. tostring(err))
         return false, tostring(err)
     end
+    -- 【诊断，实机 2026-10-06】引擎自己的回显：它认为最近一次存档叫什么。
+    -- 与请求的档名不一致 ⇒ 引擎改了名（那就解释了“列表里查不到我们请求的那个名字”）。
+    local echoed = TryCall(function() return UI.GetLastSaveName() end)
+    Log("  Network.SaveGame 已受理；引擎回显 GetLastSaveName=" .. tostring(echoed)
+        .. (echoed ~= nil and StripExtension(tostring(echoed)) ~= name
+            and " ← 与请求的档名不同（引擎改名？）" or ""))
     if node.Overwrite then
         Log("原地覆盖：旧档 " .. tostring(node.OldName or "(列表里没扫到，可能没有旧档)")
             .. " 将在这笔写成功后删除")
@@ -1434,16 +1449,35 @@ function API.VerifySaveNow(onDone)
         return false
     end
     local wantedId = m_SaveState.Node.Id
+    local wantedName = m_SaveState.NewName
     API.Refresh(function(nodes)
-        local found = false
+        -- 判据用**档名**（我们要的就是这个名字，比“解析出来的 id”更直接）：
+        -- 实机反馈“切换写的档在 UI 里看不到、而储存键写的能看到” ⇒ 先把事实打出来，
+        -- 别让解析差异把“文件在不在”这件事搅浑。
+        local found, foundBy = false, nil
         for _, node in ipairs(nodes) do
-            if node.Id == wantedId then found = true break end
+            if node.Name ~= nil and StripExtension(node.Name) == wantedName then
+                found, foundBy = true, "档名一致"
+                break
+            end
         end
+        if not found then
+            for _, node in ipairs(nodes) do
+                if node.Id == wantedId then found, foundBy = true, "解析出的 id 一致（档名不同？）" break end
+            end
+        end
+        local sample = {}
+        for index, node in ipairs(nodes) do
+            if index > 4 then break end
+            table.insert(sample, tostring(node.Name))
+        end
+        Log("落盘确认：找 " .. tostring(wantedName) .. "；列表 " .. tostring(#nodes) .. " 条"
+            .. (#sample > 0 and ("（前几条：" .. table.concat(sample, " / ") .. "）") or "（空）")
+            .. "；最近一次存档名(引擎)=" .. tostring(TryCall(function() return UI.GetLastSaveName() end)))
         if found then
             local firstTime = (m_SaveState.Verified ~= true)
             m_SaveState.Verified = true
-            Log("落盘确认：节点 " .. tostring(wantedId) .. " 已在存档列表里（"
-                .. tostring(m_SaveState.NewName) .. "）⇒ 可以切换")
+            Log("落盘确认：已找到（" .. tostring(foundBy) .. "）⇒ 可以切换")
             if firstTime and m_SaveState.OnVerified ~= nil then
                 pcall(m_SaveState.OnVerified, true, m_SaveState.Node)
             end
@@ -1466,7 +1500,8 @@ function API.RetrySave(onVerified)
     Log("落盘确认超时，重发存档（第 " .. tostring(attempts + 1) .. " 次）")
     m_SaveState = nil
     m_SavePending = nil
-    local ok, err = SaveNode(node, { Reason = "retry", OnVerified = onVerified })
+    local ok, err = SaveNode(node, { Reason = "retry", Attempts = attempts + 1,
+                                     OnVerified = onVerified })
     return ok, err
 end
 
@@ -1503,12 +1538,16 @@ function API.SwitchNow(reason)
     -- 【硬门槛】必须先在存档列表里见到这份原档才能重开。
     -- 之前靠 SaveComplete + 倒计时“猜”它写完了，实机证明会猜错（列表里根本没有那份档），
     -- 于是“声称留下了存档、实际没有” —— 现在不确认就不许切。
-    if m_SaveState ~= nil and m_SaveState.Verified ~= true then
+    local force = (type(reason) == "table") and reason.Force == true
+    if m_SaveState ~= nil and m_SaveState.Verified ~= true and not force then
         local state = API.GetSaveState() or {}
         Log("拒绝切换：原档还没确认落盘（节点 " .. tostring(state.NodeId)
             .. "，第 " .. tostring(state.Attempts) .. " 次尝试，已等 "
-            .. tostring(state.Elapsed) .. " 秒）")
+            .. tostring(state.Elapsed) .. " 秒）—— 连续两次都没确认时，面板会让玩家显式选择“仍要切换”")
         return false, "原档还没确认落盘"
+    end
+    if force then
+        Log("按玩家显式选择继续切换（**原档未确认落盘**）")
     end
     if Network == nil or Network.RestartGame == nil then
         return false, "Network.RestartGame 不可用（换图只能靠它，见第 42 条）"

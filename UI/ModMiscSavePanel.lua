@@ -612,9 +612,33 @@ local function DoSwitchMap()
     if ModMiscSaveGraph.HasPendingSwitch() then
         local state = ModMiscSaveGraph.GetSaveState ~= nil and ModMiscSaveGraph.GetSaveState() or nil
         if state ~= nil and state.Verified ~= true then
-            -- 原档还没确认落盘：先别重开（免得切过去却丢档）
-            Report(Locale.Lookup("LOC_MODMISC_SAVEPANEL_SWITCH_WAIT_SAVE"),
-                Locale.Lookup("LOC_MODMISC_SAVEPANEL_SWITCH_WAIT_SAVE_DETAIL"))
+            -- 【实机反馈 2026-10-06】第一次写了档但没确认 ⇒ 之后每次按都只“干等”，再也存不了。
+            -- 现在按一次 = 再试一次：没确认就重发（最多两次）；两次都失败则要求玩家**显式选择**。
+            local attempts = tonumber(state.Attempts) or 1
+            if attempts < 2 and (state.Elapsed == nil or state.Elapsed > 5) then
+                Log("换图：原档还没确认落盘，按玩家点击重发一次（第 " .. tostring(attempts + 1) .. " 次）")
+                m_SaveWaitFrames = 0
+                m_CheckSaveFrames = 59
+                ModMiscSaveGraph.RetrySave(function(found)
+                    if found then ArmAutoRestart(SWITCH_AUTO_DELAY) end
+                end)
+                Report(Locale.Lookup("LOC_MODMISC_SAVEPANEL_SWITCH_RESAVE"),
+                    Locale.Lookup("LOC_MODMISC_SAVEPANEL_SAVE_VERIFYING",
+                        tostring(state.Name or "?"), "0"))
+                return
+            end
+            if m_ForceSwitchArmed then
+                -- 第二次点击 = 玩家明知“没确认落盘”也要切
+                m_ForceSwitchArmed = false
+                Report(Locale.Lookup("LOC_MODMISC_SAVEPANEL_SWITCH_FORCED"),
+                    Locale.Lookup("LOC_MODMISC_SAVEPANEL_SWITCH_FORCED"))
+                local okF, errF = ModMiscSaveGraph.SwitchNow({ Force = true })
+                if not okF then ReportError("SwitchNow(force)", errF) end
+                return
+            end
+            m_ForceSwitchArmed = true
+            Report(Locale.Lookup("LOC_MODMISC_SAVEPANEL_SWITCH_UNVERIFIED_WARN"),
+                Locale.Lookup("LOC_MODMISC_SAVEPANEL_SWITCH_UNVERIFIED_WARN"))
             return
         end
         Report(Locale.Lookup("LOC_MODMISC_SAVEPANEL_SWITCH_NOW"),

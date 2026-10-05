@@ -645,6 +645,15 @@
 		<Row Tag="LOC_MODMISC_SAVEPANEL_SAVE_VERIFYING">
 			<Text>Checking the save list... {1_Name} ({2_Seconds}s)</Text>
 		</Row>
+		<Row Tag="LOC_MODMISC_SAVEPANEL_SWITCH_RESAVE">
+			<Text>Re-saving the original save (attempt {1})</Text>
+		</Row>
+		<Row Tag="LOC_MODMISC_SAVEPANEL_SWITCH_UNVERIFIED_WARN">
+			<Text>Save not confirmed on disk - tap Switch map again to switch anyway (unsafe)</Text>
+		</Row>
+		<Row Tag="LOC_MODMISC_SAVEPANEL_SWITCH_FORCED">
+			<Text>Switching without a confirmed original save...</Text>
+		</Row>
 		<Row Tag="LOC_MODMISC_SAVEPANEL_SAVE_VERIFIED">
 			<Text>Original save confirmed on disk - switching shortly (tap Switch map to go now)</Text>
 		</Row>

@@ -645,6 +645,15 @@
 		<Replace Tag="LOC_MODMISC_SAVEPANEL_SAVE_VERIFYING" Language="zh_Hans_CN">
 			<Text>正在确认原档落盘… {1_Name}（{2_Seconds} 秒）</Text>
 		</Replace>
+		<Replace Tag="LOC_MODMISC_SAVEPANEL_SWITCH_RESAVE" Language="zh_Hans_CN">
+			<Text>正在重发原档存档（第 {1} 次）</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_SAVEPANEL_SWITCH_UNVERIFIED_WARN" Language="zh_Hans_CN">
+			<Text>没能确认原档落盘 —— 再点一次「换图」仍要切换（不保证原档完整）</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_SAVEPANEL_SWITCH_FORCED" Language="zh_Hans_CN">
+			<Text>按玩家选择继续切换（原档未确认落盘）…</Text>
+		</Replace>
 		<Replace Tag="LOC_MODMISC_SAVEPANEL_SAVE_VERIFIED" Language="zh_Hans_CN">
 			<Text>原档已确认落盘 —— 稍后自动切换（点「换图」可立刻切）</Text>
 		</Replace>
