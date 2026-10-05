@@ -562,11 +562,23 @@
 		<Replace Tag="LOC_MODMISC_SAVEPANEL_ERROR" Language="zh_Hans_CN">
 			<Text>{1_Action} 失败：{2_Detail}</Text>
 		</Replace>
-		<Replace Tag="LOC_MODMISC_SAVEPANEL_SWITCH_FALLBACK" Language="zh_Hans_CN">
-			<Text>还没跳转——正在强制换图。</Text>
-		</Replace>
 		<Replace Tag="LOC_MODMISC_SAVEPANEL_SAVED_ACKED" Language="zh_Hans_CN">
 			<Text>已收到存档回执，正在复查落盘…</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_SAVEPANEL_PHASE_STORE" Language="zh_Hans_CN">
+			<Text>换图：等跨存档存储就绪…</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_SAVEPANEL_PHASE_SAVING" Language="zh_Hans_CN">
+			<Text>换图：正在存原档…</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_SAVEPANEL_PHASE_RESTARTING" Language="zh_Hans_CN">
+			<Text>换图：正在重开…</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_SAVEPANEL_PHASE_RETRYING" Language="zh_Hans_CN">
+			<Text>重开没生效——正在重试…</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_SAVEPANEL_PHASE_FAILED" Language="zh_Hans_CN">
+			<Text>换图没生效。原档已保存——可用游戏菜单的「重新开始」，或再点一次「换图」。</Text>
 		</Replace>
 </LocalizedText>
 

@@ -1200,20 +1200,19 @@ gameplay 侧要换图，走 `ExposedMembers.ModMiscToolScript.WorldBuilderAPI.Se
 失败兜底：`pending` 两次都没确认也照样重开（原档已保存，丢的只是一条边，不损坏任何档），
 日志里会写清楚。
 
-#### 3.13.3b 换图只等 SaveComplete（2026-10-05 第二轮修复）
+#### 3.13.3b 换图 = 按帧回调驱动的状态机（2026-10-05 第三轮修复）
 
-    「换图（先存原档）」：等存储就绪 → 写 pending（带时间戳）→ 存原档
-      → **SaveComplete 一到立刻 Network.RestartGame()** → 落盘复查只打日志
-    兜底：面板挂 10 秒计时器，到点还没跳就 ModMiscSaveGraph.ForceSwitch() 强制重开
+    SwitchMap()          面板按钮回调：登记状态机（阶段=等存储）+ 触发一次存储扫描，立刻返回
+    TickSwitch()         面板按帧回调（ContextPtr:SetRefreshHandler）里调用，返回阶段串：
+                           waiting-store → saving → restarting → (retrying…) → failed | idle
+    ForceSwitch(reason)  跳过等待立刻发重开；换图进行中再点按钮 = 手动重试
 
-* 早先版本在 SaveComplete 之后又串了“扫列表确认落盘 → 复查 pending → 才重开”两层异步门，
-  任何一环不回包换图就永远不发生（授权者实测过）⇒ 现在**只等 SaveComplete**；
-* `SaveCurrentGame` 的两个回调分工：`OnSaved(found=nil, node)` = 回执（立刻）、
-  `OnChecked(found, node)` = 落盘复查结果（异步，可能不来，只用来更新界面文案）；
-* `sg_pending` 带写入时间戳，超过 900 秒判过期；`Events.ExitToMainMenu` 一到就清 pending ——
-  否则“退出到主界面另开新局”会把陈旧关系认成自己的来源（授权者实测过）；
-* `Game:SetProperty` 是**第三条通道**（授权者提议）：存档时和 CustomData 一起写本局节点身份，
-  随档走、新局不继承、只在 gameplay 可读；`GetCurrentNodeId()` 以 CustomData 优先、property 兜底。
+* **不要**把后续动作挂在 `Events.SaveComplete` 这类引擎事件上：它来不来、什么时候来都不由我们控制，
+  实测“点了换图不跳转”就是这么来的；`SaveComplete` 现在只当提前量（置标志早点走）；
+* **重开只从按帧回调里发出** —— 与“点按钮重开”同一类调用上下文，是唯一被实机证明可行的那条路（第 42 条）；
+* 每一步都有超时上限（等存储 5 秒 / 等存档 12 秒 / 重试间隔 8 秒 ×3），任何一环不回包都不会卡死；
+* 发出重开后能自我检测（我们的代码还在跑 = 没生效）→ 自动重试 → 最后写清出路并结束状态机；
+* 面板状态行按阶段显示五条文案：`LOC_MODMISC_SAVEPANEL_PHASE_{STORE,SAVING,RESTARTING,RETRYING,FAILED}`。
 
 #### 3.13.3c 存储内存表是「每 context 一份」（踩过）
 

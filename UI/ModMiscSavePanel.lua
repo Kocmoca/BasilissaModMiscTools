@@ -27,11 +27,18 @@ print("[ModMiscTool][SavePanel] panel loading build=" .. tostring(MODMISC_BUILD_
 local m_Registered = false
 local m_EntryIM = nil
 
--- 换图兜底：SaveComplete 若一直不来（引擎不给回执 / 上下文被顶掉），
--- 面板这个按帧回调会在超时后强制重开 —— 否则玩家点了换图什么都不会发生。
-local SWITCH_FALLBACK_SECONDS = 10
-local m_SwitchDeadline = nil
+-- 换图的推进器：所有等待（存储就绪 / 存档回执 / 重开是否生效）都由面板这个**按帧回调**
+-- 驱动 —— 引擎的 SaveComplete 只当提前量。重开也从这里发出（与“点按钮重开”同一类调用上下文），
+-- 之前塞在 SaveComplete 事件回调里实测不跳转（授权者 2026-10-05）。
 local m_WatchdogArmed = false
+
+local SWITCH_PHASE_KEYS = {
+    ["waiting-store"] = "LOC_MODMISC_SAVEPANEL_PHASE_STORE",
+    ["saving"]        = "LOC_MODMISC_SAVEPANEL_PHASE_SAVING",
+    ["restarting"]    = "LOC_MODMISC_SAVEPANEL_PHASE_RESTARTING",
+    ["retrying"]      = "LOC_MODMISC_SAVEPANEL_PHASE_RETRYING",
+    ["failed"]        = "LOC_MODMISC_SAVEPANEL_PHASE_FAILED",
+}
 
 -- ===========================================================================
 -- 输出
@@ -191,40 +198,42 @@ local function DoSave()
         Locale.Lookup("LOC_MODMISC_SAVEPANEL_SAVING_DETAIL"))
 end
 
--- 按帧跑：到点还没跳转就强制重开（正常路径下 SaveComplete 一到就重开了，
--- 上下文随之销毁，这个计时器也就没机会跑）
+-- 按帧推进换图状态机；换图真的生效时这个上下文会被销毁，回调自然停。
 local function SwitchWatchdog(delta)
-    if m_SwitchDeadline ~= nil then
-        local now = os.time()
-        if now ~= nil and now >= m_SwitchDeadline then
-            m_SwitchDeadline = nil
-            Log("换图兜底：等了 " .. tostring(SWITCH_FALLBACK_SECONDS) .. " 秒还没跳转，强制重开")
-            SetStatus(Locale.Lookup("LOC_MODMISC_SAVEPANEL_SWITCH_FALLBACK"))
-            pcall(ModMiscSaveGraph.ForceSwitch, "面板兜底计时器超时")
-        end
+    if ModMiscSaveGraph ~= nil and ModMiscSaveGraph.IsSwitchPending ~= nil
+        and ModMiscSaveGraph.IsSwitchPending() then
+        local phase = ModMiscSaveGraph.TickSwitch()
+        local key = SWITCH_PHASE_KEYS[phase]
+        if key ~= nil then SetStatus(Locale.Lookup(key)) end
     end
     ContextPtr:RequestRefresh()
 end
 
-local function ArmSwitchWatchdog()
-    local now = os.time()
-    m_SwitchDeadline = (now ~= nil and now or 0) + SWITCH_FALLBACK_SECONDS
-    if not m_WatchdogArmed then
-        m_WatchdogArmed = true
-        ContextPtr:SetRefreshHandler(SwitchWatchdog)
-        ContextPtr:RequestRefresh()
-        Log("换图兜底计时器已挂（" .. tostring(SWITCH_FALLBACK_SECONDS) .. " 秒）")
-    end
+local function EnsureSwitchWatchdog()
+    if m_WatchdogArmed then return end
+    m_WatchdogArmed = true
+    ContextPtr:SetRefreshHandler(SwitchWatchdog)
+    ContextPtr:RequestRefresh()
+    Log("换图推进器（按帧回调）已挂")
 end
 
 local function DoSwitchMap()
+    -- 换图进行中时，这次点击当“手动重试”（跳过等待立刻再发一次重启）
+    if ModMiscSaveGraph.IsSwitchPending ~= nil and ModMiscSaveGraph.IsSwitchPending() then
+        Log("已有换图在进行，按手动重试处理")
+        pcall(ModMiscSaveGraph.ForceSwitch, "面板手动重试")
+        SetStatus(Locale.Lookup("LOC_MODMISC_SAVEPANEL_PHASE_RESTARTING"))
+        EnsureSwitchWatchdog()
+        return
+    end
+
     local ok, err = ModMiscSaveGraph.SwitchMap()
     if not ok then
         ReportError("SwitchMap", err)
         return
     end
-    ArmSwitchWatchdog()
-    -- 换图是链式的：等存储就绪 → 存原档 → 回执 → 重开（超时兜底）。面板把“正在做什么”讲清楚。
+    EnsureSwitchWatchdog()
+    -- 换图由按帧回调推进：等存储 → 存原档 → 重开（超时/重试都在状态机里）
     Report(Locale.Lookup("LOC_MODMISC_SAVEPANEL_SWITCHING"),
         Locale.Lookup("LOC_MODMISC_SAVEPANEL_SWITCHING_DETAIL"))
 end

@@ -562,11 +562,23 @@
 		<Row Tag="LOC_MODMISC_SAVEPANEL_ERROR">
 			<Text>{1_Action} failed: {2_Detail}</Text>
 		</Row>
-		<Row Tag="LOC_MODMISC_SAVEPANEL_SWITCH_FALLBACK">
-			<Text>No restart yet - forcing the map switch now.</Text>
-		</Row>
 		<Row Tag="LOC_MODMISC_SAVEPANEL_SAVED_ACKED">
 			<Text>SaveComplete received, checking the list...</Text>
+		</Row>
+		<Row Tag="LOC_MODMISC_SAVEPANEL_PHASE_STORE">
+			<Text>Map switch: waiting for the cross-save store...</Text>
+		</Row>
+		<Row Tag="LOC_MODMISC_SAVEPANEL_PHASE_SAVING">
+			<Text>Map switch: saving the original save...</Text>
+		</Row>
+		<Row Tag="LOC_MODMISC_SAVEPANEL_PHASE_RESTARTING">
+			<Text>Map switch: restarting the game...</Text>
+		</Row>
+		<Row Tag="LOC_MODMISC_SAVEPANEL_PHASE_RETRYING">
+			<Text>Restart did not take effect - retrying...</Text>
+		</Row>
+		<Row Tag="LOC_MODMISC_SAVEPANEL_PHASE_FAILED">
+			<Text>Map switch failed. The original save is kept - use the game menu's Restart button, or press Switch map again.</Text>
 		</Row>
 </BaseGameText>
 
