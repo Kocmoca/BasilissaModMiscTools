@@ -32,7 +32,28 @@ local MODMISC_STORE_BUILD_TAG = "2026-10-04-F"
 -- 通道已验证完毕（2026-10-04），关掉 —— 正式用起来它就是噪音键。
 local MODMISC_STORE_SELFTEST = false
 -- 值长度上限（hex 后翻倍，文件名总长别顶到系统上限）
-local MODMISC_STORE_MAX_VALUE_BYTES = 120
+-- 值长度上限：**按文件名长度反推**，不是拍脑袋的常数。
+-- 文件名 = "ModMiscStore~" + hex(key) + "~" + hex(value) + ".Civ6Cfg"
+--          (13)            (2*len(key))      (1)   (2*len(value))   (9)
+-- 文件名（一个路径分量）在 Android 上是 255 **字节**上限，留点余量按 240 算：
+--     2*len(key) + 2*len(value) <= 240 - 13 - 1 - 9 = 217
+-- 旧版写死 120 字节，其实对稍长的键就已经超了（例子：key=15 → 需要 293 字节 ✗），
+-- 超长会被底层拒写/截断，表现就是“存不进去”——授权者 2026-10-05 反馈的“不支持大型表格”。
+local MODMISC_STORE_NAME_BUDGET = 240
+local MODMISC_STORE_NAME_FIXED = 13 + 1 + 9   -- 前缀 + 分隔符 + 扩展名
+-- 这个键最多能写多少字节的值（hex 后仍放得进文件名）
+local function ComputeMaxValueBytes(key)
+    local keyLength = #tostring(key or "")
+    local room = MODMISC_STORE_NAME_BUDGET - MODMISC_STORE_NAME_FIXED - 2 * keyLength
+    if room < 2 then return 0 end
+    return math.floor(room / 2)
+end
+
+-- 分片：blob 的元数据键 / 数据键（键名保持短，别把预算吃光）
+local MODMISC_STORE_BLOB_META_SUFFIX = "$m"
+local MODMISC_STORE_BLOB_CHUNK_SUFFIX = "$"
+-- 每片的目标字节数（按最坏情况的键长留余量；实际写入前还会按 ComputeMaxValueBytes 再夹一次）
+local MODMISC_STORE_BLOB_CHUNK_BYTES = 80
 -- 早期探测阶段留下的档：扫到就顺手删掉，免得一直在列表里当“非存储档”碍眼
 --   ModMiscFrontEndProbe —— 前端存读档探针写过的那种配置档（探针已默认关闭）
 --   形如 ModMiscStore~<单段hex> —— 本模块改版前的老格式（没有 key/value 两段）
@@ -356,9 +377,11 @@ function ModMiscStore.Save(key, value)
         return false
     end
     local text = tostring(value)
-    if #text > MODMISC_STORE_MAX_VALUE_BYTES then
-        Log("Save 失败：值太长（" .. tostring(#text) .. " > "
-            .. tostring(MODMISC_STORE_MAX_VALUE_BYTES) .. " 字节）")
+    local maxBytes = ComputeMaxValueBytes(key)
+    if #text > maxBytes then
+        Log("Save 失败：值太长（" .. tostring(#text) .. " > " .. tostring(maxBytes)
+            .. " 字节；键 " .. tostring(key) .. " 按文件名长度算出来的上限）"
+            .. "—— 大块数据请用 ModMiscStore.SaveBlob（自动分片）")
         return false
     end
 
@@ -378,9 +401,17 @@ function ModMiscStore.Save(key, value)
     -- 内存表立刻更新；旧档等 SaveComplete 再删（写失败也不丢）
     m_Data[tostring(key)] = text
     local oldEntry = m_Entries[tostring(key)]
+    -- 顺手把“刚写的这份档”也记进 m_Entries：这样在同一次会话里马上 Remove 这个键也能删掉，
+    -- 不用等下一次扫描（没有这条记录时 Remove 会以“没找到这个键的档”为由拒绝）
+    m_Entries[tostring(key)] = {
+        Name = configFile.Name .. ".Civ6Cfg",
+        Location = configFile.Location,
+        Type = configFile.Type,
+        FileType = configFile.FileType,
+        Directory = configFile.Directory,
+    }
     if oldEntry ~= nil then
         m_PendingDelete[tostring(key)] = oldEntry
-        m_Entries[tostring(key)] = nil
         if Events ~= nil and Events.SaveComplete ~= nil then
             Events.SaveComplete.Remove(OnStoreSaveComplete)
             Events.SaveComplete.Add(OnStoreSaveComplete)
@@ -409,6 +440,120 @@ function ModMiscStore.Remove(key)
 end
 
 -- 清空整张存储（删掉所有键的档）
+-- ===========================================================================
+-- 分片大对象（blob）：把任意长度的文本切成若干小片存进来
+--
+--   SaveBlob(key, text)   →  <key>$0, <key>$1, … 每片 ≤ 每键上限；最后写 <key>$m 元数据
+--   LoadBlob(key)         →  按元数据拼回完整文本；缺片会明确报出来（不返回半截数据）
+--   RemoveBlob(key)       →  连元数据一起删
+--   GetBlobInfo(key)      →  { Chunks, Bytes, Missing = {…} }
+--
+-- 为什么先写片、最后写元数据：**元数据在 = 这个 blob 完整**；写到一半失败时，
+-- 旧 blob 的元数据还在（读取方不会拿到半截新数据）。改写时多余的旧片会被删掉。
+-- 片数 = ceil(字节数 / 每片上限)；每片上限还会按 ComputeMaxValueBytes 再夹一次。
+-- 代价：一个 blob 会占 N 个小档（玩家的「载入配置」列表里会多出几个），
+-- 所以它是“中等大小数据”的通道；**特别大的表格请用载体存档那条路**（见 API 文档 3.13.7）。
+-- ===========================================================================
+
+local function BlobMetaKey(key) return tostring(key) .. MODMISC_STORE_BLOB_META_SUFFIX end
+local function BlobChunkKey(key, index)
+    return tostring(key) .. MODMISC_STORE_BLOB_CHUNK_SUFFIX .. tostring(index)
+end
+
+local function ParseBlobMeta(key)
+    local value = ModMiscStore.Get(BlobMetaKey(key))
+    if value == nil then return nil end
+    local chunks, bytes = tostring(value):match("^(%d+)|(%d+)$")
+    if chunks == nil then return nil end
+    return tonumber(chunks), tonumber(bytes)
+end
+
+function ModMiscStore.SaveBlob(key, text)
+    if key == nil then
+        Log("SaveBlob 失败：key 为 nil")
+        return false
+    end
+    local payload = tostring(text or "")
+    local chunkSize = MODMISC_STORE_BLOB_CHUNK_BYTES
+    -- 每个分片键的实际上限（键名比基础键长一点）
+    local perChunk = ComputeMaxValueBytes(BlobChunkKey(key, 99999))
+    if perChunk < chunkSize then chunkSize = perChunk end
+    if chunkSize < 8 then
+        Log("SaveBlob 失败：键太长，" .. tostring(key) .. " 连一小片都放不下")
+        return false
+    end
+
+    local oldChunks = ParseBlobMeta(key) or 0
+    local total = #payload
+    local count = math.ceil(total / chunkSize)
+    if total == 0 then count = 0 end
+
+    -- ① 先写数据片
+    for index = 0, count - 1 do
+        local chunk = payload:sub(index * chunkSize + 1, (index + 1) * chunkSize)
+        if not ModMiscStore.Save(BlobChunkKey(key, index), chunk) then
+            Log("SaveBlob 失败：第 " .. tostring(index) .. " 片写不进去")
+            return false
+        end
+    end
+    -- ② 多余的旧片删掉
+    for index = count, oldChunks - 1 do
+        ModMiscStore.Remove(BlobChunkKey(key, index))
+    end
+    -- ③ 最后写元数据（写完才算这个 blob 完整）
+    local ok = ModMiscStore.Save(BlobMetaKey(key), tostring(count) .. "|" .. tostring(total))
+    Log("SaveBlob [" .. tostring(key) .. "]：" .. tostring(total) .. " 字节 → "
+        .. tostring(count) .. " 片（每片 ≤ " .. tostring(chunkSize) .. " 字节）结果=" .. tostring(ok))
+    return ok
+end
+
+function ModMiscStore.GetBlobInfo(key)
+    local chunks, bytes = ParseBlobMeta(key)
+    if chunks == nil then return nil end
+    local missing = {}
+    for index = 0, chunks - 1 do
+        local value = ModMiscStore.Get(BlobChunkKey(key, index))
+        if value == nil then table.insert(missing, index) end
+    end
+    return { Chunks = chunks, Bytes = bytes, Missing = missing }
+end
+
+function ModMiscStore.LoadBlob(key)
+    local info = ModMiscStore.GetBlobInfo(key)
+    if info == nil then
+        Log("LoadBlob [" .. tostring(key) .. "]：没有元数据（这个 blob 不存在 / 没写完整）")
+        return nil, "no-meta"
+    end
+    if #info.Missing > 0 then
+        Log("LoadBlob [" .. tostring(key) .. "]：缺 " .. tostring(#info.Missing) .. " 片 → 不返回半截数据")
+        return nil, "missing-chunks:" .. table.concat(info.Missing, ",")
+    end
+    local parts = {}
+    for index = 0, info.Chunks - 1 do
+        table.insert(parts, tostring(ModMiscStore.Get(BlobChunkKey(key, index)) or ""))
+    end
+    local text = table.concat(parts)
+    Log("LoadBlob [" .. tostring(key) .. "]：读回 " .. tostring(#text) .. " 字节（"
+        .. tostring(info.Chunks) .. " 片）")
+    return text
+end
+
+function ModMiscStore.RemoveBlob(key)
+    if key == nil then return 0 end
+    local chunks = ParseBlobMeta(key) or 0
+    local removed = 0
+    for index = 0, chunks - 1 do
+        if ModMiscStore.Remove(BlobChunkKey(key, index)) then removed = removed + 1 end
+    end
+    if ModMiscStore.Remove(BlobMetaKey(key)) then removed = removed + 1 end
+    Log("RemoveBlob [" .. tostring(key) .. "]：清掉 " .. tostring(removed) .. " 个档")
+    return removed
+end
+
+function ModMiscStore.ComputeMaxValueBytes(key)
+    return ComputeMaxValueBytes(key)
+end
+
 function ModMiscStore.RemoveAll()
     local keys = {}
     for key in pairs(m_Data) do

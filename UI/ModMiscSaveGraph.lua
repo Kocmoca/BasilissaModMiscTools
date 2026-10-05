@@ -97,6 +97,7 @@ local MODMISC_SWITCH_SAVE_GRACE = 12
 
 -- 事件信箱：键前缀 + 值里的分隔符
 local MODMISC_EVENT_KEY_PREFIX = "ev_"
+local MODMISC_EVENT_BLOB_PREFIX = "evb_"
 local MODMISC_EVENT_VALUE_SEP = "|"
 
 -- CustomData 键前缀：随档保存，读档后就知道“我在哪个节点”
@@ -804,6 +805,24 @@ function API.SendEvent(targetNodeId, event)
     local targetPlayer = event.TargetPlayerID
     if targetPlayer == nil then targetPlayer = playerID end
     local acceptTurn = tonumber(event.AcceptTurn) or API.GetLogicalTurn()
+    -- 大载荷：事件里的 PayloadText 走**分片 blob**（每片 ≤ 每键上限），事件记录只留个引用
+    -- （授权者 2026-10-05：这种跨存档方式不支持大表格 ⇒ 用分片把它撑起来）
+    local blobKey = nil
+    if event.PayloadText ~= nil and tostring(event.PayloadText) ~= "" then
+        blobKey = MODMISC_EVENT_BLOB_PREFIX .. tostring(targetNodeId)
+            .. "_" .. tostring(TryCall(function() return os.time() end) or 0)
+            .. tostring(math.random(100, 999))
+        if store.SaveBlob == nil then
+            return false, "跨存档存储没有 SaveBlob（版本太老？）"
+        end
+        local blobOk, blobErr = store.SaveBlob(blobKey, tostring(event.PayloadText))
+        if not blobOk then
+            Log("发件失败：大载荷分片写入失败 -> " .. tostring(blobErr))
+            return false, "大载荷分片写入失败"
+        end
+        Log("大载荷已分片：" .. #tostring(event.PayloadText) .. " 字节 → blob " .. blobKey)
+    end
+
     local payload = table.concat({
         tostring(event.Type),
         tostring(event.Detail or ""),
@@ -813,6 +832,7 @@ function API.SendEvent(targetNodeId, event)
         tostring(targetPlayer or -1),
         tostring(civType or ""),
         tostring(BuildStamp()),
+        tostring(blobKey or ""),
     }, MODMISC_EVENT_VALUE_SEP)
 
     local key = MODMISC_EVENT_KEY_PREFIX .. tostring(targetNodeId)
@@ -837,7 +857,8 @@ function API.FetchEventsForNode(nodeId)
         if keyText:sub(1, #wantedPrefix) == wantedPrefix then
             local fields = SplitFields(value, MODMISC_EVENT_VALUE_SEP)
             if fields[1] ~= nil and fields[1] ~= "" then
-                table.insert(events, {
+                local blobKey = (fields[9] ~= nil and fields[9] ~= "") and fields[9] or nil
+                local eventRecord = {
                     Type = fields[1],
                     Detail = fields[2] or "",
                     Amount = tonumber(fields[3]) or 0,
@@ -847,7 +868,19 @@ function API.FetchEventsForNode(nodeId)
                     FromCiv = (fields[7] ~= nil and fields[7] ~= "") and fields[7] or nil,
                     Stamp = fields[8] or "",
                     MailKey = keyText,
-                })
+                    Blob = blobKey,
+                }
+                -- 大载荷：把分片读回来挂在事件上（缺片会明确报出来，不返回半截）
+                if blobKey ~= nil and store.LoadBlob ~= nil then
+                    local text, err = store.LoadBlob(blobKey)
+                    if text == nil then
+                        Log("警告：事件 " .. tostring(eventRecord.Type) .. " 的大载荷读不出来（"
+                            .. tostring(err) .. "），只带元数据入列")
+                    else
+                        eventRecord.PayloadText = text
+                    end
+                end
+                table.insert(events, eventRecord)
                 table.insert(keys, keyText)
             end
         end
@@ -864,7 +897,20 @@ function API.DropEventKeys(keys)
     if store == nil or store.Remove == nil or type(keys) ~= "table" then return 0 end
     local removed = 0
     for _, key in ipairs(keys) do
+        -- ⚠️ 顺序：**先读值拿到大载荷键，再删信箱键**。
+        -- 反过来的话值已经没了，blob 的分片就永远留在存储里（这里踩过一次）。
+        local blobKey = nil
+        if type(key) == "string" and store.Get ~= nil then
+            local value = store.Get(key)
+            if value ~= nil then
+                local fields = SplitFields(value, MODMISC_EVENT_VALUE_SEP)
+                if fields[9] ~= nil and fields[9] ~= "" then blobKey = fields[9] end
+            end
+        end
         if store.Remove(key) then removed = removed + 1 end
+        if blobKey ~= nil and store.RemoveBlob ~= nil then
+            store.RemoveBlob(blobKey)
+        end
     end
     Log("已投递并清理 " .. tostring(removed) .. " 个信箱键")
     return removed

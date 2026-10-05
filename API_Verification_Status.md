@@ -847,3 +847,55 @@ Support_UI: [TurnEvent] 开局收件：0 条（no-node）
 * 2026-10-04 实机验证：写一轮 `ms=1;t=…` → 杀进程 → 下一轮读回**逐字一致**；
 * 代价：会在玩家的「载入配置」列表里留下几个名字很奇怪的小档（一个 key 一个），
   所以适合存**少量、短**的协调数据（主线头、待接分支、事件信箱），不适合当大仓库。
+
+### 15.7 大表格怎么跨存档（2026-10-05，授权者：「这种跨存档方式似乎不支持大型表格」）
+
+**确实不支持 —— 病根是文件名长度，不是通道本身。** 配置档名编码通道的文件名是
+`ModMiscStore~<hex(key)>~<hex(value)>.Civ6Cfg`，而文件名（一个路径分量）在 Android 上
+只有 **255 字节**；hex 会把每个字节变成两个字符。反推：
+
+```
+13（前缀） + 1（分隔符） + 9（.Civ6Cfg） + 2*len(key) + 2*len(value) ≤ 240(留余量)
+⇒ value 上限 = floor((217 - 2*len(key)) / 2)
+   键 8 字节 → 100 字节；键 15 字节 → 93 字节；键 28 字节 → 84 字节
+```
+
+旧版把这个上限**写死成 120 字节**，对稍长的键其实已经超了 —— 超长会被底层拒写，
+表现就是“存大一点就存不进去”。现在改成**按文件名长度实时算**（`ComputeMaxValueBytes`），
+超限时日志直接点名“大块数据请用 SaveBlob”。
+
+**四条可用通道的能力对比**（按“要不要载入”排序）：
+
+| 通道 | 载体 | 单份容量 | 怎么读 | 代价 |
+|---|---|---|---|---|
+| 配置档名编码（`ModMiscStore`） | 一个键一个小配置档 | **~70–103 字节 / 键** | 列目录解码文件名（**不用载入**） | 键多 → 小文件多 |
+| **分片大对象（`SaveBlob`）** | N 个小配置档 | **任意**（N×~80 字节） | 同上（先读元数据再拼片） | 一个 blob 占 N 个小档 |
+| CustomData / `Game:SetProperty` | 存档内部 | KB 级（无公开硬上限） | **载入该档之后**读 | 不跨新局；读要载入 |
+| **载体存档（`ModMiscCarrier`）** | **一份普通存档** | KB 级（受 CustomData 上限） | **载入那份档**之后 `Read(name)` | 一份完整存档（几 MB） |
+| ~~存档元数据注入~~ | — | ❌ 字段全由引擎填 | — | 已排除（通道 D） |
+| ~~mod 自己写文件~~ | — | ❌ 安卓 Lua 没有 `io` | — | 已排除 |
+
+选型建议：
+* **少量短数据**（主线头、待接分支、事件头）→ 直接 `ModMiscStore.Save`；
+* **中等表格（几 KB）** → `ModMiscStore.SaveBlob`（分片；不需要载入就能取）；
+* **大表格（几十 KB 以上）且接收方反正要载入那一档** → `ModMiscCarrier.Write`（一份档带走整张表）；
+* 两者可组合：分片存“索引/摘要”，整表走载体档。
+
+新增接口（都在 `ExposedMembers.ModMiscToolUI` 下）：
+
+    ModMiscStore.SaveBlob(key, text) / LoadBlob(key) / RemoveBlob(key) / GetBlobInfo(key)
+    ModMiscStore.ComputeMaxValueBytes(key)          -- 这个键还能写多少字节
+    Carrier.Write(name, text) / Read(name) / Peek() / Clear(name)
+    Carrier.BuildCarrierName(name) / ParseCarrierName(rawName)   -- 载体档名 MMTBlob~<name>~<时间>
+    （关系树只认 MMT~ 前缀 + 至少 7 段，所以载体档不会被误当成节点）
+
+**事件的大载荷**：`SendEvent` 的 event 里加 `PayloadText` 就走分片（事件记录里只留
+`blob` 引用），收件时自动拼回 `event.PayloadText`；投递时连分片一起清掉。
+
+| # | 行为 | 状态 | 备注 |
+|---|---|---|---|
+| 68 | 分片大对象（`SaveBlob` / `LoadBlob` / `RemoveBlob`） | `[待实机]` | 片 ≤ min(80, `ComputeMaxValueBytes`)；**先写片、最后写元数据**，元数据在 = blob 完整；缺片时 `LoadBlob` **拒绝返回半截数据**并报 `missing-chunks`；改写更小时多余的旧片会被删掉。 |
+| 69 | 键感知的长度上限 | `[待实机]` | 由文件名 255 字节反推，超限直接拒绝并提示用 `SaveBlob`（旧版写死 120 字节，长键必超）。 |
+| 70 | 载体存档（`ModMiscCarrier`） | `[待实机]` | 写 CustomData + 存一份 `MMTBlob~<name>~<时间>` 普通档；读取要载入那份档。 |
+| 71 | 事件大载荷（`PayloadText` → 分片） | `[待实机]` | 收件时自动拼回；投递时清分片（**先读值再删键**，反了的话分片会永久残留 —— 这里踩过一次）。 |
+| 72 | `ModMiscStore.Save` 顺手记下“刚写的档” | `[待实机]` | 让同一个会话里马上 `Remove` 这个键也能删掉，不用等下一次扫描。 |

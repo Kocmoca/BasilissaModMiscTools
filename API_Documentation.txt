@@ -1259,6 +1259,27 @@ gameplay 侧要换图，走 `ExposedMembers.ModMiscToolScript.WorldBuilderAPI.Se
 `[ModMiscTool][SavePanel]`。
 
 ------------------------------------------------------------------------------
+### 3.13.7 大表格怎么跨存档（分片 blob / 载体存档）
+------------------------------------------------------------------------------
+
+配置档名编码通道（3.9 的 `ModMiscStore`）**一个键只能塞 ~70–103 字节**（文件名 255 字节上限，
+hex 后翻倍），所以大表格不能直接往一个键里塞。三条路子：
+
+    ModMiscStore.SaveBlob(key, text)   分片：<key>$0… 每片 ≤ min(80, 按文件名算出的上限)，最后写 <key>$m
+    ModMiscStore.LoadBlob(key)         拼回全文；缺片时返回 nil + "missing-chunks:<片号>"（不给半截）
+    ModMiscStore.RemoveBlob(key)       连元数据与分片一起删
+    ModMiscStore.GetBlobInfo(key)      { Chunks, Bytes, Missing = {…} }
+    ModMiscStore.ComputeMaxValueBytes(key)   这个键还能写多少字节
+
+    ExposedMembers.ModMiscToolUI.Carrier（载体存档，适合几十 KB 以上的表）：
+        Write(name, text)   写 CustomData + 存一份 MMTBlob~<name>~<时间> 的普通档
+        Read(name)          载入那份载体档之后拿到全文
+        Peek() / Clear(name) / BuildCarrierName(name) / ParseCarrierName(rawName)
+
+选型：少量短数据 → `Save`；几 KB → `SaveBlob`；大表且接收方会载入 → `Carrier`。
+事件的大载荷：`SendEvent` 的 event 加 `PayloadText` 即自动走分片，收件时拼回 `event.PayloadText`。
+
+------------------------------------------------------------------------------
 ### 3.14 从关系树读档 / 回合同步（逻辑）/ 跨存档事件
 ------------------------------------------------------------------------------
 

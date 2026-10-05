@@ -6,6 +6,7 @@ include("ModMiscAssetStore") -- 永久资产放置（读档自动重放）
 include("ModMiscCreateGame") -- 对局内「创建新局 / 换地图」验证（开局探针 + 面板入口）
 include("ModMiscTurnEra") -- 回合数 / 年代 探查与试写（开局探针 + 面板入口）
 include("ModMiscSaveGraph") -- 存档关系树（主线/分支）+ 换图存档（成品功能）
+include("ModMiscCarrier") -- 载体存档：大块数据跨存档（CustomData 随档走）
 print("[ModMiscTool] Support_UI loaded build=" .. tostring(MODMISC_BUILD_TAG))
 
 local allUnitPromotions = {}
@@ -606,6 +607,15 @@ ExposedMembers.ModMiscToolUI.RunCrossSaveProbeUI = RunCrossSaveProbeUI
 	-- （签名 (eventType, detail, amount, fromNode, overdue, toPlayerID, result) → 文本或 nil）
 	ExposedMembers.ModMiscToolUI.RegisterTurnEventTextResolver = RegisterTurnEventTextResolver
 	ExposedMembers.ModMiscToolUI.BuildTurnEventText = BuildTurnEventText
+
+	-- 载体存档（大块数据跨存档）：写载荷 + 存一份载体档；接收方载入后 Read
+	if ModMiscCarrier ~= nil then
+		ExposedMembers.ModMiscToolUI.Carrier = ModMiscCarrier
+		ExposedMembers.ModMiscToolUI.WriteCarrierPayload = ModMiscCarrier.Write
+		ExposedMembers.ModMiscToolUI.ReadCarrierPayload = ModMiscCarrier.Read
+		ExposedMembers.ModMiscToolUI.ClearCarrierPayload = ModMiscCarrier.Clear
+		ExposedMembers.ModMiscToolUI.ParseCarrierName = ModMiscCarrier.ParseCarrierName
+	end
 
 	-- 存档关系树 + 换图（成品功能）：接口与格式说明见 UI/ModMiscSaveGraph.lua
 	if ModMiscSaveGraph ~= nil then
