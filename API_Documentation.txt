@@ -1280,15 +1280,47 @@ hex 后翻倍），所以大表格不能直接往一个键里塞。三条路子�
 事件的大载荷：`SendEvent` 的 event 加 `PayloadText` 即自动走分片，收件时拼回 `event.PayloadText`。
 
 ------------------------------------------------------------------------------
-### 3.13.8 前端能否建立 / 读取普通存档（本轮实验）
+### 3.13.8 前端能否建立 / 读取普通存档（实验 · **已实机失败：主界面闪退**）
 ------------------------------------------------------------------------------
 
-`UI/FrontEnd_GameSaveProbe.lua`（默认开，开关在 `UI/Replacements/Civ6Common.lua` 顶部）：
-在「主界面 / 创建游戏 / 创建场景」三个界面上自动跑一轮实验 ——
-写一份 `MMTGameSaveProbe~<时间>` 的**普通存档**（GAME_STATE）→ 看 `SaveComplete` →
-查普通存档列表（把每条记录能读到的字段全打出来）→ 试着 `Network.LoadGame` 读它 →
-仍在前端就删掉并复查。日志前缀 `[ModMiscTool][FeGameSaveProbe]`，判定见 `VERDICT=`。
-目的：验证“特别命名的普通存档”能不能当前端 → 对局的数据载体（预期大概率失败）。
+`UI/FrontEnd_GameSaveProbe.lua`（开关 `MODMISC_FRONT_END_GAMESAVE_PROBE_ENABLED`，
+现已按结论**关回 false**）：在「主界面 / 创建游戏 / 创建场景」三个界面上自动跑一轮实验 ——
+写一份 `MMTGameSaveProbe~<时间>` 的普通存档（GAME_STATE）→ 看 `SaveComplete` →
+查普通存档列表 → 试着 `Network.LoadGame` 读它 → 仍在前端就删掉并复查。
+
+**实机结果（授权者 2026-10-05）：主界面一调用就闪退 —— 这条路不可行。**
+想复现再把开关打开（仍会闪退）。于是换成下面的“加载完成之前”那个时机。
+
+------------------------------------------------------------------------------
+### 3.13.9 游戏加载完成之前能不能存档 / 读档（本轮实验）
+------------------------------------------------------------------------------
+
+`UI/LoadTime_SaveProbe.lua`（**默认开**；总开关 `MODMISC_LOAD_TIME_PROBE_ENABLED`
+在 `UI/Replacements/Civ6Common.lua`，分步开关在探针文件顶部）。
+挂在引擎事件 `Events.LoadScreenContentReady`（游戏数据已就绪、游戏视图还没就绪 ——
+`LoadScreen.lua` 注释 `-- Ready to show player info`），进对局后在
+`Events.LoadGameViewStateDone` 里核对与清理。日志前缀 `[ModMiscTool][LoadTimeProbe]`。
+
+    阶段一（载入界面）：L0 侦察（含 UI.GetSaveGameMetaData，即“正在加载的那份档”）
+                        L1 读 CustomData → L2 写加载期标记 → L3 列存档列表
+                        L4 Network.SaveGame 一份 MMTLoadProbe~load~<时间>（默认开）
+                        L5 Network.LoadGame（默认关：最可能把加载器搞乱）
+    阶段二（对局内）：标记活没活下来 / 探针档在不在列表里 / 删掉探针档（只认前缀）
+                      没有加载期痕迹时走“只清理模式”，顺手清掉上一轮崩在半路的遗留档
+
+判定：`lt-l0-ok` / `lt-l1-customdata` / `lt-l2-written` / `lt-l4-save-ok` /
+`lt-l4-save-failed` / `lt-p2-marker-alive` / `lt-p2-marker-gone` /
+`lt-p2-probe-save-listed` / `lt-p2-probe-save-missing` / `lt-p2-cleaned` / `lt-p1-missed`。
+
+要点与坑：
+* 载入界面判据不能用 `Controls.PortraitContainer` —— 那是**桌面版** `LoadScreen.xml` 的控件，
+  安卓的 `LoadScreen_PHONE.xml` 没有它（只有 `Portrait`）；三个变体根节点都是
+  `<Context Name="LoadScreen">`，所以认 `ContextPtr:GetID()`，控件只作退路；
+* `Civ6Common.lua` 里那条 include **不做前后端过滤**：载入界面跑阶段一，对局内跑阶段二；
+* 对局里 include 过 `Civ6Common` 的 context 很多、都会收到 `LoadGameViewStateDone`，
+  用 CustomData 写**一次性守卫**只让第一个干活（阶段一用“时间片守卫”同理）；
+* 风险：载入期做引擎调用正是游戏自己注释里说的 “not recommended”，可能闪退；
+  万一崩在载入期，探针档会留在列表里（名字带 `MMTLoadProbe` 前缀，下次进对局自动清）。
 
 ------------------------------------------------------------------------------
 ### 3.14 从关系树读档 / 回合同步（逻辑）/ 跨存档事件

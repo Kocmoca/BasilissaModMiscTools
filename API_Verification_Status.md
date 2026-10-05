@@ -899,14 +899,22 @@ Support_UI: [TurnEvent] 开局收件：0 条（no-node）
 | 70 | 载体存档（`ModMiscCarrier`） | `[待实机]` | 写 CustomData + 存一份 `MMTBlob~<name>~<时间>` 普通档；读取要载入那份档。 |
 | 71 | 事件大载荷（`PayloadText` → 分片） | `[待实机]` | 收件时自动拼回；投递时清分片（**先读值再删键**，反了的话分片会永久残留 —— 这里踩过一次）。 |
 | 72 | `ModMiscStore.Save` 顺手记下“刚写的档” | `[待实机]` | 让同一个会话里马上 `Remove` 这个键也能删掉，不用等下一次扫描。 |
+| 73 | 前端（主界面）建立普通存档 `Network.SaveGame{FileType=GAME_STATE}` | `[已验证失败]` | **实机闪退**（授权者 2026-10-05）。前端没有对局、存档里没有游戏数据；探针 `FrontEnd_GameSaveProbe` 已按结论关回 `false`，想复现再打开（会闪退）。 |
+| 74 | **游戏加载完成之前**（`Events.LoadScreenContentReady`，读到一半/建局一半）存档与读档 | `[待实机]` | 探针 `UI/LoadTime_SaveProbe.lua` 默认开；L4（载入期 `Network.SaveGame`）默认开、L5（载入期 `Network.LoadGame`）默认关。判据 `lt-l0-ok` / `lt-l2-written` / `lt-l4-save-*` / `lt-p2-marker-alive` / `lt-p2-probe-save-*` / `lt-p2-cleaned` / `lt-p1-missed`，协议见 §17。 |
+| 75 | 载入界面上下文判据（安卓） | `[已静态修正]` | 安卓跑 `LoadScreen_PHONE.xml`，**没有** `PortraitContainer`（桌面版才有）——只看它会让阶段一永不执行。改成 `ContextPtr:GetID() == "LoadScreen"`（三个变体同名），控件只作退路。 |
 
 ---
 
-## 16. 前端能否建立 / 读取**普通存档**（2026-10-05，**待实机**）
+## 16. 前端能否建立 / 读取**普通存档**（2026-10-05 实机：**主界面直接闪退，此路不通**）
 
 授权者提的方向：先试别的路子 —— 例如用一份**特别命名的普通存档**当载体，
 关键是**能不能在前端（主界面）建立并读取普通存档**。前端没有正在进行的对局，
 普通存档里没有游戏数据，**预期很可能失败，但值得一试**。
+
+> **实机结论（2026-10-05，授权者）：主界面一调用就闪退 —— 这条路不可行。**
+> 探针已按结论关回 `MODMISC_FRONT_END_GAMESAVE_PROBE_ENABLED = false`（想复现再打开，
+> 会闪退）。于是换时机：**在游戏加载完成之前**（刚开始读档 / 创建游戏时）再试一次 ——
+> 见下面的 §17。
 
 ### 16.1 探针（`UI/FrontEnd_GameSaveProbe.lua`，本轮默认开启）
 
@@ -942,3 +950,76 @@ Support_UI: [TurnEvent] 开局收件：0 条（no-node）
 * 前端 `Network.LoadGame` 万一真的开始加载，可能停在半路（黑屏/卡住）—— 探针把调用包在 pcall 里、
   调用前后各打一行日志，出事时能定位到具体哪一步（tombstone 里看 backtrace）；
 * 这份探针与配置档探针（`FrontEnd_SaveProbe.lua`，默认关）是**两个独立实验**，只开一个更干净。
+
+---
+
+## 17. 「游戏加载完成之前」能不能存档 / 读档（2026-10-05，**待实机**）
+
+第 16 节那条路（前端主界面建普通存档）实机**闪退**。按授权者的方向换时机：
+**刚开始读档 / 创建游戏、游戏还没加载完的时候**做存档读档操作，看会发生什么。
+
+### 17.1 这个时机在哪（静态核对，都来自游戏自带文件）
+
+| 事实 | 出处 |
+|---|---|
+| 载入界面会 `include( "Civ6Common" )` —— 本 mod 替换的就是这个文件，所以探针在载入界面里一定会被执行 | `Base/Assets/UI/FrontEnd/LoadScreen.lua:10`（`_PHONE` / `_TABLET` 同） |
+| 引擎事件 `Events.LoadScreenContentReady` 的语义是「玩家信息可以填了」＝**游戏数据已就绪、游戏视图还没就绪** | `LoadScreen.lua:461` 注释 `-- Ready to show player info`；紧随其后才是 `Events.LoadGameViewStateDone`（`-- Ready to start game`） |
+| 三个界面变体（`LoadScreen.xml` / `_PHONE.xml` / `_TABLET.xml`）根节点**都是** `<Context Name="LoadScreen">` | 三个 XML 第 3 行 |
+| 游戏自己**刻意**避免在载入期做 Lua→引擎调用 | `LoadScreen.lua`：`-- Do not set input handler until content loading is done; otherwise engine will make LUA calls to engine during load (not recommended).` → **这是本次实验最大的风险来源，也是它值得测的原因** |
+| 存档调用字段照抄游戏：`Name` / `Location` / `Type` / `FileType` | `Menus/SaveGameMenu.lua:53-64`；快速存档另用 `Network.GetGameConfigurationSaveType()` 当 `Type`（`InGameTopOptionsMenu_PHONE.lua:176-184`） |
+
+**踩过的坑（静态核对抓到的，没上机就修掉了）**：一开始用
+`Controls.PortraitContainer ~= nil` 当“我在载入界面”的判据 —— 那是**桌面版** `LoadScreen.xml`
+的控件；安卓跑的是 `LoadScreen_PHONE.xml`，里面**没有** `PortraitContainer`（只有 `Portrait`），
+于是判据在手机上恒为 `false`、阶段一永远不会跑。现在改成先认
+`ContextPtr:GetID() == "LoadScreen"`（三个变体同名），控件只作拿不到 ID 时的退路。
+
+### 17.2 探针做什么（`UI/LoadTime_SaveProbe.lua`，本轮默认开启）
+
+`UI/Replacements/Civ6Common.lua` 里那条 include **不做前后端过滤**（载入界面与对局内都要跑到它），
+`ModMiscLoadTimeSaveProbeLoaded` 做 include 幂等。日志前缀 `[ModMiscTool][LoadTimeProbe]`。
+
+阶段一（`Events.LoadScreenContentReady`，**只有载入界面那个 context 会跑**）：
+
+| 步骤 | 做什么 | 判定 |
+|---|---|---|
+| L0 recon | 自述 context 名 / `GameConfiguration.GetGameState()` / `UI.IsInFrontEnd()` / `Network.GetLocalPlayerID()` / `Game.GetCurrentGameTurn()` / 各接口可用性；`UI.GetSaveGameMetaData()`（**正在加载的那份档**的元数据，载入期能不能读） | `lt-l0-ok` |
+| L1 read | `ReadCustomData` 现在读到什么（载入进行到这一步，存档快照还原了没有） | `lt-l1-customdata` |
+| L2 write | 写一个加载期标记（进对局后看它活没活下来） | `lt-l2-written` |
+| L3 list | `UI.QuerySaveGameList`（载入期能不能列存档列表） | — |
+| L4 save | `Network.SaveGame` 一份普通存档 `MMTLoadProbe~load~<时间>` —— **本轮的核心问题** | `lt-l4-save-ok` / `lt-l4-save-failed` |
+| L5 load | `Network.LoadGame`（载入期再发起一次读档，最容易把加载器搞乱） | **默认关**；`LOADTIME_LOAD_STEP_ENABLED` |
+
+阶段二（进对局后的 `Events.LoadGameViewStateDone`）：
+
+| 做法 | 判定 |
+|---|---|
+| 标记还在 ⇒ 加载期写的 CustomData 活下来了 | `lt-p2-marker-alive` / `lt-p2-marker-gone` |
+| 查列表：探针档在不在（字段全打出来） | `lt-p2-probe-save-listed` / `lt-p2-probe-save-missing` |
+| 删掉探针档（**只认 `MMTLoadProbe` 前缀**，绝不碰玩家自己的档） | `lt-p2-cleaned` |
+| 从头到尾没看到加载期痕迹（阶段一没跑 / 标记没活下来 / **上一轮崩在半路**） | `lt-p1-missed` ＋ 顺手清掉遗留的探针档（只清理模式，不误报“没写成”） |
+
+开关：`UI/LoadTime_SaveProbe.lua` 顶部 `LOADTIME_SAVE_STEP_ENABLED`（L4，默认 true）、
+`LOADTIME_LOAD_STEP_ENABLED`（L5，默认 false）；总开关在 `Civ6Common.lua` 的
+`MODMISC_LOAD_TIME_PROBE_ENABLED`。
+
+**为什么两处都要 include**：载入界面那份负责阶段一；对局内那份（`Support_UI` 等也 include
+`Civ6Common`）负责阶段二核对与清理。对局里 include 过 `Civ6Common` 的 context 有一堆、
+都会收到 `LoadGameViewStateDone`，所以阶段二用 CustomData 写**一次性守卫**，只让第一个干活。
+
+### 17.3 怎么判读（四种结局都有用）
+
+| 日志表现 | 含义 | 下一步 |
+|---|---|---|
+| 连 `lt-l0-ok` 都没有（日志里完全没有 `[LoadTimeProbe]`） | 载入界面没跑到探针（include 时机/事件名不对） | 看 `lt-p1-missed` 与 `LoadScreen` 相关日志，改挂载点 |
+| `lt-l0-ok` 之后**闪退** | 载入期做引擎调用会崩（与游戏自己那句“not recommended”一致） | 这条路不可行；把 `LOADTIME_SAVE_STEP_ENABLED` 关掉，只保留 L0/L1 侦察 |
+| `lt-l4-save-failed` / `lt-l4-save-ok` 但 `lt-p2-probe-save-missing` | 调用能返回、但档写不出来（载入期的存档是空壳/被拒） | 与前端那次（闪退）相比仍是进步：**能不能写**有了明确边界 |
+| `lt-l4-save-ok` + `lt-p2-probe-save-listed`（字段齐全） | **载入期能写出可用的普通存档** | 打开一条新路：换图前先落一份盘，不依赖“必须回到对局内才能存” |
+| `lt-p2-marker-alive` | 载入期写的 CustomData 能活到对局里 | 说明载入窗口里 CustomData 已经是“这一局”的，可当跨存档通道用 |
+
+已知风险：
+* 载入期存档可能产出**退化档**（游戏数据只还原了一半）—— 探针进对局后**立刻删掉**，
+  并且下次进对局时会用“只清理模式”清掉历史遗留；
+* 万一崩在载入期，探针档会留在「载入游戏」列表里 —— 名字带 `MMTLoadProbe` 前缀，手动删也认得出来；
+* L5（载入期再读档）默认关：它最可能把加载器搞乱，真要试先单独开、
+  并且先确认 L4 的表现（`LOADTIME_LOAD_STEP_ENABLED = true`）。

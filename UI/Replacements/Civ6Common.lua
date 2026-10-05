@@ -1254,9 +1254,10 @@ end
 local MODMISC_FRONT_END_PROBE_ENABLED = false
 
 -- 【本轮实验 · 2026-10-05】前端「普通存档」探针：验证能不能在**前端**建立/读取
--- GAME_STATE（普通存档）—— 授权者要试的方向。前端没有正在进行的对局，普通存档里
--- 没有游戏数据，预期很可能失败，但值得一试。默认开着；测完改成 false 即可。
-local MODMISC_FRONT_END_GAMESAVE_PROBE_ENABLED = true
+-- GAME_STATE（普通存档）。实机结果：**主界面调用直接闪退** —— 这条路不可行
+-- （见 API_Verification_Status.md 第 73 条），所以按结论关回去。
+-- 想复现就把下面这行改 true（会闪退，别在正式存档环境里开）。
+local MODMISC_FRONT_END_GAMESAVE_PROBE_ENABLED = false
 
 if MODMISC_FRONT_END_PROBE_ENABLED
 	and ModMiscFrontEndProbeRefresh == nil
@@ -1268,6 +1269,30 @@ if MODMISC_FRONT_END_GAMESAVE_PROBE_ENABLED
 	and ModMiscFrontEndGameSaveProbeRefresh == nil
 	and ModMiscToolIsGameSetupContext() then
 	include("FrontEnd_GameSaveProbe")
+end
+
+-- ===========================================================================
+-- 「游戏加载完成之前」存档/读档探针（UI/LoadTime_SaveProbe.lua）—— **默认开启**
+--
+-- 【授权者 2026-10-05 的方向】前端主界面建普通存档会闪退（上面那个探针），换个时机：
+-- **刚开始读档 / 创建游戏、游戏还没加载完的时候**做存档读档操作，看看会怎样。
+--
+-- 探针挂在引擎事件 `Events.LoadScreenContentReady`（载入界面自己注释写的：
+-- 此时“游戏数据已经存在、但游戏视图还没就绪”）与 `Events.LoadGameViewStateDone`（阶段二核对）。
+--
+-- 【为什么这条 include 不加“上下文判断”】本文件在**载入界面**（LoadScreen 会 include 本文件）
+-- 和**对局内**（Support_UI 等会 include 本文件）都会被跑一遍：
+--   载入界面那份负责阶段一；对局内那份负责阶段二核对与清理。
+-- 两个上下文都要 include 到，所以只做 include 幂等，不做 frontend/in-game 过滤。
+-- 幂等标记 ModMiscLoadTimeSaveProbeLoaded 由探针文件自己置上。
+--
+-- 【开关】下面这一个布尔值；探针文件顶部还有 L4/L5 两个分步开关（L5 默认关）。
+-- 结论与协议见 API_Verification_Status.md 第 73 条 / API_Documentation.txt §3.13.9。
+-- ===========================================================================
+local MODMISC_LOAD_TIME_PROBE_ENABLED = true
+
+if MODMISC_LOAD_TIME_PROBE_ENABLED and ModMiscLoadTimeSaveProbeLoaded == nil then
+	include("LoadTime_SaveProbe")
 end
 
 -- 跨存档数据存储（UI/ModMiscStore.lua）：把数据编进「配置档的文件名」，
