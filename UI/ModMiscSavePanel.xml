@@ -85,6 +85,10 @@
 
             <GridButton ID="ModMiscSaveRefresh" Anchor="L,T" Offset="20,678" Size="280,58"
                         Style="ButtonControl" FontSize="25" String="LOC_MODMISC_SAVEPANEL_REFRESH" />
+            <GridButton ID="ModMiscSaveIntake" Anchor="L,T" Offset="310,678" Size="280,58"
+                        Style="ButtonControl" FontSize="25" String="LOC_MODMISC_SAVEPANEL_INTAKE" />
+            <GridButton ID="ModMiscSaveDelete" Anchor="L,T" Offset="600,678" Size="280,58"
+                        Style="ButtonControl" FontSize="25" String="LOC_MODMISC_SAVEPANEL_DELETE" />
 
             <Label ID="ModMiscSaveDetail" Anchor="L,T" Offset="20,748" Size="parent-40,140"
                    FontSize="22" Color="225,225,225,255" WrapWidth="860" VerticalAlignment="Top"

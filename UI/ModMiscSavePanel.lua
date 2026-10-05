@@ -37,7 +37,17 @@ local GOLD_AMOUNTS = { 50, 100, 200, 500 }
 local EVENT_TURN_OFFSETS = { 0, 5, 10 }
 local EVENT_LIST_MAX = 80
 
-local m_SelectedNode = nil        -- 关系树里选中的节点（发送事件 / 读档的目标）
+local m_SelectedNode = nil        -- 关系树里选中的节点（发送事件 / 读档 / 删除的目标）
+
+-- 自动换图：原档落盘确认后开始倒计时，到点自己重开（授权者 2026-10-05 要求“自动进行”）。
+-- 倒计时期间随时可以按「换图」立刻重开（那条路是实机验证过的按钮回调）。
+-- 自动那次若没生效（我们的代码还活着），10 秒后再给一次机会，两次都不行就交回手动。
+local SWITCH_AUTO_DELAY = 8
+local SWITCH_AUTO_RETRY_DELAY = 10
+local SWITCH_AUTO_MAX_TRIES = 2
+local m_AutoRestartAt = nil
+local m_AutoRestartTries = 0
+local m_SwitchTickArmed = false
 local m_EventTypeKey = "GOLD"
 local m_EventDetailEntry = nil
 local m_EventTurnEntry = nil
@@ -517,6 +527,51 @@ local function DoSave()
 end
 
 -- 换图按钮：第一次 = 存原档，第二次 = 直接重开
+-- 按帧推进：倒计时显示 + 到点自动重开
+local function TickAutoSwitch(delta)
+    if m_AutoRestartAt ~= nil then
+        local now = os.time()
+        if now == nil then
+            m_AutoRestartAt = nil
+        elseif now >= m_AutoRestartAt then
+            m_AutoRestartAt = nil
+            m_AutoRestartTries = m_AutoRestartTries + 1
+            Log("自动换图：发出重开（第 " .. tostring(m_AutoRestartTries) .. " 次）")
+            SetStatus(Locale.Lookup("LOC_MODMISC_SAVEPANEL_AUTO_RESTART"))
+            local ok = pcall(ModMiscSaveGraph.SwitchNow, "自动（倒计时结束）")
+            if (not ok) or m_AutoRestartTries >= SWITCH_AUTO_MAX_TRIES then
+                if not ok then
+                    SetStatus(Locale.Lookup("LOC_MODMISC_SAVEPANEL_AUTO_FAILED"))
+                end
+            else
+                -- 还活着就说明没真重开：再等一会儿给第二次机会
+                m_AutoRestartAt = now + SWITCH_AUTO_RETRY_DELAY
+            end
+        else
+            SetStatus(Locale.Lookup("LOC_MODMISC_SAVEPANEL_AUTO_COUNTDOWN",
+                tostring(m_AutoRestartAt - now)))
+        end
+    end
+    ContextPtr:RequestRefresh()
+end
+
+local function EnsureSwitchTick()
+    if m_SwitchTickArmed then return end
+    m_SwitchTickArmed = true
+    ContextPtr:SetRefreshHandler(TickAutoSwitch)
+    ContextPtr:RequestRefresh()
+    Log("自动换图倒计时回调已挂")
+end
+
+local function ArmAutoRestart(delaySeconds)
+    if m_AutoRestartAt ~= nil then return end       -- 已经排上了（OnSaved 与 OnChecked 谁先到都行）
+    local now = os.time()
+    if now == nil then return end
+    m_AutoRestartAt = now + (tonumber(delaySeconds) or SWITCH_AUTO_DELAY)
+    EnsureSwitchTick()
+    Log("自动换图：倒计时开始（" .. tostring(delaySeconds or SWITCH_AUTO_DELAY) .. " 秒）")
+end
+
 local function DoSwitchMap()
     -- 第二步：原档已存好 → 在按钮回调里直接重开
     if ModMiscSaveGraph.HasPendingSwitch() then
@@ -534,13 +589,59 @@ local function DoSwitchMap()
     end
 
     -- 第一步：存原档 + 记待接分支
-    local ok, idOrErr = ModMiscSaveGraph.PrepareSwitch()
+    m_AutoRestartTries = 0
+    local ok, idOrErr = ModMiscSaveGraph.PrepareSwitch({
+        -- 落盘复查确认了就开始倒计时；万一复查不来，SaveComplete 之后也给个更长的兜底
+        OnChecked = function(found)
+            if found then ArmAutoRestart(SWITCH_AUTO_DELAY) end
+        end,
+        OnSaved = function()
+            ArmAutoRestart(SWITCH_AUTO_DELAY + 7)
+        end,
+    })
     if not ok then
         ReportError("PrepareSwitch", idOrErr)
         return
     end
     Report(Locale.Lookup("LOC_MODMISC_SAVEPANEL_SWITCH_PREPARED", tostring(idOrErr)),
         Locale.Lookup("LOC_MODMISC_SAVEPANEL_SWITCH_PREPARED_DETAIL"))
+end
+
+-- 收件：把发给本局节点的事件拉进回合事件列表（开局会自动跑一次，这里是手动入口）
+local function DoIntakeEvents()
+    if ModMiscSaveGraph.IntakeEvents == nil then
+        ReportError("IntakeEvents", "模块没加载")
+        return
+    end
+    ModMiscSaveGraph.IntakeEvents(function(added, how)
+        Report(Locale.Lookup("LOC_MODMISC_SAVEPANEL_INTAKE_DONE", tostring(added), tostring(how)),
+            Locale.Lookup("LOC_MODMISC_SAVEPANEL_INTAKE_DETAIL"))
+    end)
+end
+
+-- 删除选中存档
+local function DoDeleteSelected()
+    if m_SelectedNode == nil then
+        Report(Locale.Lookup("LOC_MODMISC_SAVEPANEL_NO_SELECTION"),
+            Locale.Lookup("LOC_MODMISC_SAVEPANEL_NO_SELECTION_DETAIL"))
+        return
+    end
+    local node = m_SelectedNode
+    local text = Locale.Lookup("LOC_MODMISC_SAVEPANEL_DELETE_CONFIRM", tostring(node.RawName or node.Id))
+    local ok, err = pcall(function()
+        local popup = PopupDialogInGame:new("UnitPanelPopup")
+        popup:ShowOkCancelDialog(text, function()
+            local delOk, delErr = ModMiscSaveGraph.DeleteNode(node.Id)
+            if not delOk then
+                ReportError("DeleteNode", delErr)
+                return
+            end
+            m_SelectedNode = nil
+            Report(Locale.Lookup("LOC_MODMISC_SAVEPANEL_DELETED", tostring(delErr)), nil)
+            RefreshAll()
+        end)
+    end)
+    if not ok then ReportError("DeleteConfirm", err) end
 end
 
 -- ===========================================================================
@@ -565,6 +666,8 @@ function OpenModMiscSavePanel()
     SelectEventDefaultsIfNeeded()
     RefreshSelectorButtons()
     RefreshAll()   -- 内含跨存档存储扫描：新 context 必须先读起来才知道主线头 / 待接分支
+    -- 顺手拉一次信箱：开局那次探针可能因为“还没有节点身份”而跳过，存档之后就有了
+    pcall(function() ModMiscSaveGraph.IntakeEvents() end)
     Log("面板已打开")
 end
 
@@ -610,6 +713,10 @@ function OnInit()
         function() SafeCall("SendEvent", DoSendEvent) end)
     Controls.ModMiscSaveLoadSelected:RegisterCallback(Mouse.eLClick,
         function() SafeCall("LoadSelected", DoLoadSelected) end)
+    Controls.ModMiscSaveIntake:RegisterCallback(Mouse.eLClick,
+        function() SafeCall("IntakeEvents", DoIntakeEvents) end)
+    Controls.ModMiscSaveDelete:RegisterCallback(Mouse.eLClick,
+        function() SafeCall("DeleteSelected", DoDeleteSelected) end)
     Controls.ModMiscSaveCurrent:RegisterCallback(Mouse.eLClick,
         function() SafeCall("Save", DoSave) end)
     Controls.ModMiscSaveSwitchMap:RegisterCallback(Mouse.eLClick,

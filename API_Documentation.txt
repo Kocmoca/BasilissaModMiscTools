@@ -952,6 +952,9 @@ CanUnitTypeGetExp(unitIndex)
     api.RefreshData()
 
 注意：
+* **数据本体就在文件名里**（`ModMiscStore~<hex(key)>~<hex(value)>.Civ6Cfg`）：写的是**配置档**，
+  读靠列目录解码文件名 —— **不需要新生成普通存档、也不需要加载任何档**；
+  改写 = 写新文件 + 删旧文件（`UI.DeleteSavedGame`）。代价是一个 key 留一个小档，适合少量短数据。
 * 数据存在 **UI 层**（`Network.SaveGame` / `UI.QuerySaveGameList` 都是 UI 接口），
   gameplay 侧拿不到；需要在 gameplay 用，就经 `ExposedMembers` 转一手。
 * 每次写入都会在玩家的**载入配置**列表里留下一个档（一个 key 一个），
@@ -1280,6 +1283,17 @@ gameplay 侧要换图，走 `ExposedMembers.ModMiscToolScript.WorldBuilderAPI.Se
 
 固化位置：`CustomData.Offset`（随档）+ `Game:SetProperty(turnevents_offset)`；
 档名末尾可选 `~L<逻辑回合>`，身份载荷第 5/6 段是 logical/offset（老档没有 → 显示 `-`，不猜）。
+
+#### 3.14.2b 存档策略：一条线一个档（原地覆盖）
+
+* 本局**已有节点** ⇒ 存档沿用它的 id/父/类型，只更新内容与时间，**写成功后删掉旧文件**
+  （`UI.DeleteSavedGame`）⇒“一条线只有一个格式化档”，关系树不会被同一条线的一串快照刷屏；
+* 本局**还没有节点**（新开/读入非本 mod 档）⇒ 建新节点；换图后的新局第一次存档也建新节点（分支）；
+* 同名（同一分钟同一回合，档名完全一致）时跳过删除，避免把刚写出来的档删掉；
+* 面板另有「删除选中存档」（同样是 `UI.DeleteSavedGame`）。
+
+换图现在是**自动**的：原档落盘确认后倒计时 8 秒自动 `Network.RestartGame()`，
+期间可按「换图」立刻重开；自动没生效时 10 秒后重试一次，再不行交回手动。
 
 #### 3.14.3 跨存档事件
 

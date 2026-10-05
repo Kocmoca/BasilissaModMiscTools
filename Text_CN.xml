@@ -508,7 +508,7 @@
 			<Text>存档</Text>
 		</Replace>
 		<Replace Tag="LOC_MODMISC_SAVEPANEL_SWITCH" Language="zh_Hans_CN">
-			<Text>换图（两步）</Text>
+			<Text>换图（自动）</Text>
 		</Replace>
 		<Replace Tag="LOC_MODMISC_SAVEPANEL_REFRESH" Language="zh_Hans_CN">
 			<Text>刷新列表</Text>
@@ -667,6 +667,33 @@
 		</Replace>
 		<Replace Tag="LOC_MODMISC_TURNEVENT_UNKNOWN" Language="zh_Hans_CN">
 			<Text>来自 {1_From}：{2_Detail}</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_SAVEPANEL_AUTO_COUNTDOWN" Language="zh_Hans_CN">
+			<Text>{1_Seconds} 秒后自动重开（想立刻重开就按「换图」）</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_SAVEPANEL_AUTO_RESTART" Language="zh_Hans_CN">
+			<Text>正在自动重开…</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_SAVEPANEL_AUTO_FAILED" Language="zh_Hans_CN">
+			<Text>自动重开没生效——请按一次「换图」。</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_SAVEPANEL_INTAKE" Language="zh_Hans_CN">
+			<Text>收件</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_SAVEPANEL_INTAKE_DONE" Language="zh_Hans_CN">
+			<Text>收件：{1_Count} 条（{2_How}）</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_SAVEPANEL_INTAKE_DETAIL" Language="zh_Hans_CN">
+			<Text>发给本局存档节点的信箱会被拉进回合事件列表；到接受回合触发（过期的下一回合补发）。</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_SAVEPANEL_DELETE" Language="zh_Hans_CN">
+			<Text>删除选中存档</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_SAVEPANEL_DELETE_CONFIRM" Language="zh_Hans_CN">
+			<Text>删除这条存档？{1_Name}</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_SAVEPANEL_DELETED" Language="zh_Hans_CN">
+			<Text>已删除 {1_Name}</Text>
 		</Replace>
 </LocalizedText>
 

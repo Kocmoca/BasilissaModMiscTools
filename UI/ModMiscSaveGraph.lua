@@ -752,6 +752,24 @@ function API.LoadNode(nodeId, onIssued)
     return true, node
 end
 
+-- 删除一条关系档（游戏内 UI 层就能删：UI.DeleteSavedGame —— ModMiscStore 已在用同一条通道）
+function API.DeleteNode(nodeId)
+    local node = API.FindNode(nodeId)
+    if node == nil then return false, "找不到节点 " .. tostring(nodeId) end
+    if node.FileEntry == nil then return false, "这条档没有可用的存档条目（先刷新列表）" end
+    if UI == nil or UI.DeleteSavedGame == nil then return false, "UI.DeleteSavedGame 不可用" end
+
+    Log("即将调用 UI.DeleteSavedGame（节点 " .. tostring(nodeId)
+        .. "，档名 " .. tostring(node.RawName) .. "）")
+    local ok, err = pcall(UI.DeleteSavedGame, node.FileEntry)
+    if not ok then
+        Log("删除失败 -> " .. tostring(err))
+        return false, tostring(err)
+    end
+    Log("已删除 " .. tostring(node.RawName))
+    return true, node.RawName
+end
+
 -- ===========================================================================
 -- 事件信箱（发给某个存档节点的事件；一个事件一个键，走跨存档存储）
 --
@@ -982,6 +1000,39 @@ local function BuildNextNode()
     local pending = API.GetPendingBranch()
 
     local incoming = API.GetIncomingBranch()
+    local logicalTurn, engineTurn, offset, logicalSource = API.GetLogicalTurnInfo()
+
+    -- 【原地覆盖】本局已经有节点 ⇒ 沿用它的 id / parent / kind，只更新内容与时间，
+    -- 旧文件在存档成功后删掉 —— “一条线只有一个格式化档”（授权者 2026-10-05 要求）。
+    -- 换图后的新局第一次存档仍然**建新节点**（那时还没有本局节点，走下面的分支逻辑）。
+    if currentId ~= nil then
+        local existing = m_NodeById[currentId]
+        local parentFromCustom = ReadCustomDataValue("ParentId")
+        local kindFromCustom = ReadCustomDataValue("Kind") or MODMISC_KIND_MAINLINE
+        local existingParent = (existing ~= nil and existing.Parent)
+            or ((parentFromCustom ~= nil and parentFromCustom ~= MODMISC_SAVE_ROOT_PARENT)
+                and parentFromCustom or nil)
+        local existingKind = (existing ~= nil and existing.Kind) or kindFromCustom
+        Log("判定：current=" .. tostring(currentId) .. " ⇒ 原地覆盖（沿用 id / 父="
+            .. tostring(existingParent) .. " / " .. tostring(existingKind) .. "）"
+            .. " ｜逻辑回合=" .. tostring(logicalTurn) .. "（引擎 " .. tostring(engineTurn)
+            .. "，偏移 +" .. tostring(offset) .. "）")
+        return {
+            Id = currentId,
+            Parent = existingParent,
+            Kind = existingKind,
+            Turn = engineTurn,
+            Logical = logicalTurn,
+            Offset = offset,
+            Map = GetMapToken(),
+            Stamp = BuildStamp(),
+            Overwrite = true,
+            OldEntry = existing ~= nil and existing.FileEntry or nil,
+            OldName = existing ~= nil and existing.RawName or nil,
+            ConsumedPending = false,
+        }
+    end
+
     local parentId, forcedKind, parentSource = ResolveNewSaveParent()
     local kind = forcedKind
     if kind == nil then
@@ -989,7 +1040,6 @@ local function BuildNextNode()
     end
     -- 父来自“待接分支 / 本局来源” ⇒ 这是换图后新局的第一次存档，要消费掉存储里的 pending
     local consumedPending = (currentId == nil and parentSource ~= "root")
-    local logicalTurn, engineTurn, offset, logicalSource = API.GetLogicalTurnInfo()
     Log("判定：current=" .. tostring(currentId)
         .. " incoming=" .. (incoming ~= nil and tostring(incoming.Parent) or "nil")
         .. " head=" .. tostring(headId)
@@ -1024,6 +1074,20 @@ local function OnSaveGraphSaveComplete(...)
     local saveResult = ...
     Log("SaveComplete 回执：" .. tostring(saveResult)
         .. "（节点 " .. tostring(pending.Node.Id) .. "）")
+
+    -- 原地覆盖：旧档删掉（同名跳过 —— 同一分钟同一回合会取到同一个文件名）
+    if pending.OldEntry ~= nil then
+        local oldName = StripExtension(pending.OldEntry.Name)
+        if oldName ~= nil and oldName == pending.NewName then
+            Log("覆盖：新旧同名（" .. tostring(pending.NewName) .. "），跳过删除")
+        elseif UI ~= nil and UI.DeleteSavedGame ~= nil then
+            local delOk, delErr = pcall(UI.DeleteSavedGame, pending.OldEntry)
+            Log("覆盖：删除旧档 " .. tostring(oldName)
+                .. (delOk and " 已删除" or (" 删除失败 -> " .. tostring(delErr))))
+        else
+            Log("覆盖：UI.DeleteSavedGame 不可用，旧档留着")
+        end
+    end
 
     -- 主线头推进 / 待接分支消费
     -- ⚠️ 只有“父来自待接分支”的那次存档才清 pending。换图时存的是**原档**（父是当前节点），
@@ -1118,6 +1182,9 @@ local function SaveNode(node, opts)
         OnChecked = options.OnChecked,  -- 存档列表复查完再回调一次（found = 真的在列表里）
         Reason = options.Reason,
         StartedAt = ReadClock() or 0,
+        -- 原地覆盖：旧档等这一笔写成功之后再删（写失败也不丢旧档）
+        OldEntry = node.Overwrite and node.OldEntry or nil,
+        NewName = name,
     }
     if Events ~= nil and Events.SaveComplete ~= nil then
         Events.SaveComplete.Add(OnSaveGraphSaveComplete)
@@ -1133,6 +1200,10 @@ local function SaveNode(node, opts)
         m_SavePending = nil
         Log("Network.SaveGame 调用失败 -> " .. tostring(err))
         return false, tostring(err)
+    end
+    if node.Overwrite then
+        Log("原地覆盖：旧档 " .. tostring(node.OldName or "(列表里没扫到，可能没有旧档)")
+            .. " 将在这笔写成功后删除")
     end
     Log("Network.SaveGame 调用已返回（没卡死），等 SaveComplete")
     return true, name
@@ -1172,7 +1243,9 @@ end
 -- ===========================================================================
 
 -- 第一步：存原档（供换图用）。返回 (ok, err)
-function API.PrepareSwitch()
+-- options = { OnSaved = fn, OnChecked = fn }（面板用它在落盘/回执后排自动重开倒计时）
+function API.PrepareSwitch(options)
+    local opts = options or {}
     if Network == nil or Network.SaveGame == nil then
         return false, "Network.SaveGame 不可用"
     end
@@ -1188,16 +1261,18 @@ function API.PrepareSwitch()
 
     local started = SaveNode(node, {
         Reason = "switch",
-        OnSaved = function()
-            Log("换图[1/2]：原档已回执（" .. tostring(node.Id) .. "），等玩家点第二次")
+        OnSaved = function(found, checkedNode)
+            Log("换图：原档已回执（" .. tostring(node.Id) .. "）")
+            if opts.OnSaved ~= nil then pcall(opts.OnSaved, found, checkedNode or node) end
         end,
         OnChecked = function(found, checkedNode)
-            Log("换图[1/2]：原档落盘复查 " .. tostring(checkedNode.Id)
+            Log("换图：原档落盘复查 " .. tostring(checkedNode.Id)
                 .. (found and " 已在存档列表里" or " 没在列表里（可能还没写完）"))
+            if opts.OnChecked ~= nil then pcall(opts.OnChecked, found, checkedNode or node) end
         end,
     })
     if not started then
-        Log("换图[1/2] 失败：存档请求没发出去")
+        Log("换图 失败：存档请求没发出去")
         return false, "存档请求没发出去"
     end
     return true, node.Id

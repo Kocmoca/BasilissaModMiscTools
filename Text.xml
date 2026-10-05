@@ -508,7 +508,7 @@
 			<Text>Save</Text>
 		</Row>
 		<Row Tag="LOC_MODMISC_SAVEPANEL_SWITCH">
-			<Text>Switch map (2 steps)</Text>
+			<Text>Switch map (auto)</Text>
 		</Row>
 		<Row Tag="LOC_MODMISC_SAVEPANEL_REFRESH">
 			<Text>Refresh list</Text>
@@ -667,6 +667,33 @@
 		</Row>
 		<Row Tag="LOC_MODMISC_TURNEVENT_UNKNOWN">
 			<Text>From {1_From}: {2_Detail}</Text>
+		</Row>
+		<Row Tag="LOC_MODMISC_SAVEPANEL_AUTO_COUNTDOWN">
+			<Text>Auto-restart in {1_Seconds}s (press Switch map to do it now)</Text>
+		</Row>
+		<Row Tag="LOC_MODMISC_SAVEPANEL_AUTO_RESTART">
+			<Text>Auto-restarting now...</Text>
+		</Row>
+		<Row Tag="LOC_MODMISC_SAVEPANEL_AUTO_FAILED">
+			<Text>Auto-restart did not take effect - press Switch map once.</Text>
+		</Row>
+		<Row Tag="LOC_MODMISC_SAVEPANEL_INTAKE">
+			<Text>Pull events</Text>
+		</Row>
+		<Row Tag="LOC_MODMISC_SAVEPANEL_INTAKE_DONE">
+			<Text>Events pulled: {1_Count} ({2_How})</Text>
+		</Row>
+		<Row Tag="LOC_MODMISC_SAVEPANEL_INTAKE_DETAIL">
+			<Text>Events addressed to this game's save node are moved into the turn-event list; they fire at their accept turn (overdue ones fire next turn).</Text>
+		</Row>
+		<Row Tag="LOC_MODMISC_SAVEPANEL_DELETE">
+			<Text>Delete selected</Text>
+		</Row>
+		<Row Tag="LOC_MODMISC_SAVEPANEL_DELETE_CONFIRM">
+			<Text>Delete this save? {1_Name}</Text>
+		</Row>
+		<Row Tag="LOC_MODMISC_SAVEPANEL_DELETED">
+			<Text>Deleted {1_Name}</Text>
 		</Row>
 </BaseGameText>
 
