@@ -1289,7 +1289,9 @@ end
 -- 【开关】下面这一个布尔值；探针文件顶部还有 L4/L5 两个分步开关（L5 默认关）。
 -- 结论与协议见 API_Verification_Status.md 第 73 条 / API_Documentation.txt §3.13.9。
 -- ===========================================================================
-local MODMISC_LOAD_TIME_PROBE_ENABLED = true
+-- 【实机结果 2026-10-05：仍然闪退 —— 这条路不行】按授权者反馈关回去。
+-- 想复现再打开（会闪退）；结论见 API_Verification_Status.md 第 17 节 / 第 76 条。
+local MODMISC_LOAD_TIME_PROBE_ENABLED = false
 
 if MODMISC_LOAD_TIME_PROBE_ENABLED and ModMiscLoadTimeSaveProbeLoaded == nil then
 	include("LoadTime_SaveProbe")
@@ -1300,6 +1302,13 @@ end
 -- 与上面那个探针不同，这个默认开着 —— 它是目前唯一可用的跨存档通道。
 if ModMiscStore == nil and ModMiscToolIsGameSetupContext() then
 	include("ModMiscStore")
+end
+
+-- 「模组配置组名字」跨存档存储（UI/ModMiscModGroupStore.lua，授权者 2026-10-05 提的方向）：
+-- 写进模组框架数据库 ModGroups.Name —— 自由文本，不受存档名 255 字节限制；
+-- Modding 组接口前端与对局内都能调。必须排在 ModMiscStore 之后（复用它的 hex 编解码）。
+if ModMiscModGroupStore == nil then
+	include("ModMiscModGroupStore")
 end
 
 -- 前端侧也把同一套接口挂到 ExposedMembers 上（前端 context 里别的 mod 也能直接用）

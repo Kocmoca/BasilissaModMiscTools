@@ -18,6 +18,8 @@
 include("InstanceManager")
 include("Civ6Common")  -- ReadCustomData / WriteCustomData（本 mod 的 replacement 版本）
 include("ModMiscStore")  -- 跨存档存储（存档名编码通道）：本面板的存储读写按钮用它
+include("ModMiscModGroupStore")  -- 跨存档存储（模组配置组名字通道，授权者 2026-10-05 提的方向）
+include("ModMiscNameStoreProbe")  -- 探针：引擎设置类键值存储（Options.UserOption / UserConfiguration）
 include("ModMiscAssetStore")  -- 永久资产放置（记录落 CustomData，读档自动重放）
 include("ModMiscCreateGame")  -- 对局内「创建新局 / 换地图」验证（含开局探针的判定逻辑）
 print("[ModMiscTool][AutomationTest] panel loading build=" .. tostring(MODMISC_BUILD_TAG))
@@ -910,6 +912,235 @@ local function StoreClear()
 end
 
 -- ===========================================================================
+-- ModGroup 存储（把数据写进「模组配置组」的名字）
+--
+-- 通道来源与安全规矩见 UI/ModMiscModGroupStore.lua 顶部注释（数据库里 Name 是自由文本、
+-- 没有改名接口所以改值=删旧建新、只碰自己前缀、永不删当前选中的组）。
+-- 这里的按钮只做“调用 + 把结果摊开给人看”，真正的读写都在那个模块里。
+-- ===========================================================================
+local MODGROUP_PANEL_KEY = "panel"
+local MODGROUP_TEST_PAYLOAD_PREFIX = "panel=1"
+
+local function DescribeModGroupInfo(info)
+    if info == nil then return "info=nil" end
+    local lines = {}
+    table.insert(lines, "available=" .. tostring(info.Available)
+        .. " build=" .. tostring(info.Tag))
+    if info.Error ~= nil then
+        table.insert(lines, "error=" .. tostring(info.Error))
+        return table.concat(lines, "\n")
+    end
+    table.insert(lines, "groups=" .. tostring(info.Total)
+        .. "  ours=" .. tostring(info.Ours)
+        .. "  longestName=" .. tostring(info.MaxNameLength) .. " chars")
+    table.insert(lines, "currentGroup=" .. tostring(info.CurrentHandle)
+        .. "  name=" .. tostring(info.CurrentName))
+    local ours = ModMiscModGroupStore.ListOurs() or {}
+    for index, group in ipairs(ours) do
+        if index > 8 then
+            table.insert(lines, "  … 还有 " .. tostring(#ours - 8) .. " 条")
+            break
+        end
+        table.insert(lines, "  [" .. tostring(index) .. "] " .. tostring(group.Key)
+            .. " #" .. tostring(group.Index) .. " nameLen=" .. tostring(#group.Name))
+    end
+    return table.concat(lines, "\n")
+end
+
+-- 诊断：这个上下文里 Modding 组接口能不能用、现在有几条我们的组、当前选中的是哪个
+local function ModGroupInfo()
+    if ModMiscModGroupStore == nil then
+        SetError("ModGroupInfo", "ModMiscModGroupStore 模块没加载")
+        return
+    end
+    local info = ModMiscModGroupStore.GetInfo()
+    local detail = DescribeModGroupInfo(info)
+    SetOutputDetail(Locale.Lookup("LOC_MODMISC_AUTOMATION_TEST_MODGROUP_INFO_TEXT", detail),
+        Locale.Lookup("LOC_MODMISC_AUTOMATION_TEST_MODGROUP_INFO_SUMMARY",
+            tostring(info.Available), tostring(info.Total or "-"), tostring(info.Ours or "-")),
+        true)
+end
+
+-- 写入：一条带时间戳/随机数的测试数据（跨进程后凭它判断读回的是不是上一轮那份）
+local function ModGroupWrite()
+    if ModMiscModGroupStore == nil then
+        SetError("ModGroupWrite", "ModMiscModGroupStore 模块没加载")
+        return
+    end
+    local payload = MODGROUP_TEST_PAYLOAD_PREFIX .. ";t=" .. tostring(os.time())
+        .. ";r=" .. tostring(math.random(100000, 999999))
+    local ok, chunks, bytes = ModMiscModGroupStore.Save(MODGROUP_PANEL_KEY, payload)
+    if not ok then
+        SetError("ModGroupWrite", tostring(chunks))
+        return
+    end
+    local detail = "  " .. MODGROUP_PANEL_KEY .. " = " .. payload
+        .. "\n  chunks=" .. tostring(chunks) .. " bytes=" .. tostring(bytes)
+    SetOutputDetail(Locale.Lookup("LOC_MODMISC_AUTOMATION_TEST_MODGROUP_WRITTEN", detail),
+        Locale.Lookup("LOC_MODMISC_AUTOMATION_TEST_MODGROUP_WRITE_SUMMARY",
+            MODGROUP_PANEL_KEY, tostring(chunks)),
+        true)
+end
+
+-- 读取：读回来跟“现在应该是什么”对照（上一轮的 t/r 会明显不同 ⇒ 一眼看出是不是同一轮写的）
+local function ModGroupRead()
+    if ModMiscModGroupStore == nil then
+        SetError("ModGroupRead", "ModMiscModGroupStore 模块没加载")
+        return
+    end
+    local text, chunks = ModMiscModGroupStore.Load(MODGROUP_PANEL_KEY)
+    if text == nil then
+        SetError("ModGroupRead", tostring(chunks))
+        return
+    end
+    local lines = { "  " .. MODGROUP_PANEL_KEY .. " = " .. text,
+        "  chunks=" .. tostring(chunks) .. " bytes=" .. tostring(#text) }
+    -- 顺手列一下现有的数据组（名字长度是判断“有没有被截断”的关键指标）
+    local ours = ModMiscModGroupStore.ListOurs() or {}
+    for index, group in ipairs(ours) do
+        if index > 6 then
+            table.insert(lines, "  … 还有 " .. tostring(#ours - 6) .. " 条")
+            break
+        end
+        table.insert(lines, "  [" .. tostring(index) .. "] " .. tostring(group.Key)
+            .. " #" .. tostring(group.Index) .. " nameLen=" .. tostring(#group.Name))
+    end
+    SetOutputDetail(Locale.Lookup("LOC_MODMISC_AUTOMATION_TEST_MODGROUP_READ_TEXT",
+            table.concat(lines, "\n")),
+        Locale.Lookup("LOC_MODMISC_AUTOMATION_TEST_MODGROUP_READ_SUMMARY",
+            MODGROUP_PANEL_KEY, tostring(#text)),
+        true)
+end
+
+-- 自检：尺寸阶梯 8B→64B→256B→1KB→4KB→16KB，逐级“写-读-比对”，
+-- 第一个不一致的尺寸就是上限；跑完自动清理并核对“当前选中的组没被动过”。
+local function ModGroupSelfTest()
+    if ModMiscModGroupStore == nil then
+        SetError("ModGroupSelfTest", "ModMiscModGroupStore 模块没加载")
+        return
+    end
+    local report = ModMiscModGroupStore.SelfTest()
+    if report.Error ~= nil then
+        SetError("ModGroupSelfTest", tostring(report.Error))
+        return
+    end
+    local lines = { "  build=" .. tostring(report.Tag) }
+    for _, step in ipairs(report.Steps or {}) do
+        table.insert(lines, "  " .. tostring(step.Size) .. "B -> ok=" .. tostring(step.Ok)
+            .. " chunks=" .. tostring(step.Chunks)
+            .. " read=" .. tostring(step.ReadBytes)
+            .. " match=" .. tostring(step.Match)
+            .. (step.Error ~= nil and ("  (" .. tostring(step.Error) .. ")") or ""))
+    end
+    table.insert(lines, "  清理 " .. tostring(report.CleanupRemoved) .. " 条"
+        .. "（跳过选中组 " .. tostring(report.CleanupSkipped) .. " 条）"
+        .. "  选中组未被改动=" .. tostring(report.CurrentGroupUnchanged))
+    local largest = report.LastSuccess ~= nil and tostring(report.LastSuccess.Size) or "无"
+    SetOutputDetail(Locale.Lookup("LOC_MODMISC_AUTOMATION_TEST_MODGROUP_SELFTEST_TEXT",
+            table.concat(lines, "\n")),
+        Locale.Lookup("LOC_MODMISC_AUTOMATION_TEST_MODGROUP_SELFTEST_SUMMARY",
+            largest, tostring(report.CleanupRemoved)),
+        true)
+end
+
+-- 清理：删掉本 mod 写在模组配置组里的所有数据（不碰选中组、不碰别人的组）
+local function ModGroupClear()
+    if ModMiscModGroupStore == nil then
+        SetError("ModGroupClear", "ModMiscModGroupStore 模块没加载")
+        return
+    end
+    local removed, reason, skipped = ModMiscModGroupStore.ClearAll()
+    if removed == nil then
+        SetError("ModGroupClear", tostring(reason))
+        return
+    end
+    SetOutputDetail(Locale.Lookup("LOC_MODMISC_AUTOMATION_TEST_MODGROUP_CLEARED",
+            tostring(removed), tostring(skipped)),
+        Locale.Lookup("LOC_MODMISC_AUTOMATION_TEST_MODGROUP_CLEAR_SUMMARY", tostring(removed)),
+        true)
+end
+
+-- ===========================================================================
+-- 引擎设置类键值存储探针（Options.SetUserOption / UserConfiguration.SetValue）
+--
+-- 详见 UI/ModMiscNameStoreProbe.lua 顶部注释：这两处都是引擎自己会持久化的键值存储，
+-- 玩家界面上看不见；本轮只回答“能不能当跨存档通道”。
+-- 「读取」按钮是给跨进程验证用的：写完 → 杀进程重开 → 点它看值还在不在（值里带 os.time()）。
+-- ===========================================================================
+local function DescribeNameStoreReport(report)
+    local lines = { "  " .. tostring(report.Id) .. "（" .. tostring(report.Describe) .. "）" }
+    if report.Error ~= nil then
+        table.insert(lines, "  error=" .. tostring(report.Error))
+        return table.concat(lines, "\n")
+    end
+    for _, step in ipairs(report.Steps or {}) do
+        table.insert(lines, "  " .. tostring(step.Size) .. "B -> ok=" .. tostring(step.Ok)
+            .. " read=" .. tostring(step.Read) .. "(" .. tostring(step.Type) .. ")"
+            .. " match=" .. tostring(step.Match)
+            .. (step.Error ~= nil and ("  (" .. tostring(step.Error) .. ")") or ""))
+    end
+    table.insert(lines, "  清理探针键=" .. tostring(report.Cleared))
+    return table.concat(lines, "\n")
+end
+
+local function NameStoreSelfTest()
+    if ModMiscNameStoreProbe == nil then
+        SetError("NameStoreSelfTest", "ModMiscNameStoreProbe 模块没加载")
+        return
+    end
+    local blocks = {}
+    local summary = {}
+    for _, channel in ipairs(ModMiscNameStoreProbe.GetChannels()) do
+        local report = ModMiscNameStoreProbe.SelfTest(channel.Id)
+        table.insert(blocks, DescribeNameStoreReport(report))
+        local largest = report.LastSuccess ~= nil and tostring(report.LastSuccess.Size) or "无"
+        table.insert(summary, tostring(channel.Id) .. "=" .. largest .. "B")
+    end
+    SetOutputDetail(Locale.Lookup("LOC_MODMISC_AUTOMATION_TEST_NAMESTORE_SELFTEST_TEXT",
+            table.concat(blocks, "\n")),
+        Locale.Lookup("LOC_MODMISC_AUTOMATION_TEST_NAMESTORE_SELFTEST_SUMMARY",
+            table.concat(summary, " ")),
+        true)
+end
+
+-- 读取：两个通道的探针键现在是什么（跨进程验证就看这一条）
+local function NameStoreRead()
+    if ModMiscNameStoreProbe == nil then
+        SetError("NameStoreRead", "ModMiscNameStoreProbe 模块没加载")
+        return
+    end
+    local info = ModMiscNameStoreProbe.GetInfo()
+    local lines = {}
+    for _, channel in ipairs(info.Channels) do
+        if not channel.Available then
+            table.insert(lines, "  " .. tostring(channel.Id) .. "：不可用")
+        else
+            table.insert(lines, "  " .. tostring(channel.Id) .. " = "
+                .. tostring(channel.Value) .. (channel.Reason ~= nil and (" [" .. tostring(channel.Reason) .. "]") or ""))
+        end
+    end
+    SetOutputDetail(Locale.Lookup("LOC_MODMISC_AUTOMATION_TEST_NAMESTORE_READ_TEXT",
+            table.concat(lines, "\n")),
+        Locale.Lookup("LOC_MODMISC_AUTOMATION_TEST_NAMESTORE_READ_SUMMARY"), true)
+end
+
+local function NameStoreClear()
+    if ModMiscNameStoreProbe == nil then
+        SetError("NameStoreClear", "ModMiscNameStoreProbe 模块没加载")
+        return
+    end
+    local lines = {}
+    for _, channel in ipairs(ModMiscNameStoreProbe.GetChannels()) do
+        local ok, err = ModMiscNameStoreProbe.Clear(channel.Id)
+        table.insert(lines, "  " .. tostring(channel.Id) .. " -> " .. tostring(ok)
+            .. (err ~= nil and (" [" .. tostring(err) .. "]") or ""))
+    end
+    SetOutputDetail(Locale.Lookup("LOC_MODMISC_AUTOMATION_TEST_NAMESTORE_CLEARED_TEXT",
+            table.concat(lines, "\n")),
+        Locale.Lookup("LOC_MODMISC_AUTOMATION_TEST_NAMESTORE_CLEAR_SUMMARY"), true)
+end
+
+-- ===========================================================================
 -- AssetPreview：摆放 / 清除
 -- ===========================================================================
 
@@ -1213,6 +1444,11 @@ local PAGE_MAIN_CONTROLS = {
     "AutomationTestAssetCategoryLabel", "AutomationTestAssetCategoryButton",
     "AutomationTestAssetIndexLabel", "AutomationTestAssetIndexButton",
     "AutomationTestPlaceAsset", "AutomationTestClearPlotAsset", "AutomationTestClearAllAssets",
+    -- ModGroup 存储（模组配置组名字通道）
+    "AutomationTestModGroupLabel", "AutomationTestModGroupSelfTest", "AutomationTestModGroupWrite",
+    "AutomationTestModGroupRead", "AutomationTestModGroupInfo", "AutomationTestModGroupClear",
+    -- 引擎设置类键值存储探针（Options.SetUserOption / UserConfiguration）
+    "AutomationTestNameStoreSelfTest", "AutomationTestNameStoreRead", "AutomationTestNameStoreClear",
 }
 
 local PAGE_TIMELINE_CONTROLS = {
@@ -1332,6 +1568,22 @@ function OnInit()
         function() SafeCall("StoreWrite", StoreWrite) end)
     Controls.AutomationTestStoreRead:RegisterCallback(Mouse.eLClick,
         function() SafeCall("StoreRead", StoreRead) end)
+    Controls.AutomationTestNameStoreSelfTest:RegisterCallback(Mouse.eLClick,
+        function() SafeCall("NameStoreSelfTest", NameStoreSelfTest) end)
+    Controls.AutomationTestNameStoreRead:RegisterCallback(Mouse.eLClick,
+        function() SafeCall("NameStoreRead", NameStoreRead) end)
+    Controls.AutomationTestNameStoreClear:RegisterCallback(Mouse.eLClick,
+        function() SafeCall("NameStoreClear", NameStoreClear) end)
+    Controls.AutomationTestModGroupInfo:RegisterCallback(Mouse.eLClick,
+        function() SafeCall("ModGroupInfo", ModGroupInfo) end)
+    Controls.AutomationTestModGroupSelfTest:RegisterCallback(Mouse.eLClick,
+        function() SafeCall("ModGroupSelfTest", ModGroupSelfTest) end)
+    Controls.AutomationTestModGroupWrite:RegisterCallback(Mouse.eLClick,
+        function() SafeCall("ModGroupWrite", ModGroupWrite) end)
+    Controls.AutomationTestModGroupRead:RegisterCallback(Mouse.eLClick,
+        function() SafeCall("ModGroupRead", ModGroupRead) end)
+    Controls.AutomationTestModGroupClear:RegisterCallback(Mouse.eLClick,
+        function() SafeCall("ModGroupClear", ModGroupClear) end)
     Controls.AutomationTestStoreClear:RegisterCallback(Mouse.eLClick,
         function() SafeCall("StoreClear", StoreClear) end)
 

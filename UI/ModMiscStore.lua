@@ -104,6 +104,11 @@ local function DecodeText(hex)
     return table.concat(bytes)
 end
 
+-- 供别的模块复用（例：UI/ModMiscModGroupStore.lua 把值写进「模组配置组名字」里，
+-- 那边不想再抄一份 hex —— 同一个 mod 里只留一套编解码）
+ModMiscStore.EncodeText = EncodeText
+ModMiscStore.DecodeText = DecodeText
+
 -- 存档列表里的 Name 带扩展名（配置档是 xxx.Civ6Cfg），比对前先剥掉
 local function StripExtension(name)
     if name == nil then return nil end

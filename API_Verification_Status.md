@@ -902,6 +902,10 @@ Support_UI: [TurnEvent] 开局收件：0 条（no-node）
 | 73 | 前端（主界面）建立普通存档 `Network.SaveGame{FileType=GAME_STATE}` | `[已验证失败]` | **实机闪退**（授权者 2026-10-05）。前端没有对局、存档里没有游戏数据；探针 `FrontEnd_GameSaveProbe` 已按结论关回 `false`，想复现再打开（会闪退）。 |
 | 74 | **游戏加载完成之前**（`Events.LoadScreenContentReady`，读到一半/建局一半）存档与读档 | `[待实机]` | 探针 `UI/LoadTime_SaveProbe.lua` 默认开；L4（载入期 `Network.SaveGame`）默认开、L5（载入期 `Network.LoadGame`）默认关。判据 `lt-l0-ok` / `lt-l2-written` / `lt-l4-save-*` / `lt-p2-marker-alive` / `lt-p2-probe-save-*` / `lt-p2-cleaned` / `lt-p1-missed`，协议见 §17。 |
 | 75 | 载入界面上下文判据（安卓） | `[已静态修正]` | 安卓跑 `LoadScreen_PHONE.xml`，**没有** `PortraitContainer`（桌面版才有）——只看它会让阶段一永不执行。改成 `ContextPtr:GetID() == "LoadScreen"`（三个变体同名），控件只作退路。 |
+| 76 | 「游戏加载完成之前」存档 / 读档（`Events.LoadScreenContentReady`） | `[已验证失败]` | **实机仍然闪退**（授权者 2026-10-05）。与游戏自己的注释一致：载入期不该做 Lua→引擎调用。探针已关（`MODMISC_LOAD_TIME_PROBE_ENABLED=false`）。另：载入界面判据在安卓上要认 `ContextPtr:GetID()`（见 75）。 |
+| 77 | **通道 E：模组配置组名字**（`Modding.CreateModGroup` / `ModGroups.Name`） | `[待实机]` | `Name` 是自由文本，**不受存档名 255 字节限制**；前端与对局内都能调。没有改名接口 ⇒ 改值 = 删旧建新。命名 `MMTSTORE~<hex(key)>~<序号>~<hex(片)>`。代价：数据片会出现在模组界面配置组下拉框里。面板：配置组自检 / 写入 / 读取 / 诊断 / 清理。 |
+| 78 | 通道 F/G：引擎设置类键值存储（`Options.SetUserOption`+`SaveOptions` / `UserConfiguration.SetValue`+`SaveCheckpoint`） | `[待实机]` | 不占存档、不占文件名、**玩家界面看不见**。未知：引擎认不认自己不知道的键、值能多长。面板：设置存储自检 / 读取 / 清理（读取按钮用于“杀进程重开后还在不在”）。 |
+| 79 | 原版「文件存取 / 名字设定」接口盘点 | `[已静态核对]` | 文件侧只有 `Network.SaveGame/LoadGame` + `UI.QuerySaveGameList/DeleteSavedGame/GetSaveGameMetaData/…`，**没有**打开文件读写的接口；运行时数据库只有 `DB.Query/ConfigurationQuery/ConfigurationChanges`，**全只读**。能持久化名字/键值的只有：存档名、模组配置组名、用户选项、UserConfiguration（见 §18.1）。 |
 
 ---
 
@@ -953,10 +957,18 @@ Support_UI: [TurnEvent] 开局收件：0 条（no-node）
 
 ---
 
-## 17. 「游戏加载完成之前」能不能存档 / 读档（2026-10-05，**待实机**）
+## 17. 「游戏加载完成之前」能不能存档 / 读档（2026-10-05 实机：**仍然闪退，此路不通**）
 
 第 16 节那条路（前端主界面建普通存档）实机**闪退**。按授权者的方向换时机：
 **刚开始读档 / 创建游戏、游戏还没加载完的时候**做存档读档操作，看会发生什么。
+
+> **实机结论（2026-10-05，授权者）：仍然闪退 —— 这条路不行。**
+> 与游戏自己那句注释完全吻合：`LoadScreen.lua` 里写着
+> `-- Do not set input handler until content loading is done; otherwise engine will make
+> LUA calls to engine during load (not recommended).`
+> 探针已按结论关闭（`MODMISC_LOAD_TIME_PROBE_ENABLED = false`）；沿用它的诊断价值：
+> 证实“**载入期做引擎调用 = 闪退**”，与前端主界面那次是同一类问题。
+> 于是回到“能不能不依赖存档/文件”的思路上 —— 见第 18 节。
 
 ### 17.1 这个时机在哪（静态核对，都来自游戏自带文件）
 
@@ -1023,3 +1035,113 @@ Support_UI: [TurnEvent] 开局收件：0 条（no-node）
 * 万一崩在载入期，探针档会留在「载入游戏」列表里 —— 名字带 `MMTLoadProbe` 前缀，手动删也认得出来；
 * L5（载入期再读档）默认关：它最可能把加载器搞乱，真要试先单独开、
   并且先确认 L4 的表现（`LOADTIME_LOAD_STEP_ENABLED = true`）。
+
+---
+
+## 18. 跨存档通道重新盘点：原版的「文件存取 / 名字设定」还有哪些能用（2026-10-05）
+
+授权者方向：**重新检查原版里涉及文件存取以及名字设定的地方**；并提到
+“有人提及 modgroupname 可以用作数据存储”。本轮把原版 Lua 里这两类接口全部拉出来对了一遍。
+
+### 18.1 原版盘点（全部来自游戏自带文件，不是推断）
+
+**A. 文件存取类**（都围着“存档文件”转，走不了别的路）：
+
+| 接口 | 用途 | 备注 |
+|---|---|---|
+| `Network.SaveGame(saveFile)` | 写存档 / 配置档 | 字段 `Name` / `Location` / `Type` / `FileType`（`Menus/SaveGameMenu.lua:53`） |
+| `Network.LoadGame(entry, serverType)` | 读档 | 对局内可用（已实机） |
+| `UI.QuerySaveGameList(loc, type, opts, fileType, filter)` | 列存档（异步 → `LuaEvents.FileListQueryResults`） | **不用载入就能读元数据**（通道 A 的基础） |
+| `UI.DeleteSavedGame` / `UI.GetSaveGameMetaData` / `UI.MakeSaveGameMetaData` / `UI.GetLastSaveName` / `UI.GetSaveLocationPath` / `UI.GetSaveGameModificationTimeRaw` / `UI.IsAtMaxSaveCount` | 删档 / 元数据 / 路径 / 时间 / 上限 | 仅此而已，**没有**“打开文件读写”的接口 |
+| ~~`io.*`~~ | — | 安卓 Lua 无 `io`（已排除） |
+| ~~运行时写数据库~~ | — | 原版 Lua 只有 `DB.Query` / `DB.ConfigurationQuery` / `DB.ConfigurationChanges` / `DB.MakeHash`，**全是只读** |
+
+**B. 名字/键值设定类**（引擎自己会持久化、且与存档无关 —— 这才是能当通道的部分）：
+
+| 位置 | 写 | 读 | 持久化到 | 玩家可见性 |
+|---|---|---|---|---|
+| **模组配置组名字** `ModGroups.Name` | `Modding.CreateModGroup(name, sourceGroup)` | `Modding.GetModGroups()` | 模组框架数据库（模组界面那份） | **看得见**（模组界面下拉框里多出条目） |
+| **用户选项** | `Options.SetUserOption(cat, name, value)` + `Options.SaveOptions()` | `Options.GetUserOption(cat, name)` | 用户选项文件 | 看不见（只要分类/键不在选项界面上） |
+| **UserConfiguration** | `UserConfiguration.SetValue(name, value)` + `UserConfiguration.SaveCheckpoint()` | `UserConfiguration.GetValue(name)` | 同上那套用户配置 | 看不见 |
+| ~~存档元数据注入~~ | — | — | — | 已排除（字段全由引擎填，通道 D） |
+| ~~`SystemSettings` 表（模组库里）~~ | 无 Lua 接口 | — | — | 已排除（`Modding.sql` 里没有任何存储过程碰它） |
+
+数据库层证据（`Base/Assets/Database/Modding.sql`）：
+
+```sql
+CREATE TABLE ModGroups(
+    'ModGroupRowId' INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+    'Name'          TEXT NOT NULL,        -- 注释原文：the user-provided name of the group
+    'CanDelete'     BOOLEAN DEFAULT 1,
+    'Selected'      BOOLEAN DEFAULT 0,
+    'SortIndex'     INTEGER DEFAULT 100);
+INSERT INTO ModGroups VALUES (1, 'LOC_MODS_GROUP_DEFAULT_NAME', 0, 1, 0);  -- 默认组不可删
+-- 组相关存储过程只有：ListModGroups / GetModGroupDetails / GetSelectedModGroup /
+-- ChangeSelectedModGroup / CreateModGroup / CopyModGroup / DeleteModGroup
+-- ⇒ **没有** UPDATE ModGroups SET Name 这类“改名”过程
+```
+
+`Modding` 组接口**对局内也能用**：原版 `Menus/InGameTopOptionsMenu.lua:480`、
+`Choosers/ResearchChooser.lua:511` 都在对局里调 `Modding.GetActiveMods()`。
+
+### 18.2 通道 E：模组配置组的名字（`UI/ModMiscModGroupStore.lua`，本轮新增）
+
+**为什么值得试**：`Name` 是自由文本（TEXT），**不受**“存档名 = 一个文件名分量 ≤ 255 字节”
+那条限制 —— 而那条正是把通道 A（`ModMiscStore`）卡在 ~100 字节/键的元凶。
+
+存法（定长片段，按序号拼回）：
+
+```
+MMTSTORE~<hex(key)>~<3 位序号>~<hex(值分片)>        -- 一片一个配置组
+```
+
+* 写：先删同 key 的旧片，再按序 `Modding.CreateModGroup(名字, 当前组)`；
+* 读：`Modding.GetModGroups()` 一次拿全，按 key+序号拼回并解码；
+* 改值：没有改名接口 ⇒ **删旧建新**；
+* 清：只删 `MMTSTORE~` 前缀的组。
+
+**安全规矩（写进代码注释了）**：
+1. 只碰自己前缀的组，别的组一律不动；
+2. **永不删除当前选中的组**（哪怕名字碰巧带我们的前缀）—— 宁可漏删，
+   也不能把玩家正在用的配置组删掉；
+3. 建组时以“当前组”为模板 ⇒ 即使它被选中，启用集合也与原来一致（不会把 mod 关掉）；
+4. 所有引擎调用 `pcall` 包住，失败只记日志。
+
+**注意（UX 代价）**：每个数据片都会出现在模组界面的「配置组」下拉框里。
+测试用的按钮旁边写了“测完请点清理”。
+
+### 18.3 通道 F/G：引擎设置类的键值存储（`UI/ModMiscNameStoreProbe.lua`，本轮新增探针）
+
+| 通道 | 写 | 读 | 原版先例 |
+|---|---|---|---|
+| F `useroption` | `Options.SetUserOption("ModMiscTool", "MMTProbe", 值)` + `Options.SaveOptions()` | `Options.GetUserOption(...)` | `FrontEnd/Multiplayer/Lobby.lua:1386` 记 `SeenPlayByCloudLobby` |
+| G `userconfig` | `UserConfiguration.SetValue("MMTProbe", 值)` + `UserConfiguration.SaveCheckpoint()` | `UserConfiguration.GetValue(...)` | `Options_*.lua` 灌选项、`SetValue("LANPlayerName", option)` 存字符串 |
+
+**这两个通道好在哪**：不占存档、不占文件名、**玩家界面看不见**（不像模组配置组会列出来）。
+未知的是：引擎认不认“它不认识的键”、值能多长、会不会被当成数字/布尔解释 —— 所以本轮只做探针：
+写标记（带 `os.time()`）→ 立刻读回 → 报能否往返 → 清掉。
+
+### 18.4 面板怎么测（Automation 测试面板 · 常规页签）
+
+| 按钮 | 做什么 | 看什么 |
+|---|---|---|
+| **配置组自检** | 尺寸阶梯 8B→64B→256B→1KB→4KB→16KB 逐级「写-读-比对」，跑完自动清理 | 每一行 `ok/chunks/read/match`；第一个 `match=false` 的尺寸就是上限；末尾一行给出“清理条数 / 当前选中组未被改动” |
+| 配置组写入 / 读取 | 写一条带 `t/r` 的测试数据、再读回 | 值一致 ⇒ 通道通则；`chunks` 是占用的配置组条数 |
+| 配置组诊断 | 列全部组数 / 我们的组数 / 最长名字长度 / 当前选中的组 | 看 `Modding` 接口在**对局内**能不能用（`available=true`） |
+| 配置组清理 | 删掉所有 `MMTSTORE~` 组 | 清理条数；确认没动选中组 |
+| **设置存储自检 / 读取 / 清理** | 两个设置类通道的写-读-比对 | `useroption` / `userconfig` 各自最大可往返尺寸；**读取**按钮用于“杀进程重开后还在不在” |
+
+**跨进程验证步骤**（授权者）：① 点「设置存储自检」→ ② 看日志；③ 想验跨进程，
+就在自检之前先点「配置组写入」（值里带 `os.time()`）→ 杀进程重开 → 点「配置组读取」，
+看读回的 `t=` 是不是上一轮那个数字。
+
+### 18.5 判定表
+
+| 日志/面板表现 | 含义 | 下一步 |
+|---|---|---|
+| 配置组自检全绿到 16KB | 通道 E 可用，单键可达 16KB+ | 把大表格搬到这里，替代“分片上百分片小档”的方案 |
+| 某个尺寸 `match=false` 且 `read` 比写的短 | **引擎截断了名字** | 把该尺寸的一半当分片大小；上限就按这个数 |
+| 建组抛错 / `available=false` | 该上下文不允许改组（或接口不在） | 换上下文（前端 vs 对局内）再试 |
+| 设置存储自检 `match=true` | 引擎认我们的键 | 优先用它（玩家看不见），继续摸尺寸上限 |
+| 设置存储读回 `[没有这个键]` | 引擎只持久化它认识的键 | 该通道排除，回到配置组通道 |
+| 面板「诊断」里 `ours` 一直涨 | 有片没被覆盖掉（key 变了/写入中断） | 点「清理」收摊，再查 key 是否稳定 |

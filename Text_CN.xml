@@ -337,6 +337,81 @@
 		<Replace Tag="LOC_MODMISC_AUTOMATION_TEST_STORE_SUMMARY" Language="zh_Hans_CN">
 			<Text>跨存档存储：{1_Action} 完成，共 {2_Count} 个键（点上方消息栏看详情）</Text>
 		</Replace>
+		<Replace Tag="LOC_MODMISC_AUTOMATION_TEST_MODGROUP_LABEL" Language="zh_Hans_CN">
+			<Text>配置组存储（数据写进模组配置组的名字；测完请点清理）</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_AUTOMATION_TEST_MODGROUP_SELFTEST" Language="zh_Hans_CN">
+			<Text>配置组自检</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_AUTOMATION_TEST_MODGROUP_WRITE" Language="zh_Hans_CN">
+			<Text>配置组写入</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_AUTOMATION_TEST_MODGROUP_READ" Language="zh_Hans_CN">
+			<Text>配置组读取</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_AUTOMATION_TEST_MODGROUP_INFO" Language="zh_Hans_CN">
+			<Text>配置组诊断</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_AUTOMATION_TEST_MODGROUP_CLEAR" Language="zh_Hans_CN">
+			<Text>配置组清理</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_AUTOMATION_TEST_MODGROUP_INFO_TEXT" Language="zh_Hans_CN">
+			<Text>配置组存储：{1_Detail}</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_AUTOMATION_TEST_MODGROUP_INFO_SUMMARY" Language="zh_Hans_CN">
+			<Text>配置组存储：可用={1_Available} 组数={2_Total} 我们的={3_Ours}</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_AUTOMATION_TEST_MODGROUP_SELFTEST_TEXT" Language="zh_Hans_CN">
+			<Text>配置组自检：{1_Detail}</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_AUTOMATION_TEST_MODGROUP_SELFTEST_SUMMARY" Language="zh_Hans_CN">
+			<Text>配置组自检：最大往返 {1_Size} 字节，已清理 {2_Count} 条</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_AUTOMATION_TEST_MODGROUP_WRITTEN" Language="zh_Hans_CN">
+			<Text>配置组存储写入：{1_Detail}</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_AUTOMATION_TEST_MODGROUP_WRITE_SUMMARY" Language="zh_Hans_CN">
+			<Text>配置组存储：已写入 {1_Key}，共 {2_Chunks} 条配置组</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_AUTOMATION_TEST_MODGROUP_READ_TEXT" Language="zh_Hans_CN">
+			<Text>配置组存储读取：{1_Detail}</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_AUTOMATION_TEST_MODGROUP_READ_SUMMARY" Language="zh_Hans_CN">
+			<Text>配置组存储：读到 {1_Key} → {2_Bytes} 字节</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_AUTOMATION_TEST_MODGROUP_CLEARED" Language="zh_Hans_CN">
+			<Text>配置组存储清理：删了 {1_Removed} 条，跳过选中组 {2_Skipped} 条</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_AUTOMATION_TEST_MODGROUP_CLEAR_SUMMARY" Language="zh_Hans_CN">
+			<Text>配置组存储：已清理 {1_Count} 条</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_AUTOMATION_TEST_NAMESTORE_SELFTEST" Language="zh_Hans_CN">
+			<Text>设置存储自检</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_AUTOMATION_TEST_NAMESTORE_SELFTEST_TEXT" Language="zh_Hans_CN">
+			<Text>设置存储自检：{1_Detail}</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_AUTOMATION_TEST_NAMESTORE_SELFTEST_SUMMARY" Language="zh_Hans_CN">
+			<Text>设置存储自检：{1_Result}（各通道最大可往返尺寸）</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_AUTOMATION_TEST_NAMESTORE_READ" Language="zh_Hans_CN">
+			<Text>设置存储读取</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_AUTOMATION_TEST_NAMESTORE_READ_TEXT" Language="zh_Hans_CN">
+			<Text>设置存储读取：{1_Detail}</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_AUTOMATION_TEST_NAMESTORE_READ_SUMMARY" Language="zh_Hans_CN">
+			<Text>设置存储读取（重启游戏后再点一次，看值还在不在）</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_AUTOMATION_TEST_NAMESTORE_CLEAR" Language="zh_Hans_CN">
+			<Text>设置存储清理</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_AUTOMATION_TEST_NAMESTORE_CLEARED_TEXT" Language="zh_Hans_CN">
+			<Text>设置存储清理：{1_Detail}</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_AUTOMATION_TEST_NAMESTORE_CLEAR_SUMMARY" Language="zh_Hans_CN">
+			<Text>设置存储：探针键已清</Text>
+		</Replace>
 		<Replace Tag="LOC_MODMISC_AUTOMATION_TEST_VIEW_PLAYER" Language="zh_Hans_CN">
 			<Text>切到选中玩家视角</Text>
 		</Replace>

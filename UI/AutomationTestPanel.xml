@@ -101,6 +101,39 @@
             <GridButton ID="AutomationTestMessages" Anchor="L,T" Offset="20,654" Size="860,60"
                         Style="ButtonControl" FontSize="26" String="LOC_MODMISC_AUTOMATION_TEST_MESSAGES" />
 
+            <!-- ModGroup 存储（把数据写进「模组配置组」的名字：模组框架数据库里的 Name 是自由文本，
+                 不像存档名那样卡 255 字节文件名。会出现在模组界面的配置组下拉框里，测试完请点「清理」） -->
+            <Label ID="AutomationTestModGroupLabel" Anchor="L,T" Offset="20,726" Size="860,32"
+                   FontSize="22" Color="225,225,225,255" VerticalAlignment="Center"
+                   String="LOC_MODMISC_AUTOMATION_TEST_MODGROUP_LABEL" />
+            <GridButton ID="AutomationTestModGroupSelfTest" Anchor="L,T" Offset="20,762" Size="280,60"
+                        Style="ButtonControl" FontSize="26"
+                        String="LOC_MODMISC_AUTOMATION_TEST_MODGROUP_SELFTEST" />
+            <GridButton ID="AutomationTestModGroupWrite" Anchor="L,T" Offset="310,762" Size="280,60"
+                        Style="ButtonControl" FontSize="26"
+                        String="LOC_MODMISC_AUTOMATION_TEST_MODGROUP_WRITE" />
+            <GridButton ID="AutomationTestModGroupRead" Anchor="L,T" Offset="600,762" Size="280,60"
+                        Style="ButtonControl" FontSize="26"
+                        String="LOC_MODMISC_AUTOMATION_TEST_MODGROUP_READ" />
+            <GridButton ID="AutomationTestModGroupInfo" Anchor="L,T" Offset="20,830" Size="280,60"
+                        Style="ButtonControl" FontSize="26"
+                        String="LOC_MODMISC_AUTOMATION_TEST_MODGROUP_INFO" />
+            <GridButton ID="AutomationTestModGroupClear" Anchor="L,T" Offset="310,830" Size="280,60"
+                        Style="ButtonControl" FontSize="26"
+                        String="LOC_MODMISC_AUTOMATION_TEST_MODGROUP_CLEAR" />
+
+            <!-- 引擎设置类键值存储探针（Options.SetUserOption / UserConfiguration.SetValue）：
+                 写标记→立刻读回→报能否往返；“读取”按钮用来验证“杀进程重开后还在不在” -->
+            <GridButton ID="AutomationTestNameStoreSelfTest" Anchor="L,T" Offset="20,898" Size="280,60"
+                        Style="ButtonControl" FontSize="26"
+                        String="LOC_MODMISC_AUTOMATION_TEST_NAMESTORE_SELFTEST" />
+            <GridButton ID="AutomationTestNameStoreRead" Anchor="L,T" Offset="310,898" Size="280,60"
+                        Style="ButtonControl" FontSize="26"
+                        String="LOC_MODMISC_AUTOMATION_TEST_NAMESTORE_READ" />
+            <GridButton ID="AutomationTestNameStoreClear" Anchor="L,T" Offset="600,898" Size="280,60"
+                        Style="ButtonControl" FontSize="26"
+                        String="LOC_MODMISC_AUTOMATION_TEST_NAMESTORE_CLEAR" />
+
 
             <!-- ============================================================
                  第 2 页「重开与时间线」（默认隐藏，点页签切换）：

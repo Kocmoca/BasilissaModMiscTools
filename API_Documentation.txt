@@ -1323,6 +1323,49 @@ hex 后翻倍），所以大表格不能直接往一个键里塞。三条路子�
   万一崩在载入期，探针档会留在列表里（名字带 `MMTLoadProbe` 前缀，下次进对局自动清）。
 
 ------------------------------------------------------------------------------
+### 3.13.10 通道 E：把数据写进「模组配置组的名字」（本轮新增）
+------------------------------------------------------------------------------
+
+`UI/ModMiscModGroupStore.lua`。原版模组框架数据库里 `ModGroups.Name` 是**自由文本**
+（`Base/Assets/Database/Modding.sql`，注释原文 “the user-provided name of the group”），
+**不受存档名“一个文件名分量 ≤ 255 字节”那条限制**；`Modding` 组接口前端与对局内都能调
+（原版 `Menus/InGameTopOptionsMenu.lua` 就在对局内用它）。
+
+    组名格式：MMTSTORE~<hex(key)>~<3 位序号>~<hex(值分片)>     -- 一片 = 一条配置组
+
+    ModMiscModGroupStore.IsAvailable()                 这个上下文能不能用
+    ModMiscModGroupStore.List() / ListOurs()           列全部 / 只列我们的
+    ModMiscModGroupStore.GetInfo()                     诊断：组数、我们的、最长名字、当前选中
+    ModMiscModGroupStore.Save(key, text, chunkBytes)   先删旧片再按序建新片，写完复查
+    ModMiscModGroupStore.Load(key)                     按序号拼回；缺片直接拒绝（不返回半截）
+    ModMiscModGroupStore.Remove(key) / ClearAll()      删一个键 / 清掉我们全部的组
+    ModMiscModGroupStore.SelfTest(sizes)               尺寸阶梯写-读-比对 + 自动清理
+
+规则：**只碰 `MMTSTORE~` 前缀**；**永不删除当前选中的组**；建组以“当前组”为模板
+（即使被选中，启用集合也不变）；引擎调用全部 pcall。
+没有“改名”接口 ⇒ 改值 = 删旧建新。
+代价：每个数据片都会出现在模组界面的配置组下拉框里（测试完请清理）。
+
+------------------------------------------------------------------------------
+### 3.13.11 通道 F/G 探针：引擎设置类键值存储（本轮新增）
+------------------------------------------------------------------------------
+
+`UI/ModMiscNameStoreProbe.lua`。两处引擎自己会持久化、且玩家界面看不见的键值存储：
+
+    通道 F  useroption    Options.SetUserOption("ModMiscTool", key, 值) + Options.SaveOptions()
+                          Options.GetUserOption("ModMiscTool", key)
+    通道 G  userconfig    UserConfiguration.SetValue(key, 值) + UserConfiguration.SaveCheckpoint()
+                          UserConfiguration.GetValue(key)
+
+    ModMiscNameStoreProbe.GetChannels()                  两个通道的可用性
+    ModMiscNameStoreProbe.GetInfo()                      当前值（跨进程验证就看这个）
+    ModMiscNameStoreProbe.Write/Read/Clear(channelId,…)  写 / 读 / 清（键 = MMTProbe）
+    ModMiscNameStoreProbe.SelfTest(channelId, sizes)     尺寸阶梯写-读-比对 + 清理
+
+未知点：引擎认不认“自己不知道的键”、值能多长、会不会被当数字/布尔解释 —— 所以先做探针：
+写带 `os.time()` 的标记 → 立刻读回 → 报能否往返；跨进程验证 = 写完杀进程重开再点「读取」。
+
+------------------------------------------------------------------------------
 ### 3.14 从关系树读档 / 回合同步（逻辑）/ 跨存档事件
 ------------------------------------------------------------------------------
 

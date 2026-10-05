@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<Mod id="a1b2c3d4-5e6f-7a8b-9c0d-1e2f3a4b5c6d" version="1.70">
+<Mod id="a1b2c3d4-5e6f-7a8b-9c0d-1e2f3a4b5c6d" version="1.71">
     <Properties>
         <Name>Basilissa Mod Misc Tools</Name>
         <Description>LOC_MODMISC_MOD_DESCRIPTION</Description>
@@ -74,6 +74,14 @@
                 <LoadOrder>10000</LoadOrder>
             </Properties>
             <File>UI/ModMiscStore.lua</File>
+            <!-- 「模组配置组名字」通道（授权者 2026-10-05 提的方向）：
+                 模组框架数据库 ModGroups.Name 是自由文本，不受存档名 255 字节限制；
+                 前端与对局内都能调 Modding 组接口。依赖 ModMiscStore 的 hex 工具，
+                 所以必须排在它后面。 -->
+            <File>UI/ModMiscModGroupStore.lua</File>
+            <!-- 引擎设置类键值存储探针（Options.SetUserOption / UserConfiguration.SetValue）：
+                 只读探针，不占存档也不占文件名，玩家界面看不见。 -->
+            <File>UI/ModMiscNameStoreProbe.lua</File>
         </ImportFiles>
     </FrontEndActions>
     <InGameActions>
@@ -115,6 +123,8 @@
         <ImportFiles id="Imports">
             <File>ModTool_DataStore.lua</File>
             <File>UI/ModMiscStore.lua</File>
+            <File>UI/ModMiscModGroupStore.lua</File>
+            <File>UI/ModMiscNameStoreProbe.lua</File>
             <File>UI/ModMiscAssetStore.lua</File>
             <File>UI/ModMiscCreateGame.lua</File>
             <File>UI/ModMiscTurnEra.lua</File>
@@ -245,6 +255,8 @@
         <File>UI/FrontEnd_GameSaveProbe.lua</File>
         <File>UI/LoadTime_SaveProbe.lua</File>
         <File>UI/ModMiscStore.lua</File>
+        <File>UI/ModMiscModGroupStore.lua</File>
+        <File>UI/ModMiscNameStoreProbe.lua</File>
         <File>UI/ModMiscAssetStore.lua</File>
         <File>UI/ModMiscCreateGame.lua</File>
         <File>UI/ModMiscTurnEra.lua</File>
