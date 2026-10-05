@@ -528,7 +528,8 @@ ExposedMembers.ModMiscToolUI.RunCrossSaveProbeUI = RunCrossSaveProbeUI
 		ExposedMembers.ModMiscToolUI.DescribeSaveGraph = ModMiscSaveGraph.DescribeContext
 		ExposedMembers.ModMiscToolUI.GetSaveGraphTree = ModMiscSaveGraph.BuildTreeLines
 		ExposedMembers.ModMiscToolUI.SaveGameWithRelation = ModMiscSaveGraph.SaveCurrentGame
-		ExposedMembers.ModMiscToolUI.SwitchMap = ModMiscSaveGraph.SwitchMap
+		ExposedMembers.ModMiscToolUI.PrepareSwitch = ModMiscSaveGraph.PrepareSwitch
+		ExposedMembers.ModMiscToolUI.SwitchNow = ModMiscSaveGraph.SwitchNow
 		ExposedMembers.ModMiscToolUI.BuildRelationSaveName = ModMiscSaveGraph.BuildSaveName
 		ExposedMembers.ModMiscToolUI.ParseRelationSaveName = ModMiscSaveGraph.ParseSaveName
 	end

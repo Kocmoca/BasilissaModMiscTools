@@ -508,7 +508,7 @@
 			<Text>Save</Text>
 		</Row>
 		<Row Tag="LOC_MODMISC_SAVEPANEL_SWITCH">
-			<Text>Switch map</Text>
+			<Text>Switch map (2 steps)</Text>
 		</Row>
 		<Row Tag="LOC_MODMISC_SAVEPANEL_REFRESH">
 			<Text>Refresh list</Text>
@@ -549,12 +549,6 @@
 		<Row Tag="LOC_MODMISC_SAVEPANEL_SAVED_UNCONFIRMED">
 			<Text>not seen in the list yet</Text>
 		</Row>
-		<Row Tag="LOC_MODMISC_SAVEPANEL_SWITCHING">
-			<Text>Switching map - saving the original first...</Text>
-		</Row>
-		<Row Tag="LOC_MODMISC_SAVEPANEL_SWITCHING_DETAIL">
-			<Text>The game restarts automatically once the original save is on disk. The new map is a BRANCH of that save, so the next save here hangs under it.</Text>
-		</Row>
 		<Row Tag="LOC_MODMISC_SAVEPANEL_NODE_DETAIL">
 			<Text>node {1_Id} | parent {2_Parent} | kind {3_Kind} | turn {4_Turn} | map {5_Map} | stamp {6_Stamp}
 {7_Raw}</Text>
@@ -565,20 +559,23 @@
 		<Row Tag="LOC_MODMISC_SAVEPANEL_SAVED_ACKED">
 			<Text>SaveComplete received, checking the list...</Text>
 		</Row>
-		<Row Tag="LOC_MODMISC_SAVEPANEL_PHASE_STORE">
-			<Text>Map switch: waiting for the cross-save store...</Text>
+		<Row Tag="LOC_MODMISC_SAVEPANEL_SWITCH_PREPARED">
+			<Text>Original save {1_Id} written. Press "Switch map" once more to restart onto the new map.</Text>
 		</Row>
-		<Row Tag="LOC_MODMISC_SAVEPANEL_PHASE_SAVING">
-			<Text>Map switch: saving the original save...</Text>
+		<Row Tag="LOC_MODMISC_SAVEPANEL_SWITCH_PREPARED_DETAIL">
+			<Text>Step 1 of 2 done: the branch link is recorded and the original save is being written. The second press calls the engine's restart directly.</Text>
 		</Row>
-		<Row Tag="LOC_MODMISC_SAVEPANEL_PHASE_RESTARTING">
-			<Text>Map switch: restarting the game...</Text>
+		<Row Tag="LOC_MODMISC_SAVEPANEL_SWITCH_WAIT_SAVE">
+			<Text>The original save is still being written - wait a moment, then press again.</Text>
 		</Row>
-		<Row Tag="LOC_MODMISC_SAVEPANEL_PHASE_RETRYING">
-			<Text>Restart did not take effect - retrying...</Text>
+		<Row Tag="LOC_MODMISC_SAVEPANEL_SWITCH_WAIT_SAVE_DETAIL">
+			<Text>Restarting now could cut the save short. The status line switches to "ready" once the save is on disk.</Text>
 		</Row>
-		<Row Tag="LOC_MODMISC_SAVEPANEL_PHASE_FAILED">
-			<Text>Map switch failed. The original save is kept - use the game menu's Restart button, or press Switch map again.</Text>
+		<Row Tag="LOC_MODMISC_SAVEPANEL_SWITCH_NOW">
+			<Text>Restarting onto the new map...</Text>
+		</Row>
+		<Row Tag="LOC_MODMISC_SAVEPANEL_SWITCH_NOW_DETAIL">
+			<Text>Calling Network.RestartGame() directly from the button - if the game does not restart, check the log line for the call's result.</Text>
 		</Row>
 </BaseGameText>
 

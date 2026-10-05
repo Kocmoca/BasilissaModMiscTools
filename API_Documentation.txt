@@ -1200,22 +1200,20 @@ gameplay 侧要换图，走 `ExposedMembers.ModMiscToolScript.WorldBuilderAPI.Se
 失败兜底：`pending` 两次都没确认也照样重开（原档已保存，丢的只是一条边，不损坏任何档），
 日志里会写清楚。
 
-#### 3.13.3b 换图 = 按帧回调驱动的状态机（2026-10-05 第三轮修复）
+#### 3.13.3b 换图 = 两步式（2026-10-05 第四轮定稿）
 
-    SwitchMap()          面板按钮回调：登记状态机（阶段=等存储）+ 触发一次存储扫描，立刻返回
-    TickSwitch()         面板按帧回调（ContextPtr:SetRefreshHandler）里调用，返回阶段串：
-                           waiting-store → saving → restarting → (retrying…) → failed | idle
-    ForceSwitch(reason)  跳过等待立刻发重开；换图进行中再点按钮 = 手动重试
+    PrepareSwitch()   第一步：算节点 → **先写待接分支**（sg_pending）→ Network.SaveGame 存原档
+    SwitchNow(reason) 第二步：**在按钮回调里**直接 Network.RestartGame()
+    HasPendingSwitch() / IsSwitchSaveInFlight()   面板判断该走哪一步 / 原档是否还在写
 
-* **不要**把后续动作挂在 `Events.SaveComplete` 这类引擎事件上：它来不来、什么时候来都不由我们控制，
-  实测“点了换图不跳转”就是这么来的；`SaveComplete` 现在只当提前量（置标志早点走）；
-* **重开只从按帧回调里发出** —— 与“点按钮重开”同一类调用上下文，是唯一被实机证明可行的那条路（第 42 条）；
-* 每一步都有超时上限（等存储 5 秒 / 等存档 12 秒 / 重试间隔 8 秒 ×3），任何一环不回包都不会卡死；
-* 发出重开后能自我检测（我们的代码还在跑 = 没生效）→ 自动重试 → 最后写清出路并结束状态机；
-* 面板状态行按阶段显示五条文案：`LOC_MODMISC_SAVEPANEL_PHASE_{STORE,SAVING,RESTARTING,RETRYING,FAILED}`；
-* **时钟**：Lua 标准库 `os.time()`（epoch 秒，1 秒粒度；对局内可用——项目里存储档 payload 的
-  `t=<os.time()>` 早已实机跑通）。取不到时钟时按“已超时”处理并继续推进，绝不因为没时钟而卡住；
-  它只用于秒级等待，系统对时导致时钟回跳也不会把流程挂死（`NowOrExpired` 兜底）。
+* 为什么两步：唯一被实机证明可行的重开调用方式是**按钮回调里直接调**（第 42 条）。
+  1.58~1.61 分别把重开挂在 `SaveComplete` 事件回调、按帧回调状态机里，三次都出现“点了不跳转”；
+* 这条路上**没有任何“也许会不来”的环节**：不等 SaveComplete、不等按帧回调、不等时钟；
+* pending 在存档**之前**写好 ⇒ 就算存档回执全丢，新局的父子关系照样成立；
+* 第二次点击时若原档还在写，面板会先拦一下（`IsSwitchSaveInFlight`，宽限 12 秒；
+  取不到时钟时放行并写警告），避免把存档截断；
+* 重开时把门槛值一起打日志：`anyMultiplayer / savedGame / worldBuilder / isGameHost / turn`；
+* 面板按钮文案：「换图（两步）」—— 第一次点存原档，第二次点重开。
 
 #### 3.13.3c 存储内存表是「每 context 一份」（踩过）
 

@@ -508,7 +508,7 @@
 			<Text>存档</Text>
 		</Replace>
 		<Replace Tag="LOC_MODMISC_SAVEPANEL_SWITCH" Language="zh_Hans_CN">
-			<Text>换图（先存原档）</Text>
+			<Text>换图（两步）</Text>
 		</Replace>
 		<Replace Tag="LOC_MODMISC_SAVEPANEL_REFRESH" Language="zh_Hans_CN">
 			<Text>刷新列表</Text>
@@ -549,12 +549,6 @@
 		<Replace Tag="LOC_MODMISC_SAVEPANEL_SAVED_UNCONFIRMED" Language="zh_Hans_CN">
 			<Text>列表里还没看到</Text>
 		</Replace>
-		<Replace Tag="LOC_MODMISC_SAVEPANEL_SWITCHING" Language="zh_Hans_CN">
-			<Text>换图中——先存原档…</Text>
-		</Replace>
-		<Replace Tag="LOC_MODMISC_SAVEPANEL_SWITCHING_DETAIL" Language="zh_Hans_CN">
-			<Text>原档确认落盘后会自动重开。新图算这条记录的分支：本局之后存的档都挂在它下面。</Text>
-		</Replace>
 		<Replace Tag="LOC_MODMISC_SAVEPANEL_NODE_DETAIL" Language="zh_Hans_CN">
 			<Text>节点 {1_Id}｜父 {2_Parent}｜类型 {3_Kind}｜回合 {4_Turn}｜地图 {5_Map}｜时间 {6_Stamp}
 {7_Raw}</Text>
@@ -565,20 +559,23 @@
 		<Replace Tag="LOC_MODMISC_SAVEPANEL_SAVED_ACKED" Language="zh_Hans_CN">
 			<Text>已收到存档回执，正在复查落盘…</Text>
 		</Replace>
-		<Replace Tag="LOC_MODMISC_SAVEPANEL_PHASE_STORE" Language="zh_Hans_CN">
-			<Text>换图：等跨存档存储就绪…</Text>
+		<Replace Tag="LOC_MODMISC_SAVEPANEL_SWITCH_PREPARED" Language="zh_Hans_CN">
+			<Text>原档 {1_Id} 已写。再点一次「换图」就重启到新地图。</Text>
 		</Replace>
-		<Replace Tag="LOC_MODMISC_SAVEPANEL_PHASE_SAVING" Language="zh_Hans_CN">
-			<Text>换图：正在存原档…</Text>
+		<Replace Tag="LOC_MODMISC_SAVEPANEL_SWITCH_PREPARED_DETAIL" Language="zh_Hans_CN">
+			<Text>两步中的第一步已完成：分支关系已记、原档正在写。第二次点击会直接调引擎的重开。</Text>
 		</Replace>
-		<Replace Tag="LOC_MODMISC_SAVEPANEL_PHASE_RESTARTING" Language="zh_Hans_CN">
-			<Text>换图：正在重开…</Text>
+		<Replace Tag="LOC_MODMISC_SAVEPANEL_SWITCH_WAIT_SAVE" Language="zh_Hans_CN">
+			<Text>原档还在写——稍等一下再点。</Text>
 		</Replace>
-		<Replace Tag="LOC_MODMISC_SAVEPANEL_PHASE_RETRYING" Language="zh_Hans_CN">
-			<Text>重开没生效——正在重试…</Text>
+		<Replace Tag="LOC_MODMISC_SAVEPANEL_SWITCH_WAIT_SAVE_DETAIL" Language="zh_Hans_CN">
+			<Text>现在重开可能把存档截断。落盘后状态行会变成「已就绪」。</Text>
 		</Replace>
-		<Replace Tag="LOC_MODMISC_SAVEPANEL_PHASE_FAILED" Language="zh_Hans_CN">
-			<Text>换图没生效。原档已保存——可用游戏菜单的「重新开始」，或再点一次「换图」。</Text>
+		<Replace Tag="LOC_MODMISC_SAVEPANEL_SWITCH_NOW" Language="zh_Hans_CN">
+			<Text>正在重启到新地图…</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_SAVEPANEL_SWITCH_NOW_DETAIL" Language="zh_Hans_CN">
+			<Text>按钮回调里直接调 Network.RestartGame()。要是游戏没重启，看日志里这次调用的 result。</Text>
 		</Replace>
 </LocalizedText>
 

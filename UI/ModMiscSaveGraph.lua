@@ -26,7 +26,7 @@
 --   * 没有当前节点（新局第一次存档）→ 接“待接分支”（换图后）或当树根（M）。
 --   每次写出 M 档就把主线头推进到它；B 档不动主线头。
 --
--- 【换图流程】（一个按钮：先存原档 → 记关系 → 重开）
+-- 【换图流程】（两步式：先存原档 → 再点一次直接重开）
 --   ① 先算好节点，**先写“待接分支”**到跨存档存储（`sg_pending` = `<原档id>|B|<stamp>|<epoch>`）
 --      —— 因为重开后 CustomData / 游戏状态都不继承，只有存储通道能把关系带过去；
 --   ② 存原档：按上面的规则自动判 M/B（在主线上就是 M），档名带好父子关系；
@@ -59,7 +59,9 @@
 --   DescribeTree()                    关系树文本（日志/面板都能用）
 --   GetCurrentNodeId() / GetMainlineHeadId() / GetPendingBranch()
 --   SaveCurrentGame(options)          options = { Reason = "manual"|"switch", OnSaved = fn }
---   SwitchMap()                       存原档 → 记待接分支 → Network.RestartGame()
+--   PrepareSwitch()                   换图第一步：写待接分支 + 存原档
+--   SwitchNow(reason)                 换图第二步：在**按钮回调里**直接 Network.RestartGame()
+--   HasPendingSwitch() / IsSwitchSaveInFlight()   面板判断该走第一步还是第二步
 --   ReportAfterLoad()                 开局探针（由 Support_UI.Initialize 调一次）
 --
 -- ⚠️ 本文件**不挂 Events**（会被多个 context include）；`Events.SaveComplete` 只在
@@ -86,11 +88,12 @@ local MODMISC_PENDING_MAX_AGE = 900
 -- 存档失败/回执丢失时的自愈：超过这个秒数还没等到 SaveComplete 就丢弃待回执状态
 local MODMISC_SAVE_PENDING_TIMEOUT = 20
 
--- 换图状态机的等待上限（都靠面板的按帧回调推进，任何一步超时都带警告继续，绝不干等）
-local MODMISC_SWITCH_STORE_WAIT = 5     -- 等跨存档存储就绪
-local MODMISC_SWITCH_SAVE_WAIT = 12     -- 等存档回执（SaveComplete 只是“提前量”，不是必需）
-local MODMISC_SWITCH_RETRY_WAIT = 8     -- 重开调用后还活着 = 没生效，隔这么久重试
-local MODMISC_SWITCH_MAX_RESTARTS = 3
+-- 换图是**两步式**（见下面 PrepareSwitch / SwitchNow）：
+--   第一步存原档（异步，但 pending 在存之前就写好了）；第二步由玩家再点一次按钮，
+--   在**按钮回调里直接调 Network.RestartGame()** —— 完全复刻唯一被实机证明可行的调用方式，
+--   不依赖引擎事件、不依赖按帧回调、不依赖时钟。
+-- 这个秒数只用来判断“原档是不是还在写”（还在写就先别重开，免得把存档截断）
+local MODMISC_SWITCH_SAVE_GRACE = 12
 
 -- CustomData 键前缀：随档保存，读档后就知道“我在哪个节点”
 local MODMISC_CD_PREFIX = "ModMiscSaveGraph_"
@@ -155,6 +158,25 @@ local function ToBase36(number)
         value = math.floor(value / 36)
     end
     return table.concat(digits)
+end
+
+-- 按分隔符切字段。**别用 `^a|b|c|d$` 这种固定段数的模式**：
+-- 段数一变（例如给 pending 加了时间戳）整条就匹配不上，静默读成 nil
+-- —— 2026-10-05 实测踩过：旧版写的 3 段 pending 在新版读不出来，新局于是当了自己是树根。
+local function SplitFields(text, separator)
+    local fields = {}
+    local source = tostring(text or "")
+    local start = 1
+    while true do
+        local position = source:find(separator, start, true)
+        if position == nil then
+            table.insert(fields, source:sub(start))
+            break
+        end
+        table.insert(fields, source:sub(start, position - 1))
+        start = position + 1
+    end
+    return fields
 end
 
 -- 文件名禁用字符 + 分隔符，一律换成下划线
@@ -296,7 +318,11 @@ local function ReadNodeProperty()
     if members == nil or members.GetData == nil then return nil end
     local ok, payload = pcall(members.GetData, MODMISC_PROPERTY_KEY)
     if not ok or payload == nil or tostring(payload) == "" then return nil end
-    local id, parent, kind, stamp = tostring(payload):match("^([^|]*)|([^|]*)|([^|]*)|(.*)$")
+    local fields = SplitFields(payload, "|")
+    local id = fields[1]
+    local parent = fields[2]
+    local kind = fields[3]
+    local stamp = fields[4]
     if id == nil or id == "" then return nil end
     return {
         Id = id,
@@ -346,10 +372,14 @@ function API.GetPendingBranch()
     if store == nil or store.Get == nil then return nil end
     local value = store.Get(MODMISC_STORE_KEY_PENDING)
     if value == nil or tostring(value) == "" then return nil end
-    local parent, kind, stamp, writtenAt = tostring(value):match("^([^|]+)|([^|]*)|([^|]*)|(.*)$")
-    if parent == nil then return nil end
+    -- 兼容 3 段（旧版：parent|kind|stamp）与 4 段（新版：多一个写入 epoch）
+    local fields = SplitFields(value, "|")
+    local parent = fields[1]
+    local kind = fields[2]
+    local stamp = fields[3]
+    if parent == nil or parent == "" then return nil end
 
-    local writtenEpoch = tonumber(writtenAt)
+    local writtenEpoch = tonumber(fields[4])
     if writtenEpoch ~= nil then
         local now = ReadClock()
         if now ~= nil and (now - writtenEpoch) > MODMISC_PENDING_MAX_AGE then
@@ -850,165 +880,96 @@ function API.SaveCurrentGame(options)
 end
 
 -- ===========================================================================
--- 换图：先存原档 → 记待接分支 → RestartGame（状态机见下面 TickSwitch）
--- ===========================================================================
-
--- 真正发出重开。**必须在“普通回调”里调**（面板按帧回调），
--- 不能塞在 Events.SaveComplete 这种存档管线的事件回调里 —— 那是这一版之前的做法，
--- 实测点了换图不跳转（授权者 2026-10-05）。返回值也记下来，方便判断引擎认不认。
-local function DoRestart(node, reason)
-    Log("换图：即将调用 Network.RestartGame()（" .. tostring(reason)
-        .. "，原档 " .. tostring(node ~= nil and node.Id or "?") .. "）")
-    local ok, result = pcall(function() return Network.RestartGame() end)
-    if not ok then
-        Log("Network.RestartGame 调用失败 -> " .. tostring(result))
-        return false
-    end
-    Log("Network.RestartGame 调用已返回（没卡死）result=" .. tostring(result))
-    return true
-end
-
--- ===========================================================================
--- 换图状态机（由面板的按帧回调 TickSwitch 推进）
+-- 换图（两步式，**不依赖任何引擎事件/按帧回调/时钟**）
 --
--- 为什么要状态机：换图要“存完档再重开”，而存档是异步的。之前把后续动作挂在
--- SaveComplete 事件里，结果那一环不回包就永远不跳（实测）。现在：
---   * SaveComplete 只当“提前量”（置个标志让流程早点走），不是必经之路；
---   * 每一步都有超时上限，超时带警告继续；
---   * 重开从**按帧回调**里发出（与“点按钮重开”同一类调用上下文）；
---   * 发出后如果我们的代码还在跑（说明没生效），隔一会儿自动重试，最多 3 次；
---   * 3 次都没生效就把话说清楚（原档已存好、关系已记，可用游戏菜单的「重新开始」），
---     不让玩家卡在一个什么都不发生的按钮上。
+-- 为什么要两步：换图 = “先存原档 + 再重开”，而重开 `Network.RestartGame()` 只有一种调用方式
+-- 被实机证明可行 —— **在按钮回调里直接调**（第 42 条，Automation 面板那次）。之前三版把重开
+-- 挂在 SaveComplete 事件里、或挂在按帧回调驱动的状态机里，都出现过“点了不跳转”。现在：
+--
+--   第一步 PrepareSwitch()：算节点 → **先写 pending** → Network.SaveGame 存原档（异步）
+--   第二步 SwitchNow()：玩家再点一次按钮 → 直接 Network.RestartGame()
+--
+-- pending 在存档**之前**写好，所以哪怕存档回执/列表刷新全都不来，关系也已经记下了；
+-- 第一、二步之间玩家看到的状态行会明说“原档已存好，再点一次就切换”。
 -- ===========================================================================
-local m_Switch = nil
 
-function API.IsSwitchPending()
-    return m_Switch ~= nil
-end
-
--- 返回阶段字符串：idle / waiting-store / saving / restarting / retrying / failed
-function API.TickSwitch()
-    if m_Switch == nil then return "idle" end
-    local sw = m_Switch
-    -- 取不到时钟就当作“已超时”（clockOk=false）：阶段照常推进，只是不等时间
-    local now, clockOk = NowOrExpired(sw.StartedAt or sw.SavedAt or sw.LastRestartAt)
-
-    -- 阶段 1：等跨存档存储就绪（有上限；超时带警告继续 —— pending 照样能写）
-    if sw.Phase == "store" then
-        local store = GetStore()
-        local ready = (store == nil) or (store.IsReady == nil) or store.IsReady()
-        if not ready and clockOk and (now - sw.StartedAt) < MODMISC_SWITCH_STORE_WAIT then
-            return "waiting-store"
-        end
-        if not ready then
-            Log("警告：等跨存档存储就绪超时 " .. tostring(MODMISC_SWITCH_STORE_WAIT)
-                .. " 秒，带警告继续换图（主线头可能判不准）")
-        end
-        -- 进入阶段 2：算节点 → 先写 pending → 存原档
-        local node = BuildNextNode()
-        SetPendingBranch(node.Id, MODMISC_KIND_BRANCH, node.Stamp)
-        Log("换图：待接分支已写入存储（parent=" .. tostring(node.Id) .. "，新局算分支）")
-        sw.Node = node
-        sw.Phase = "saving"
-        sw.SavedAt = now
-        sw.SaveEcho = false
-        local started = SaveNode(node, {
-            Reason = "switch",
-            OnSaved = function()
-                -- 只当提前量：SaveComplete 到了就早点重开，不到也能靠超时推进
-                if m_Switch ~= nil then m_Switch.SaveEcho = true end
-            end,
-            OnChecked = function(found, checkedNode)
-                Log("原档落盘复查：" .. tostring(checkedNode.Id)
-                    .. (found and " 已在存档列表里" or " 没在列表里（可能还没写完）"))
-            end,
-        })
-        if not started then
-            Log("换图失败：存档请求没发出去（原档未保存，已放弃换图）")
-            m_Switch = nil
-            return "failed"
-        end
-        return "saving"
-    end
-
-    -- 阶段 2：等存档（回执或超时）
-    if sw.Phase == "saving" then
-        local waited = now - (sw.SavedAt or now)
-        if not sw.SaveEcho and clockOk and waited < MODMISC_SWITCH_SAVE_WAIT then
-            return "saving"
-        end
-        if not sw.SaveEcho then
-            Log("警告：等存档回执超时 " .. tostring(MODMISC_SWITCH_SAVE_WAIT)
-                .. " 秒（或此时取不到时钟；原档仍会由引擎写完），继续换图")
-        end
-        if API.GetPendingBranch() == nil then
-            Log("警告：存储里读不到待接分支，新局可能接不上关系")
-        end
-        m_SavePending = nil          -- 都换图了，别再拦着后续存档
-        sw.Phase = "restarting"
-        sw.Restarts = 1
-        sw.LastRestartAt = now
-        DoRestart(sw.Node, "存档阶段结束")
-        return "restarting"
-    end
-
-    -- 阶段 3：发出重开后还活着 ⇒ 没生效，隔一会儿重试
-    local sinceRestart = now - (sw.LastRestartAt or now)
-    if clockOk and sinceRestart < MODMISC_SWITCH_RETRY_WAIT then
-        return "restarting"
-    end
-    if (sw.Restarts or 0) < MODMISC_SWITCH_MAX_RESTARTS then
-        sw.Restarts = (sw.Restarts or 0) + 1
-        sw.LastRestartAt = now
-        Log("换图没生效（还活着），第 " .. tostring(sw.Restarts) .. " 次重试")
-        DoRestart(sw.Node, "第 " .. tostring(sw.Restarts) .. " 次重试")
-        return "retrying"
-    end
-
-    Log("换图失败：连发 " .. tostring(sw.Restarts) .. " 次 Network.RestartGame 都没生效。"
-        .. "原档已保存（" .. tostring(sw.Node ~= nil and sw.Node.Id or "?")
-        .. "），关系也已记好；可用游戏菜单的「重新开始」按钮换图，"
-        .. "或再点一次「换图」重试。")
-    m_Switch = nil
-    return "failed"
-end
-
--- 手动/兜底入口：跳过等待，立刻发重开（面板按钮重试、或按帧回调兜底时用）
-function API.ForceSwitch(reason)
-    if m_Switch == nil then
-        Log("ForceSwitch：当前没有进行中的换图（" .. tostring(reason) .. "）")
-        return false
-    end
-    Log("ForceSwitch：" .. tostring(reason))
-    local ok = DoRestart(m_Switch.Node, tostring(reason))
-    if ok then
-        m_Switch.Restarts = (m_Switch.Restarts or 0) + 1
-        m_Switch.LastRestartAt = ReadClock() or 0
-    end
-    return ok
-end
-
-function API.SwitchMap()
-    if Network == nil or Network.RestartGame == nil then
-        return false, "Network.RestartGame 不可用（换图只能靠它，见第 42 条）"
-    end
-    if m_Switch ~= nil then
-        return false, "换图已经在进行中"
+-- 第一步：存原档（供换图用）。返回 (ok, err)
+function API.PrepareSwitch()
+    if Network == nil or Network.SaveGame == nil then
+        return false, "Network.SaveGame 不可用"
     end
     if m_SavePending ~= nil then
         return false, "上一笔存档还在等回执，稍后再试"
     end
 
-    m_Switch = { Phase = "store", StartedAt = ReadClock() or 0 }
+    local node = BuildNextNode()
+    -- 先写 pending：这是“新局算这条记录的分支”的唯一凭据，必须早于存档落盘
+    SetPendingBranch(node.Id, MODMISC_KIND_BRANCH, node.Stamp)
+    Log("换图[1/2]：待接分支已写入存储（parent=" .. tostring(node.Id) .. "，新局算分支）")
 
-    -- 顺手触发一次存储扫描（不干等：TickSwitch 里有上限，超时带警告继续）
-    local store = GetStore()
-    if store ~= nil and store.Refresh ~= nil then
-        pcall(store.Refresh)
+    local started = SaveNode(node, {
+        Reason = "switch",
+        OnSaved = function()
+            Log("换图[1/2]：原档已回执（" .. tostring(node.Id) .. "），等玩家点第二次")
+        end,
+        OnChecked = function(found, checkedNode)
+            Log("换图[1/2]：原档落盘复查 " .. tostring(checkedNode.Id)
+                .. (found and " 已在存档列表里" or " 没在列表里（可能还没写完）"))
+        end,
+    })
+    if not started then
+        Log("换图[1/2] 失败：存档请求没发出去")
+        return false, "存档请求没发出去"
+    end
+    return true, node.Id
+end
+
+-- 原档是不是还在写（还在写就先别重开；超时后自愈，见 MODMISC_SAVE_PENDING_TIMEOUT）
+function API.IsSwitchSaveInFlight()
+    if m_SavePending == nil then return false end
+    local now, clockOk = NowOrExpired(m_SavePending.StartedAt)
+    if not clockOk then
+        -- 取不到时钟就没法判断“写了多久”：**放行**（宁可让玩家能换图，也别把人永久拦在门外；
+        -- 真被截断也只是这一份原档不完整，重存一次即可）。日志里写清楚。
+        Log("警告：取不到时钟，无法确认原档是否写完，仍允许重开")
+        return false
+    end
+    local age = now - (m_SavePending.StartedAt or 0)
+    return age <= MODMISC_SWITCH_SAVE_GRACE
+end
+
+function API.HasPendingSwitch()
+    return API.GetPendingBranch() ~= nil
+end
+
+-- 第二步：**在按钮回调里直接重开**（这是唯一被实机证明可行的调用方式）
+function API.SwitchNow(reason)
+    if Network == nil or Network.RestartGame == nil then
+        return false, "Network.RestartGame 不可用（换图只能靠它，见第 42 条）"
     end
 
-    Log("换图流程开始（等存储就绪 → 存原档 → 重开；由面板按帧回调推进）")
-    return true, nil
+    local pending = API.GetPendingBranch()
+    if pending == nil then
+        Log("换图[2/2] 警告：存储里没有待接分支（关系可能已经消费掉或过期），照样重开")
+    end
+
+    -- 把重开那一刻的环境一起打出来：引擎自己的重开是有门槛的
+    -- （InGameTopOptionsMenu.lua:316：not IsAnyMultiplayer()；worldbuilder 里禁用）
+    Log("换图[2/2]：即将调用 Network.RestartGame()（原因=" .. tostring(reason) .. "）"
+        .. " 环境：anyMultiplayer=" .. tostring(TryCall(function() return GameConfiguration.IsAnyMultiplayer() end))
+        .. " savedGame=" .. tostring(TryCall(function() return GameConfiguration.IsSavedGame() end))
+        .. " worldBuilder=" .. tostring(TryCall(function() return GameConfiguration.IsWorldBuilderEditor() end))
+        .. " isGameHost=" .. tostring(TryCall(function() return Network.IsGameHost() end))
+        .. " turn=" .. tostring(TryCall(function() return Game.GetCurrentGameTurn() end)))
+
+    local ok, result = pcall(function() return Network.RestartGame() end)
+    if not ok then
+        Log("换图[2/2]：调用失败 -> " .. tostring(result))
+        return false, tostring(result)
+    end
+    Log("换图[2/2]：调用已返回 result=" .. tostring(result)
+        .. "（若之后还打得出日志，说明引擎没真的重开）")
+    return true, result
 end
 
 -- ===========================================================================
@@ -1033,7 +994,7 @@ function API.ReportAfterLoad()
         if currentId == nil and pending ~= nil and pending.Parent ~= nil then
             WriteCustomDataValue("PendingParent", pending.Parent)
             WriteCustomDataValue("PendingKind", pending.Kind or MODMISC_KIND_BRANCH)
-            ClearPendingBranch()
+            ClearPendingBranch("开局已固化成本局来源")
             Log("本局接手待接分支：parent=" .. tostring(pending.Parent)
                 .. " kind=" .. tostring(pending.Kind or MODMISC_KIND_BRANCH)
                 .. "（已固化到本局身份，存储里那条已消费）")

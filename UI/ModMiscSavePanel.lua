@@ -27,18 +27,11 @@ print("[ModMiscTool][SavePanel] panel loading build=" .. tostring(MODMISC_BUILD_
 local m_Registered = false
 local m_EntryIM = nil
 
--- 换图的推进器：所有等待（存储就绪 / 存档回执 / 重开是否生效）都由面板这个**按帧回调**
--- 驱动 —— 引擎的 SaveComplete 只当提前量。重开也从这里发出（与“点按钮重开”同一类调用上下文），
--- 之前塞在 SaveComplete 事件回调里实测不跳转（授权者 2026-10-05）。
-local m_WatchdogArmed = false
-
-local SWITCH_PHASE_KEYS = {
-    ["waiting-store"] = "LOC_MODMISC_SAVEPANEL_PHASE_STORE",
-    ["saving"]        = "LOC_MODMISC_SAVEPANEL_PHASE_SAVING",
-    ["restarting"]    = "LOC_MODMISC_SAVEPANEL_PHASE_RESTARTING",
-    ["retrying"]      = "LOC_MODMISC_SAVEPANEL_PHASE_RETRYING",
-    ["failed"]        = "LOC_MODMISC_SAVEPANEL_PHASE_FAILED",
-}
+-- 换图 = **两步式**（不依赖引擎事件、不依赖按帧回调、不依赖时钟）：
+--   第一次点「换图」：写待接分支 + 存原档（异步）→ 状态行提示“再点一次就切换”
+--   第二次点「换图」：在**按钮回调里直接 Network.RestartGame()** —— 完全复刻唯一被实机
+--     证明可行的调用方式（Automation 面板那次，第 42 条）。
+-- 之前三版把重开挂在 SaveComplete 事件 / 按帧回调状态机上，都出现过“点了不跳转”。
 
 -- ===========================================================================
 -- 输出
@@ -198,44 +191,31 @@ local function DoSave()
         Locale.Lookup("LOC_MODMISC_SAVEPANEL_SAVING_DETAIL"))
 end
 
--- 按帧推进换图状态机；换图真的生效时这个上下文会被销毁，回调自然停。
-local function SwitchWatchdog(delta)
-    if ModMiscSaveGraph ~= nil and ModMiscSaveGraph.IsSwitchPending ~= nil
-        and ModMiscSaveGraph.IsSwitchPending() then
-        local phase = ModMiscSaveGraph.TickSwitch()
-        local key = SWITCH_PHASE_KEYS[phase]
-        if key ~= nil then SetStatus(Locale.Lookup(key)) end
-    end
-    ContextPtr:RequestRefresh()
-end
-
-local function EnsureSwitchWatchdog()
-    if m_WatchdogArmed then return end
-    m_WatchdogArmed = true
-    ContextPtr:SetRefreshHandler(SwitchWatchdog)
-    ContextPtr:RequestRefresh()
-    Log("换图推进器（按帧回调）已挂")
-end
-
+-- 换图按钮：第一次 = 存原档，第二次 = 直接重开
 local function DoSwitchMap()
-    -- 换图进行中时，这次点击当“手动重试”（跳过等待立刻再发一次重启）
-    if ModMiscSaveGraph.IsSwitchPending ~= nil and ModMiscSaveGraph.IsSwitchPending() then
-        Log("已有换图在进行，按手动重试处理")
-        pcall(ModMiscSaveGraph.ForceSwitch, "面板手动重试")
-        SetStatus(Locale.Lookup("LOC_MODMISC_SAVEPANEL_PHASE_RESTARTING"))
-        EnsureSwitchWatchdog()
+    -- 第二步：原档已存好 → 在按钮回调里直接重开
+    if ModMiscSaveGraph.HasPendingSwitch() then
+        if ModMiscSaveGraph.IsSwitchSaveInFlight() then
+            -- 原档还在写：先别重开（可能把存档截断）
+            Report(Locale.Lookup("LOC_MODMISC_SAVEPANEL_SWITCH_WAIT_SAVE"),
+                Locale.Lookup("LOC_MODMISC_SAVEPANEL_SWITCH_WAIT_SAVE_DETAIL"))
+            return
+        end
+        Report(Locale.Lookup("LOC_MODMISC_SAVEPANEL_SWITCH_NOW"),
+            Locale.Lookup("LOC_MODMISC_SAVEPANEL_SWITCH_NOW_DETAIL"))
+        local ok, err = ModMiscSaveGraph.SwitchNow("面板按钮（第二次点击）")
+        if not ok then ReportError("SwitchNow", err) end
         return
     end
 
-    local ok, err = ModMiscSaveGraph.SwitchMap()
+    -- 第一步：存原档 + 记待接分支
+    local ok, idOrErr = ModMiscSaveGraph.PrepareSwitch()
     if not ok then
-        ReportError("SwitchMap", err)
+        ReportError("PrepareSwitch", idOrErr)
         return
     end
-    EnsureSwitchWatchdog()
-    -- 换图由按帧回调推进：等存储 → 存原档 → 重开（超时/重试都在状态机里）
-    Report(Locale.Lookup("LOC_MODMISC_SAVEPANEL_SWITCHING"),
-        Locale.Lookup("LOC_MODMISC_SAVEPANEL_SWITCHING_DETAIL"))
+    Report(Locale.Lookup("LOC_MODMISC_SAVEPANEL_SWITCH_PREPARED", tostring(idOrErr)),
+        Locale.Lookup("LOC_MODMISC_SAVEPANEL_SWITCH_PREPARED_DETAIL"))
 end
 
 -- ===========================================================================
