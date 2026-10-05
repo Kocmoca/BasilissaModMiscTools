@@ -108,6 +108,31 @@ local function Log(message)
     print("[ModMiscTool][SaveGraph] " .. tostring(message))
 end
 
+-- ===========================================================================
+-- 时钟：`os.time()`（Lua 标准库，epoch 秒，整数）
+--
+--   * 项目里早已验证可用：对局内写存储档的 payload `ig=1;t=<os.time()>` 实机跑通过
+--     （Support_UI 的 RunStoreProbeInGame），所以不是新引入的依赖；
+--   * 只用来量“过了几秒”（换图各阶段的等待上限、pending 有效期、存档回执自愈），
+--     1 秒粒度足够，不需要毫秒；
+--   * **不假设它一定在**：取不到时 ReadClock() 返回 nil，调用方一律按“已超时”处理并继续，
+--     宁可不等也不要把流程挂住（面板按帧回调仍在跑，只是少了时间判断）。
+--   * 它是墙上时钟（会被系统对时/用户改时间影响），只用于秒级等待；时钟往回跳时
+--     下面的 NowOrExpired 会把当前时刻当作“远远超过”，同样不会卡死。
+-- ===========================================================================
+local function ReadClock()
+    local ok, value = pcall(function() return os.time() end)
+    if not ok or value == nil then return nil end
+    return tonumber(value)
+end
+
+-- 取“现在”；取不到就返回基准 + 一个足够大的偏移（= 立刻超时）
+local function NowOrExpired(base)
+    local now = ReadClock()
+    if now ~= nil then return now, true end
+    return (tonumber(base) or 0) + 100000, false
+end
+
 -- 诊断/工具函数一律不能影响主流程
 local function TryCall(getter)
     if type(getter) ~= "function" then return nil end
@@ -142,16 +167,14 @@ local function SanitizeToken(text)
 end
 
 local function BuildNodeId()
-    local stamp = "0"
-    local ok, value = pcall(os.time)
-    if ok and value ~= nil then stamp = ToBase36(value) end
+    local stamp = ToBase36(ReadClock() or 0)
     return stamp .. ToBase36(math.random(0, 1295))
 end
 
 local function BuildStamp()
     local ok, text = pcall(function() return os.date("%Y%m%d-%H%M") end)
     if ok and text ~= nil and tostring(text) ~= "" then return SanitizeToken(text) end
-    return ToBase36(TryCall(function() return os.time() end) or 0)
+    return ToBase36(ReadClock() or 0)
 end
 
 -- node = { Id, Parent, Kind, Turn, Map, Stamp }（Parent 为 nil 时写成 0）
@@ -328,7 +351,7 @@ function API.GetPendingBranch()
 
     local writtenEpoch = tonumber(writtenAt)
     if writtenEpoch ~= nil then
-        local now = TryCall(function() return os.time() end)
+        local now = ReadClock()
         if now ~= nil and (now - writtenEpoch) > MODMISC_PENDING_MAX_AGE then
             Log("待接分支已过期（写入于 " .. tostring(writtenEpoch) .. "，" .. tostring(now - writtenEpoch)
                 .. " 秒前 > " .. tostring(MODMISC_PENDING_MAX_AGE) .. " 秒）→ 丢弃，避免误判分支")
@@ -352,7 +375,7 @@ local function SetPendingBranch(parentId, kind, stamp)
     if store == nil or store.Save == nil then return false end
     local parent = parentId
     if parent == nil or tostring(parent) == "" then parent = MODMISC_SAVE_ROOT_PARENT end
-    local now = TryCall(function() return os.time() end) or 0
+    local now = ReadClock() or 0
     local payload = tostring(parent) .. "|" .. tostring(kind or MODMISC_KIND_BRANCH)
         .. "|" .. tostring(stamp or "") .. "|" .. tostring(now)
     return store.Save(MODMISC_STORE_KEY_PENDING, payload)
@@ -741,8 +764,9 @@ local function SaveNode(node, opts)
     if m_SavePending ~= nil then
         -- 自愈：SaveComplete 有可能永远不来（引擎不给回执 / 上下文被顶掉）。
         -- 卡在这里会让之后每一次存档与换图都被拒，所以超时后丢弃旧状态、继续走。
-        local age = (TryCall(function() return os.time() end) or 0) - (m_SavePending.StartedAt or 0)
-        if age > MODMISC_SAVE_PENDING_TIMEOUT then
+        local now, clockOk = NowOrExpired(m_SavePending.StartedAt)
+        local age = now - (m_SavePending.StartedAt or 0)
+        if (not clockOk) or age > MODMISC_SAVE_PENDING_TIMEOUT then
             Log("警告：上一笔存档等回执已超时 " .. tostring(age) .. " 秒，丢弃该状态继续")
             m_SavePending = nil
             if Events ~= nil and Events.SaveComplete ~= nil then
@@ -785,7 +809,7 @@ local function SaveNode(node, opts)
         OnSaved = options.OnSaved,      -- SaveComplete 一到就回调（found 为 nil = 还没复查落盘）
         OnChecked = options.OnChecked,  -- 存档列表复查完再回调一次（found = 真的在列表里）
         Reason = options.Reason,
-        StartedAt = TryCall(function() return os.time() end) or 0,
+        StartedAt = ReadClock() or 0,
     }
     if Events ~= nil and Events.SaveComplete ~= nil then
         Events.SaveComplete.Add(OnSaveGraphSaveComplete)
@@ -866,13 +890,14 @@ end
 function API.TickSwitch()
     if m_Switch == nil then return "idle" end
     local sw = m_Switch
-    local now = TryCall(function() return os.time() end) or 0
+    -- 取不到时钟就当作“已超时”（clockOk=false）：阶段照常推进，只是不等时间
+    local now, clockOk = NowOrExpired(sw.StartedAt or sw.SavedAt or sw.LastRestartAt)
 
     -- 阶段 1：等跨存档存储就绪（有上限；超时带警告继续 —— pending 照样能写）
     if sw.Phase == "store" then
         local store = GetStore()
         local ready = (store == nil) or (store.IsReady == nil) or store.IsReady()
-        if not ready and (now - sw.StartedAt) < MODMISC_SWITCH_STORE_WAIT then
+        if not ready and clockOk and (now - sw.StartedAt) < MODMISC_SWITCH_STORE_WAIT then
             return "waiting-store"
         end
         if not ready then
@@ -909,12 +934,12 @@ function API.TickSwitch()
     -- 阶段 2：等存档（回执或超时）
     if sw.Phase == "saving" then
         local waited = now - (sw.SavedAt or now)
-        if not sw.SaveEcho and waited < MODMISC_SWITCH_SAVE_WAIT then
+        if not sw.SaveEcho and clockOk and waited < MODMISC_SWITCH_SAVE_WAIT then
             return "saving"
         end
         if not sw.SaveEcho then
             Log("警告：等存档回执超时 " .. tostring(MODMISC_SWITCH_SAVE_WAIT)
-                .. " 秒（原档仍会由引擎写完），继续换图")
+                .. " 秒（或此时取不到时钟；原档仍会由引擎写完），继续换图")
         end
         if API.GetPendingBranch() == nil then
             Log("警告：存储里读不到待接分支，新局可能接不上关系")
@@ -929,7 +954,7 @@ function API.TickSwitch()
 
     -- 阶段 3：发出重开后还活着 ⇒ 没生效，隔一会儿重试
     local sinceRestart = now - (sw.LastRestartAt or now)
-    if sinceRestart < MODMISC_SWITCH_RETRY_WAIT then
+    if clockOk and sinceRestart < MODMISC_SWITCH_RETRY_WAIT then
         return "restarting"
     end
     if (sw.Restarts or 0) < MODMISC_SWITCH_MAX_RESTARTS then
@@ -958,7 +983,7 @@ function API.ForceSwitch(reason)
     local ok = DoRestart(m_Switch.Node, tostring(reason))
     if ok then
         m_Switch.Restarts = (m_Switch.Restarts or 0) + 1
-        m_Switch.LastRestartAt = TryCall(function() return os.time() end) or 0
+        m_Switch.LastRestartAt = ReadClock() or 0
     end
     return ok
 end
@@ -974,8 +999,7 @@ function API.SwitchMap()
         return false, "上一笔存档还在等回执，稍后再试"
     end
 
-    local now = TryCall(function() return os.time() end) or 0
-    m_Switch = { Phase = "store", StartedAt = now }
+    m_Switch = { Phase = "store", StartedAt = ReadClock() or 0 }
 
     -- 顺手触发一次存储扫描（不干等：TickSwitch 里有上限，超时带警告继续）
     local store = GetStore()

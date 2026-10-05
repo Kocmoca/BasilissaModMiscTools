@@ -1212,7 +1212,10 @@ gameplay 侧要换图，走 `ExposedMembers.ModMiscToolScript.WorldBuilderAPI.Se
 * **重开只从按帧回调里发出** —— 与“点按钮重开”同一类调用上下文，是唯一被实机证明可行的那条路（第 42 条）；
 * 每一步都有超时上限（等存储 5 秒 / 等存档 12 秒 / 重试间隔 8 秒 ×3），任何一环不回包都不会卡死；
 * 发出重开后能自我检测（我们的代码还在跑 = 没生效）→ 自动重试 → 最后写清出路并结束状态机；
-* 面板状态行按阶段显示五条文案：`LOC_MODMISC_SAVEPANEL_PHASE_{STORE,SAVING,RESTARTING,RETRYING,FAILED}`。
+* 面板状态行按阶段显示五条文案：`LOC_MODMISC_SAVEPANEL_PHASE_{STORE,SAVING,RESTARTING,RETRYING,FAILED}`；
+* **时钟**：Lua 标准库 `os.time()`（epoch 秒，1 秒粒度；对局内可用——项目里存储档 payload 的
+  `t=<os.time()>` 早已实机跑通）。取不到时钟时按“已超时”处理并继续推进，绝不因为没时钟而卡住；
+  它只用于秒级等待，系统对时导致时钟回跳也不会把流程挂死（`NowOrExpired` 兜底）。
 
 #### 3.13.3c 存储内存表是「每 context 一份」（踩过）
 
