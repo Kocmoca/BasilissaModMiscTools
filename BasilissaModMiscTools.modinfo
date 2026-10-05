@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<Mod id="a1b2c3d4-5e6f-7a8b-9c0d-1e2f3a4b5c6d" version="1.76">
+<Mod id="a1b2c3d4-5e6f-7a8b-9c0d-1e2f3a4b5c6d" version="1.77">
     <Properties>
         <Name>Basilissa Mod Misc Tools</Name>
         <Description>LOC_MODMISC_MOD_DESCRIPTION</Description>
@@ -81,6 +81,9 @@
             <File>UI/ModMiscModGroupStore.lua</File>
             <!-- 大载荷门面（优先配置组通道、回退分片 blob）。 -->
             <File>UI/ModMiscBigStore.lua</File>
+            <!-- 通用数据协议 + 数据登记表（生命周期/类型/通道；没登记不许写）。 -->
+            <File>UI/ModMiscDataProtocol.lua</File>
+            <File>UI/ModMiscDataRegistry.lua</File>
             <!-- 引擎设置类键值存储探针（Options.SetUserOption / UserConfiguration.SetValue）：
                  只读探针，不占存档也不占文件名，玩家界面看不见。 -->
             <File>UI/ModMiscNameStoreProbe.lua</File>
@@ -127,6 +130,8 @@
             <File>UI/ModMiscStore.lua</File>
             <File>UI/ModMiscModGroupStore.lua</File>
             <File>UI/ModMiscBigStore.lua</File>
+            <File>UI/ModMiscDataProtocol.lua</File>
+            <File>UI/ModMiscDataRegistry.lua</File>
             <File>UI/ModMiscNameStoreProbe.lua</File>
             <File>UI/ModMiscAssetStore.lua</File>
             <File>UI/ModMiscCreateGame.lua</File>
@@ -260,6 +265,8 @@
         <File>UI/ModMiscStore.lua</File>
         <File>UI/ModMiscModGroupStore.lua</File>
         <File>UI/ModMiscBigStore.lua</File>
+        <File>UI/ModMiscDataProtocol.lua</File>
+        <File>UI/ModMiscDataRegistry.lua</File>
         <File>UI/ModMiscNameStoreProbe.lua</File>
         <File>UI/ModMiscAssetStore.lua</File>
         <File>UI/ModMiscCreateGame.lua</File>

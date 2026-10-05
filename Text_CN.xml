@@ -424,6 +424,48 @@
 		<Replace Tag="LOC_MODMISC_AUTOMATION_TEST_NAMESTORE_CLEAR_SUMMARY" Language="zh_Hans_CN">
 			<Text>设置存储：探针键已清</Text>
 		</Replace>
+		<Replace Tag="LOC_MODMISC_AUTOMATION_TEST_DATA_LABEL" Language="zh_Hans_CN">
+			<Text>数据协议（登记表 / 审计 / GC；清永久数据要点两次）</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_AUTOMATION_TEST_DATA_REGISTERED" Language="zh_Hans_CN">
+			<Text>登记表</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_AUTOMATION_TEST_DATA_AUDIT" Language="zh_Hans_CN">
+			<Text>审计</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_AUTOMATION_TEST_DATA_GC" Language="zh_Hans_CN">
+			<Text>GC</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_AUTOMATION_TEST_DATA_PURGE" Language="zh_Hans_CN">
+			<Text>清永久数据</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_AUTOMATION_TEST_DATA_REGISTERED_TEXT" Language="zh_Hans_CN">
+			<Text>数据登记表：{1_Detail}</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_AUTOMATION_TEST_DATA_REGISTERED_SUMMARY" Language="zh_Hans_CN">
+			<Text>数据登记表：共 {1_Count} 条</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_AUTOMATION_TEST_DATA_AUDIT_TEXT" Language="zh_Hans_CN">
+			<Text>数据审计：{1_Detail}</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_AUTOMATION_TEST_DATA_AUDIT_SUMMARY" Language="zh_Hans_CN">
+			<Text>数据审计：登记 {1_Count} 条，盘上有 {2_Present} 条，孤儿 {3_Orphans} 条</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_AUTOMATION_TEST_DATA_GC_TEXT" Language="zh_Hans_CN">
+			<Text>数据 GC：{1_Detail}</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_AUTOMATION_TEST_DATA_GC_SUMMARY" Language="zh_Hans_CN">
+			<Text>数据 GC：清过期 {1_Removed} 项，清孤儿片 {2_Orphans} 条</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_AUTOMATION_TEST_DATA_PURGE_ARMED" Language="zh_Hans_CN">
+			<Text>清永久数据：已上膛 —— 5 秒内再点一次确认</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_AUTOMATION_TEST_DATA_PURGED_TEXT" Language="zh_Hans_CN">
+			<Text>清永久数据：{1_Detail}</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_AUTOMATION_TEST_DATA_PURGED_SUMMARY" Language="zh_Hans_CN">
+			<Text>清永久数据：已清 {1_Count} 条数据集</Text>
+		</Replace>
 		<Replace Tag="LOC_MODMISC_AUTOMATION_TEST_NAMESTORE_LABEL" Language="zh_Hans_CN">
 			<Text>设置存储（玩家看不见）——已实测：useroption 被引擎拒绝、userconfig 留不住值</Text>
 		</Replace>

@@ -131,24 +131,6 @@
             <GridButton ID="AutomationTestModGroupChunkSize" Anchor="L,T" Offset="680,786" Size="215,52"
                         Style="ButtonControl" FontSize="24" String="" />
 
-            <!-- 引擎设置类键值存储（Options.SetUserOption / UserConfiguration.SetValue）：
-                 实机已证：useroption 被引擎拒（“not a registered option”）、userconfig 留不住值。
-                 这两个按钮留着是为了随时复现结论。 -->
-            <Label ID="AutomationTestNameStoreLabel" Anchor="L,T" Offset="20,842" Size="860,24"
-                   FontSize="22" Color="225,225,225,255" VerticalAlignment="Center"
-                   String="LOC_MODMISC_AUTOMATION_TEST_NAMESTORE_LABEL" />
-            <GridButton ID="AutomationTestNameStoreSelfTest" Anchor="L,T" Offset="20,870" Size="205,52"
-                        Style="ButtonControl" FontSize="24"
-                        String="LOC_MODMISC_AUTOMATION_TEST_NAMESTORE_SELFTEST" />
-            <GridButton ID="AutomationTestNameStoreWrite" Anchor="L,T" Offset="240,870" Size="205,52"
-                        Style="ButtonControl" FontSize="24"
-                        String="LOC_MODMISC_AUTOMATION_TEST_NAMESTORE_WRITE" />
-            <GridButton ID="AutomationTestNameStoreRead" Anchor="L,T" Offset="460,870" Size="205,52"
-                        Style="ButtonControl" FontSize="24"
-                        String="LOC_MODMISC_AUTOMATION_TEST_NAMESTORE_READ" />
-            <GridButton ID="AutomationTestNameStoreClear" Anchor="L,T" Offset="680,870" Size="215,52"
-                        Style="ButtonControl" FontSize="24"
-                        String="LOC_MODMISC_AUTOMATION_TEST_NAMESTORE_CLEAR" />
 
 
             <!-- ============================================================
@@ -184,6 +166,43 @@
             <GridButton ID="AutomationCreateGameExit" Anchor="L,T" Offset="600,370" Size="280,56"
                         Style="ButtonControl" FontSize="26" Hidden="1"
                         String="LOC_MODMISC_CREATEGAME_EXIT" />
+
+            <!-- 【时间线页】引擎设置类键值存储（Options.SetUserOption / UserConfiguration.SetValue）：
+                 实机已证：useroption 被引擎拒（“not a registered option”）、userconfig 留不住值。
+                 留在这里是为了随时复现结论。 -->
+            <Label Hidden="1" ID="AutomationTestNameStoreLabel" Anchor="L,T" Offset="20,440" Size="860,24"
+                   FontSize="22" Color="225,225,225,255" VerticalAlignment="Center"
+                   String="LOC_MODMISC_AUTOMATION_TEST_NAMESTORE_LABEL" />
+            <GridButton Hidden="1" ID="AutomationTestNameStoreSelfTest" Anchor="L,T" Offset="20,470" Size="205,50"
+                        Style="ButtonControl" FontSize="24"
+                        String="LOC_MODMISC_AUTOMATION_TEST_NAMESTORE_SELFTEST" />
+            <GridButton Hidden="1" ID="AutomationTestNameStoreWrite" Anchor="L,T" Offset="240,470" Size="205,50"
+                        Style="ButtonControl" FontSize="24"
+                        String="LOC_MODMISC_AUTOMATION_TEST_NAMESTORE_WRITE" />
+            <GridButton Hidden="1" ID="AutomationTestNameStoreRead" Anchor="L,T" Offset="460,470" Size="205,50"
+                        Style="ButtonControl" FontSize="24"
+                        String="LOC_MODMISC_AUTOMATION_TEST_NAMESTORE_READ" />
+            <GridButton Hidden="1" ID="AutomationTestNameStoreClear" Anchor="L,T" Offset="680,470" Size="215,50"
+                        Style="ButtonControl" FontSize="24"
+                        String="LOC_MODMISC_AUTOMATION_TEST_NAMESTORE_CLEAR" />
+
+            <!-- 数据协议（ModMiscDataProtocol）：登记表 / 审计 / GC / 慎重清理。
+                 生命周期：永久（permanent，慎重）/ 进程内（session）/ 用后即焚（ephemeral，带 TTL）。 -->
+            <Label ID="AutomationTestDataLabel" Anchor="L,T" Offset="20,842" Size="860,24"
+                   FontSize="22" Color="225,225,225,255" VerticalAlignment="Center"
+                   String="LOC_MODMISC_AUTOMATION_TEST_DATA_LABEL" />
+            <GridButton ID="AutomationTestDataRegistered" Anchor="L,T" Offset="20,870" Size="205,52"
+                        Style="ButtonControl" FontSize="24"
+                        String="LOC_MODMISC_AUTOMATION_TEST_DATA_REGISTERED" />
+            <GridButton ID="AutomationTestDataAudit" Anchor="L,T" Offset="240,870" Size="205,52"
+                        Style="ButtonControl" FontSize="24"
+                        String="LOC_MODMISC_AUTOMATION_TEST_DATA_AUDIT" />
+            <GridButton ID="AutomationTestDataGC" Anchor="L,T" Offset="460,870" Size="205,52"
+                        Style="ButtonControl" FontSize="24"
+                        String="LOC_MODMISC_AUTOMATION_TEST_DATA_GC" />
+            <GridButton ID="AutomationTestDataPurge" Anchor="L,T" Offset="680,870" Size="215,52"
+                        Style="ButtonControl" FontSize="24"
+                        String="LOC_MODMISC_AUTOMATION_TEST_DATA_PURGE" />
 
             <!-- 展开的选项列表 -->
             <Container ID="AutomationTestOptionPanel" Anchor="L,T" Size="660,300" ConsumeMouse="1" Hidden="1">

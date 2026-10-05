@@ -20,6 +20,8 @@ include("Civ6Common")  -- ReadCustomData / WriteCustomData（本 mod 的 replace
 include("ModMiscStore")  -- 跨存档存储（存档名编码通道）：本面板的存储读写按钮用它
 include("ModMiscModGroupStore")  -- 跨存档存储（模组配置组名字通道，授权者 2026-10-05 提的方向）
 include("ModMiscNameStoreProbe")  -- 探针：引擎设置类键值存储（Options.UserOption / UserConfiguration）
+include("ModMiscDataProtocol")  -- 通用数据协议（登记表 / 序列化 / 审计 / GC）
+include("ModMiscDataRegistry")  -- 登记表：谁是永久、谁用后即焚、走哪条通道
 include("ModMiscAssetStore")  -- 永久资产放置（记录落 CustomData，读档自动重放）
 include("ModMiscCreateGame")  -- 对局内「创建新局 / 换地图」验证（含开局探针的判定逻辑）
 print("[ModMiscTool][AutomationTest] panel loading build=" .. tostring(MODMISC_BUILD_TAG))
@@ -1324,6 +1326,104 @@ local function NameStoreClear()
 end
 
 -- ===========================================================================
+-- 数据协议（登记表 / 审计 / GC / 慎重清理）
+--
+-- 规矩在 UI/ModMiscDataRegistry.lua 那张表里：没登记的键写不进去（DataProtocol.Save 会拒）。
+-- 这里只做“把现状摊开给人看 + 收拾过期数据 + 慎重的清空”。
+-- ===========================================================================
+local m_PurgeArmedAt = nil
+
+local function DescribeDataProtocol(report)
+    if DataProtocol == nil then return "DataProtocol 没加载" end
+    local lines = {}
+    for _, entry in ipairs(report.Entries or {}) do
+        local line = "  " .. tostring(entry.Name) .. " [" .. tostring(entry.Lifecycle)
+            .. "/" .. tostring(entry.Channel) .. "] "
+        if entry.Present then
+            line = line .. "有 " .. tostring(entry.Bytes or "?") .. "B"
+            if entry.Stamp ~= nil and entry.Stamp > 0 then
+                line = line .. " 写入于 " .. tostring(entry.Stamp)
+                if entry.Age ~= nil then line = line .. "（" .. tostring(entry.Age) .. " 秒前）" end
+            end
+        else
+            line = line .. "（空）"
+        end
+        if entry.Note ~= nil then line = line .. " " .. tostring(entry.Note) end
+        table.insert(lines, line)
+    end
+    if report.BigGroups ~= nil then
+        table.insert(lines, "  大通道里我们的数据片：" .. tostring(report.BigGroups) .. " 条")
+    end
+    for _, orphan in ipairs(report.Orphans or {}) do
+        table.insert(lines, "  孤儿（没人认领）：" .. tostring(orphan.Key))
+    end
+    return table.concat(lines, "\n")
+end
+
+local function DataRegistered()
+    if DataProtocol == nil then SetError("DataRegistered", "DataProtocol 没加载") return end
+    local specs = DataProtocol.GetRegistered()
+    local lines = {}
+    for _, spec in ipairs(specs) do
+        table.insert(lines, "  " .. tostring(spec.Name) .. "｜" .. tostring(spec.Lifecycle)
+            .. "｜" .. tostring(spec.Channel) .. "｜owner=" .. tostring(spec.Owner or "-")
+            .. "｜v" .. tostring(spec.Version)
+            .. (spec.TTL ~= nil and ("｜TTL " .. tostring(spec.TTL) .. "s") or "")
+            .. (spec.AutoDeleteOnLoad and "｜读到就删" or ""))
+        if spec.Describe ~= nil then table.insert(lines, "      " .. tostring(spec.Describe)) end
+    end
+    SetOutputDetail(Locale.Lookup("LOC_MODMISC_AUTOMATION_TEST_DATA_REGISTERED_TEXT",
+            table.concat(lines, "\n")),
+        Locale.Lookup("LOC_MODMISC_AUTOMATION_TEST_DATA_REGISTERED_SUMMARY", tostring(#specs)),
+        true)
+end
+
+local function DataAudit()
+    if DataProtocol == nil then SetError("DataAudit", "DataProtocol 没加载") return end
+    local report = DataProtocol.Audit()
+    local present, orphans = 0, #(report.Orphans or {})
+    for _, entry in ipairs(report.Entries or {}) do
+        if entry.Present then present = present + 1 end
+    end
+    SetOutputDetail(Locale.Lookup("LOC_MODMISC_AUTOMATION_TEST_DATA_AUDIT_TEXT",
+            DescribeDataProtocol(report)),
+        Locale.Lookup("LOC_MODMISC_AUTOMATION_TEST_DATA_AUDIT_SUMMARY",
+            tostring(#(report.Entries or {})), tostring(present), tostring(orphans)),
+        true)
+end
+
+local function DataGC()
+    if DataProtocol == nil then SetError("DataGC", "DataProtocol 没加载") return end
+    local result = DataProtocol.GC({ PurgeOrphans = true })
+    local lines = { "  清掉过期项：" .. tostring(result.Removed)
+        .. "（" .. table.concat(result.Expired or {}, ", ") .. "）",
+        "  清掉孤儿片：" .. tostring(result.OrphansRemoved) }
+    SetOutputDetail(Locale.Lookup("LOC_MODMISC_AUTOMATION_TEST_DATA_GC_TEXT",
+            table.concat(lines, "\n")),
+        Locale.Lookup("LOC_MODMISC_AUTOMATION_TEST_DATA_GC_SUMMARY",
+            tostring(result.Removed), tostring(result.OrphansRemoved)),
+        true)
+end
+
+-- 清永久数据要**点两次**（5 秒内）：永久数据写下去就是长期留在玩家机器上的东西
+local function DataPurge()
+    if DataProtocol == nil then SetError("DataPurge", "DataProtocol 没加载") return end
+    local now = tonumber(os.time()) or 0
+    if m_PurgeArmedAt == nil or (now - m_PurgeArmedAt) > 5 then
+        m_PurgeArmedAt = now
+        SetOutputDetail(Locale.Lookup("LOC_MODMISC_AUTOMATION_TEST_DATA_PURGE_ARMED"),
+            Locale.Lookup("LOC_MODMISC_AUTOMATION_TEST_DATA_PURGE_ARMED"), true)
+        return
+    end
+    m_PurgeArmedAt = nil
+    local count = DataProtocol.PurgeAllPermanent()
+    SetOutputDetail(Locale.Lookup("LOC_MODMISC_AUTOMATION_TEST_DATA_PURGED_TEXT",
+            "  已清 " .. tostring(count) .. " 个永久数据集（关系树头指针等会一起没）"),
+        Locale.Lookup("LOC_MODMISC_AUTOMATION_TEST_DATA_PURGED_SUMMARY", tostring(count)),
+        true)
+end
+
+-- ===========================================================================
 -- AssetPreview：摆放 / 清除
 -- ===========================================================================
 
@@ -1632,14 +1732,17 @@ local PAGE_MAIN_CONTROLS = {
     "AutomationTestModGroupRead", "AutomationTestModGroupInfo", "AutomationTestModGroupClear",
     "AutomationTestModGroupSize", "AutomationTestModGroupNameCeiling", "AutomationTestModGroupChunkSize",
     -- 引擎设置类键值存储探针（Options.SetUserOption / UserConfiguration）
-    "AutomationTestNameStoreLabel", "AutomationTestNameStoreWrite",
-    "AutomationTestNameStoreSelfTest", "AutomationTestNameStoreRead", "AutomationTestNameStoreClear",
+    "AutomationTestDataLabel", "AutomationTestDataRegistered", "AutomationTestDataAudit",
+    "AutomationTestDataGC", "AutomationTestDataPurge",
 }
 
 local PAGE_TIMELINE_CONTROLS = {
     "AutomationCreateGameMapLabel", "AutomationCreateGameMapButton",
     "AutomationCreateGameProbe", "AutomationCreateGameApplyMap", "AutomationCreateGameArmMarker",
     "AutomationCreateGameSave", "AutomationCreateGameRestart", "AutomationCreateGameExit",
+    -- 引擎设置类键值存储探针（两条通道已实测失败）挪到这一页：留着复现结论用
+    "AutomationTestNameStoreLabel", "AutomationTestNameStoreSelfTest", "AutomationTestNameStoreWrite",
+    "AutomationTestNameStoreRead", "AutomationTestNameStoreClear",
 }
 
 local function SetControlGroupHidden(names, hidden)
@@ -1762,6 +1865,14 @@ function OnInit()
         function() SafeCall("ModGroupSize", function() ToggleOptionList("modGroupSize") end) end)
     Controls.AutomationTestNameStoreWrite:RegisterCallback(Mouse.eLClick,
         function() SafeCall("NameStoreWrite", NameStoreWrite) end)
+    Controls.AutomationTestDataRegistered:RegisterCallback(Mouse.eLClick,
+        function() SafeCall("DataRegistered", DataRegistered) end)
+    Controls.AutomationTestDataAudit:RegisterCallback(Mouse.eLClick,
+        function() SafeCall("DataAudit", DataAudit) end)
+    Controls.AutomationTestDataGC:RegisterCallback(Mouse.eLClick,
+        function() SafeCall("DataGC", DataGC) end)
+    Controls.AutomationTestDataPurge:RegisterCallback(Mouse.eLClick,
+        function() SafeCall("DataPurge", DataPurge) end)
     Controls.AutomationTestNameStoreSelfTest:RegisterCallback(Mouse.eLClick,
         function() SafeCall("NameStoreSelfTest", NameStoreSelfTest) end)
     Controls.AutomationTestNameStoreRead:RegisterCallback(Mouse.eLClick,

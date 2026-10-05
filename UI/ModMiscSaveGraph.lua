@@ -813,7 +813,11 @@ function API.SendEvent(targetNodeId, event)
             .. "_" .. tostring(TryCall(function() return os.time() end) or 0)
             .. tostring(math.random(100, 999))
         local bigOk, channel, detail
-        if ModMiscBigStore ~= nil and ModMiscBigStore.Save ~= nil then
+        if DataProtocol ~= nil and DataProtocol.Save ~= nil then
+            -- 走通用协议：登记表里 evb_* 是 ephemeral/big，写入会被审计看到
+            bigOk, detail = DataProtocol.Save(blobKey, tostring(event.PayloadText))
+            channel = "protocol"
+        elseif ModMiscBigStore ~= nil and ModMiscBigStore.Save ~= nil then
             bigOk, channel, detail = ModMiscBigStore.Save(blobKey, tostring(event.PayloadText))
         else
             -- 极端情况（门面没加载）：退回原来的分片 blob 写法，别把功能整个卡住
@@ -878,7 +882,16 @@ function API.FetchEventsForNode(nodeId)
                     Blob = blobKey,
                 }
                 -- 大载荷：读回来挂在事件上（缺片/重复片会明确报出来，不返回半截）
-                if blobKey ~= nil and (ModMiscBigStore == nil or ModMiscBigStore.Load == nil)
+                if blobKey ~= nil and DataProtocol ~= nil and DataProtocol.Load ~= nil then
+                    local text, channel = DataProtocol.Load(blobKey)
+                    if text == nil then
+                        Log("警告：事件 " .. tostring(eventRecord.Type) .. " 的大载荷读不出来（"
+                            .. tostring(channel) .. "），只带元数据入列")
+                    else
+                        eventRecord.PayloadText = text
+                        eventRecord.PayloadChannel = "protocol"
+                    end
+                elseif blobKey ~= nil and (ModMiscBigStore == nil or ModMiscBigStore.Load == nil)
                     and store.LoadBlob ~= nil then
                     local text, err = store.LoadBlob(blobKey)
                     if text == nil then
@@ -927,7 +940,9 @@ function API.DropEventKeys(keys)
         end
         if store.Remove(key) then removed = removed + 1 end
         if blobKey ~= nil then
-            if ModMiscBigStore ~= nil and ModMiscBigStore.Remove ~= nil then
+            if DataProtocol ~= nil and DataProtocol.Remove ~= nil then
+                DataProtocol.Remove(blobKey)
+            elseif ModMiscBigStore ~= nil and ModMiscBigStore.Remove ~= nil then
                 ModMiscBigStore.Remove(blobKey)  -- 内部两条通道都清
             elseif store.RemoveBlob ~= nil then
                 store.RemoveBlob(blobKey)        -- 回退路径

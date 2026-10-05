@@ -424,6 +424,48 @@
 		<Row Tag="LOC_MODMISC_AUTOMATION_TEST_NAMESTORE_CLEAR_SUMMARY">
 			<Text>Settings store: probe keys cleared</Text>
 		</Row>
+		<Row Tag="LOC_MODMISC_AUTOMATION_TEST_DATA_LABEL">
+			<Text>Data protocol (registry / audit / GC; purging permanent data needs two taps)</Text>
+		</Row>
+		<Row Tag="LOC_MODMISC_AUTOMATION_TEST_DATA_REGISTERED">
+			<Text>Registry</Text>
+		</Row>
+		<Row Tag="LOC_MODMISC_AUTOMATION_TEST_DATA_AUDIT">
+			<Text>Audit</Text>
+		</Row>
+		<Row Tag="LOC_MODMISC_AUTOMATION_TEST_DATA_GC">
+			<Text>GC</Text>
+		</Row>
+		<Row Tag="LOC_MODMISC_AUTOMATION_TEST_DATA_PURGE">
+			<Text>Purge permanent</Text>
+		</Row>
+		<Row Tag="LOC_MODMISC_AUTOMATION_TEST_DATA_REGISTERED_TEXT">
+			<Text>Data registry: {1_Detail}</Text>
+		</Row>
+		<Row Tag="LOC_MODMISC_AUTOMATION_TEST_DATA_REGISTERED_SUMMARY">
+			<Text>Data registry: {1_Count} dataset(s)</Text>
+		</Row>
+		<Row Tag="LOC_MODMISC_AUTOMATION_TEST_DATA_AUDIT_TEXT">
+			<Text>Data audit: {1_Detail}</Text>
+		</Row>
+		<Row Tag="LOC_MODMISC_AUTOMATION_TEST_DATA_AUDIT_SUMMARY">
+			<Text>Data audit: {1_Count} registered, {2_Present} on disk, {3_Orphans} orphan(s)</Text>
+		</Row>
+		<Row Tag="LOC_MODMISC_AUTOMATION_TEST_DATA_GC_TEXT">
+			<Text>Data GC: {1_Detail}</Text>
+		</Row>
+		<Row Tag="LOC_MODMISC_AUTOMATION_TEST_DATA_GC_SUMMARY">
+			<Text>Data GC: {1_Removed} expired item(s), {2_Orphans} orphan part(s) removed</Text>
+		</Row>
+		<Row Tag="LOC_MODMISC_AUTOMATION_TEST_DATA_PURGE_ARMED">
+			<Text>Purge permanent: armed - tap again within 5 seconds to confirm</Text>
+		</Row>
+		<Row Tag="LOC_MODMISC_AUTOMATION_TEST_DATA_PURGED_TEXT">
+			<Text>Purge permanent: {1_Detail}</Text>
+		</Row>
+		<Row Tag="LOC_MODMISC_AUTOMATION_TEST_DATA_PURGED_SUMMARY">
+			<Text>Purge permanent: {1_Count} dataset(s) removed</Text>
+		</Row>
 		<Row Tag="LOC_MODMISC_AUTOMATION_TEST_NAMESTORE_LABEL">
 			<Text>Settings store (invisible to the player) - tested: useroption rejected by the engine, userconfig does not keep values</Text>
 		</Row>

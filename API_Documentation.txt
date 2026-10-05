@@ -1405,6 +1405,39 @@ API_Verification_Status.md §18.4/§18.6。
 数据量控制在几百 KB 内，更大的表改用载体存档。
 
 ------------------------------------------------------------------------------
+### 3.13.13 通用数据存储协议（ModMiscDataProtocol + ModMiscDataRegistry）
+------------------------------------------------------------------------------
+
+三条铁律：**没登记不许写** / **永久数据必须写 Owner+Version** / **用后即焚的要真的焚**。
+
+    DataProtocol.Register{ Name, Lifecycle, Channel, Owner, Version, TTL,
+                           AutoDeleteOnLoad, Type, MaxBytes, Describe, Migrate }
+    DataProtocol.Save(name, value) / Load(name, {keep}) / Remove(name)
+    DataProtocol.SaveTree(name, root, {PartBytes}) / LoadTree(name) / RemoveTree(name)
+    DataProtocol.Audit()          -- 每条盘上有没有/多大/多老 + 孤儿片
+    DataProtocol.GC{ PurgeOrphans } -- 清过期 ephemeral（+可选清孤儿）
+    DataProtocol.Purge(name) / PurgeAllPermanent()   -- 慎重；通配条目按前缀清现有键
+    DataProtocol.SetSession / GetSession             -- 进程内数据（绝不落盘）
+
+生命周期：`permanent`（永久，慎重）/ `session`（进程内内存）/ `ephemeral`（用后即焚，TTL）。
+通道：`memory` / `small`（存档名编码，~100B、不用载入可读）/ `big`（配置组，实测 1MB）/
+`carrier`（载体档，要载入）。类型：string / number / table（table 递归，键值都支持）。
+
+信封：`MMT1|<生命周期>|<版本>|<写入时间>|<类型>|<负载长度>|<负载>`；
+值编码 `n` / `b0|b1` / `d…;` / `s<长度>:<字节>` / `t<个数>:{键值…}`（长度前缀，二进制安全）。
+解码严格：长度/个数/尾部不符一律报错，不返回半截数据；信封带版本 ⇒ 结构升级给 `Migrate` 即可。
+
+大型多层数据：`SaveTree` 把负载切 N 片存 `<name>$p1…`，头记录存 `<name>$h`
+（`{Kind="tree", Bytes, Parts={{Key,Bytes}…}}`，放得下就走小通道）；`LoadTree` 逐片校验后拼回。
+
+现有数据全部登记（见 `UI/ModMiscDataRegistry.lua`）：`sg_head`(permanent/small)、
+`sg_pending`(ephemeral/small, 900s)、`ev_*`(ephemeral/small, 7d)、`evb_*`(ephemeral/big, 7d,
+**故意不设读到就删**)、`blob*`/`carrier*`(permanent)、`panel`/`probe`/`nameprobe`(ephemeral/big, 1h)。
+事件大载荷链路已改走协议；其余旧调用点先登记、动到哪块迁哪块。
+
+面板「数据协议」一行：**登记表 / 审计 / GC / 清永久数据（点两次确认）**。
+
+------------------------------------------------------------------------------
 ### 3.14 从关系树读档 / 回合同步（逻辑）/ 跨存档事件
 ------------------------------------------------------------------------------
 
