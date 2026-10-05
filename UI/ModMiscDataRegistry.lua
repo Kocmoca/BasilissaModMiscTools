@@ -61,6 +61,13 @@ Register({
 })
 
 Register({
+    -- 换图时要带过去的**数据**（大块）：一次换图一份，新局开局读走就删（用后即焚）
+    Name = "xmap_*", Lifecycle = "ephemeral", Channel = "big",
+    Owner = "换图交接", Version = 1, Type = "table", TTL = 900,
+    Describe = "换图交接载荷（表）——新局开局消费后删掉，900 秒没被消费就过期",
+})
+
+Register({
     -- 注意：**不能**设 AutoDeleteOnLoad —— 取件（FetchEventsForNode）和投递是两步，
     -- 读到就删的话“取了没投”就把载荷弄丢了。这里靠 TTL + 投递时显式 Remove 双保险。
     Name = "evb_*", Lifecycle = "ephemeral", Channel = "big",
@@ -92,6 +99,11 @@ Register({
     Name = "probe_*", Lifecycle = "ephemeral", Channel = "small",
     Owner = "诊断探针", Version = 1, Type = "string", TTL = 3600, MaxBytes = 96,
     Describe = "开局/读档探针写的小标记（selftest/ingame 这类；1 小时过期）",
+})
+
+Register({
+    Name = "cg_marker", Lifecycle = "persave", Owner = "创建新局验证", Version = 1, Type = "table",
+    Describe = "切换/建局前打的时间戳标记（表：Act/Nonce/At/Fingerprint）——用来判断“这局是不是全新的”",
 })
 
 Register({

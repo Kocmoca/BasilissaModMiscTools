@@ -908,6 +908,7 @@ Support_UI: [TurnEvent] 开局收件：0 条（no-node）
 | 81 | 通道 G：`UserConfiguration.SetValue` 存自定义键 | `[已实机失败]` | 实机：写 4096 B **不报错**，但立刻读回是 `[没有这个键]` ⇒ 值没留下（`GetValue` 对未注册键返回 nil）。与通道 F 同因：引擎只认自己那套键。 |
 | 83 | **通用数据协议 `ModMiscDataProtocol`**（生命周期/类型/通道/审计/GC） | `[已落地·桩测试全绿]` | 三条铁律：没登记不许写 / 永久数据必须写 Owner+Version / 用后即焚真的焚。信封 `MMT1|生命周期|版本|时间|类型|长度|负载`，值编码长度前缀（二进制安全），解码严格、绝不返回半截。`SaveTree` = 头记录指向分片。 |
 | 84 | **数据登记表 `ModMiscDataRegistry`** | `[已落地]` | 现有 9 条数据集全部登记（`sg_head`/`sg_pending`/`ev_*`/`evb_*`/`blob*`/`carrier*`/`panel`/`probe`/`nameprobe`）。加新数据 = 加一行。 |
+| 89 | **换图交接（地图间数据传输）走协议**：ephemeral 交接单 + ephemeral 大载荷 + persave 身份 | `[已落地·9 项断言全绿]` | 交接单 `sg_pending`（ephemeral/small，TTL 900s，带 FromMap/ToMap/PayloadKey）；载荷 `xmap_*`（ephemeral/big，读走即删）；身份 `sgnode`（persave）；换图**不新增永久数据**（断言盯住）。`OnMapHandoff` 可注册接收方，已挂 ExposedMembers。 |
 | 88 | **存储调用全面迁移到协议**（旧的拼串/散键/回退链已删） | `[已落地·12 套桩测试全绿]` | 主线头/待接分支/事件信箱/事件大载荷/本局身份/资产记录/建局侧城邦数量/UI 数据/探针 全部走 `DataProtocol`；新增 `persave` 生命周期与 `save`(CustomData) 通道；小通道新增**自动溢出**（超单键上限自动分片，逻辑键不变）。 |
 | 87 | 协议**保真**（混合表/精度/共享引用/环/元表类）与**检测**（误领/丢包/损坏） | `[已落地·75+58 项全绿]` | 数字用 `%.17g`；共享子表与环用引用还原成同一张表；元表只存类名、解码侧 `RegisterClass` 装回、没登记就明确报告；信封 v2 带**数据集名**（拦误领）与**校验和**（拦静默损坏）；v1 兼容读。 |
 | 86 | 协议传输模拟器（devs 仓 `Tests/protocol_transport_sim.lua`） | `[已落地·58 项全绿]` | 本地模拟三条通道（含故障注入、真跨进程），直接跑 mod 真模块；抓出并修掉 GC/Audit 通配与半成品残留两个真 bug。 |
@@ -1524,3 +1525,44 @@ MMT2|生命周期|版本|写入时间|类型|<名字长度>:<数据集名>|<校�
 * devs 仓模拟器新增**场景 10（随档通道）**：读档还在、**新局不继承**、审计能列出；
   共 **10 场景 / 62 项全绿**；
 * `fwdcheck2`（前向引用 + 未定义标识符）与 `luac -p` 全项目通过。
+
+### 19.11 换图（地图间数据传输）全部走协议：用后即焚 + 随档落地（2026-10-05）
+
+授权者：把切换地图机制里的地图间数据传输全部改成新方法；**综合使用本地存储与用后即焚，
+避免不必要的永久数据**。
+
+#### 交接的三层生命周期（各就各位，谁都不多留一秒）
+
+| 数据 | 生命周期 / 通道 | 为什么 |
+|---|---|---|
+| **交接单**（`sg_pending`） | **ephemeral / small**（TTL 900 秒） | 只在“存完原档 → 新局开局”这一小段里活着；新局开局读走即删。放 small 通道：不用载入就能读，且不出现在模组界面 |
+| **交接载荷**（`xmap_*`，要带过去的数据） | **ephemeral / big**（TTL 900 秒） | 可能几十 KB～MB；放配置组大通道（实测 1 MB）。同样是“读走即删”（`TakeMapHandoffPayload` 内部先读后删） |
+| **本局身份**（`sgnode`） | **persave / save(CustomData)** | 新局开局把交接单里的关系固化进**这一局的档**（父节点/类型/地图/逻辑回合偏移）—— 从此不再依赖“存储此刻读不读得到” |
+| 主线头（`sg_head`） | permanent / small | 关系树入口，正常存档时才写；**换图这一步不碰它** |
+
+字段上交接单带上 `FromMap / ToMap / Engine / PayloadKey`，所以新局日志能直接说清
+“从哪张图换到哪张图、带了什么”。
+
+#### 换了什么（都在 `ModMiscSaveGraph` 里）
+
+    API.PrepareSwitch({ FromMap=, ToMap=, Engine=, Payload=<任意表> })
+    API.SetMapHandoffPayload(payload) / API.TakeMapHandoffPayload()   -- 取走即删
+    API.OnMapHandoff(fn)          -- 注册接收方（新局开局回调，载荷原样交付）
+    （三者都挂到 ExposedMembers.ModMiscToolUI，别的 mod 也能用）
+
+新局开局的消费顺序（`ReportAfterLoad` 里）：
+① 交接单里的关系 → 写进 `sgnode`（persave）；② 载荷读走并交付给所有处理器，随后删键；
+③ 交接单本身删掉。日志一行说清“parent/kind/地图/载荷交给几个处理器”。
+
+#### 测试（`devtools/sg_harness.lua` 第 14 节，9 项全绿）
+
+跨“进程重开”走完整条链路（把模拟磁盘与配置组状态带到新 env，等于实机的换图后启动）：
+* 交接单写了、带地图信息与载荷键 ✓
+* **没有新增任何 permanent 落地项** ✓（对比换图前后的永久项集合）
+* 载荷在 `xmap_*`（ephemeral/big）里 ✓
+* 新局身份随档落地：`parent=a1 kind=B Continents.lua→Pangaea.lua` ✓、偏移 17 ✓
+* 载荷交付给处理器且逐字段一致 ✓
+* 交接单与载荷**都用后即焚**（两边都清零）✓
+
+顺带把建局侧的 `cg_marker`（创建新局/换图前打的时间戳标记）也迁到协议（persave 表），
+它是“这局是不是全新的”判据，语义上正好属于随档数据。

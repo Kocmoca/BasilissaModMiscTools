@@ -623,6 +623,12 @@ ExposedMembers.ModMiscToolUI.RunCrossSaveProbeUI = RunCrossSaveProbeUI
 	-- 载体存档（大块数据跨存档）：写载荷 + 存一份载体档；接收方载入后 Read
 	if ModMiscCarrier ~= nil then
 		ExposedMembers.ModMiscToolUI.Carrier = ModMiscCarrier
+		-- 换图交接：别的 mod 可以注册处理器拿“新地图开局带过来的数据”，也可以自己塞一份
+		if ModMiscSaveGraph ~= nil then
+			ExposedMembers.ModMiscToolUI.OnMapHandoff = ModMiscSaveGraph.OnMapHandoff
+			ExposedMembers.ModMiscToolUI.SetMapHandoffPayload = ModMiscSaveGraph.SetMapHandoffPayload
+			ExposedMembers.ModMiscToolUI.TakeMapHandoffPayload = ModMiscSaveGraph.TakeMapHandoffPayload
+		end
 		ExposedMembers.ModMiscToolUI.WriteCarrierPayload = ModMiscCarrier.Write
 		ExposedMembers.ModMiscToolUI.ReadCarrierPayload = ModMiscCarrier.Read
 		ExposedMembers.ModMiscToolUI.ClearCarrierPayload = ModMiscCarrier.Clear

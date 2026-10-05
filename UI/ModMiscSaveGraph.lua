@@ -77,6 +77,7 @@ local MODMISC_KIND_MAINLINE = "M"
 local MODMISC_KIND_BRANCH = "B"
 
 -- 跨存档存储（ModMiscStore，通道 C）里的键
+local MODMISC_IDENTITY_KEY = "sgnode"       -- 本局身份（persave 表）
 local MODMISC_STORE_KEY_MAINLINE_HEAD = "sg_head"
 local MODMISC_STORE_KEY_PENDING = "sg_pending"
 
@@ -455,6 +456,8 @@ function API.GetPendingBranch()
     local kind = value.Kind
     local stamp = value.Stamp
     if parent == nil or tostring(parent) == "" then return nil end
+    local fromMap, toMap = value.FromMap, value.ToMap
+    local payloadKey = value.PayloadKey
 
     local writtenEpoch = tonumber(value.WrittenAt)
     local originLogical = tonumber(value.Logical)
@@ -476,11 +479,19 @@ function API.GetPendingBranch()
         Stamp = stamp,
         WrittenAt = writtenEpoch,
         Logical = originLogical,
+        FromMap = fromMap,
+        ToMap = toMap,
+        PayloadKey = payloadKey,
     }
 end
 
-local function SetPendingBranch(parentId, kind, stamp, originLogical)
+-- 交接单（换图/建局用）：**用后即焚**（ephemeral，TTL 900 秒），新局开局消费掉。
+-- 字段：Parent/Kind/Stamp/WrittenAt/Logical（分支关系与回合同步锚点）
+--       FromMap/ToMap/Engine（地图信息，便于诊断“换的是哪张图”）
+--       PayloadKey（要带过去的数据，另存 xmap_* 用后即焚大载荷；交接单里只留引用）
+local function SetPendingBranch(parentId, kind, stamp, originLogical, extra)
     if DataProtocol == nil then return false end
+    extra = extra or {}
     local parent = parentId
     if parent == nil or tostring(parent) == "" then parent = MODMISC_SAVE_ROOT_PARENT end
     local written = DataProtocol.Save(MODMISC_STORE_KEY_PENDING, {
@@ -489,8 +500,60 @@ local function SetPendingBranch(parentId, kind, stamp, originLogical)
         Stamp = tostring(stamp or ""),
         WrittenAt = ReadClock() or 0,
         Logical = originLogical,
+        FromMap = extra.FromMap,
+        ToMap = extra.ToMap,
+        Engine = extra.Engine,
+        PayloadKey = extra.PayloadKey,
     })
     return written == true
+end
+
+-- 换图要带过去的数据：存成 xmap_* 的用后即焚大载荷，交接单里只留键
+function API.SetMapHandoffPayload(payload)
+    if DataProtocol == nil then return nil, "数据协议没加载" end
+    if payload == nil then return nil end
+    local key = "xmap_" .. tostring(math.random(100000, 999999))
+        .. tostring(TryCall(function() return os.time() end) or 0)
+    local ok, err = DataProtocol.Save(key, payload)
+    if not ok then
+        Log("换图载荷写入失败 -> " .. tostring(err))
+        return nil, err
+    end
+    Log("换图载荷已存：" .. key .. "（用后即焚，新局开局消费）")
+    return key
+end
+
+-- 新局开局取换图载荷（取完即删：**用后即焚**）
+function API.TakeMapHandoffPayload()
+    local handoff = API.GetPendingBranch()
+    if handoff == nil or handoff.PayloadKey == nil then return nil end
+    local payload, err = DataProtocol.Load(handoff.PayloadKey)
+    DataProtocol.Remove(handoff.PayloadKey)
+    if payload == nil then
+        Log("换图载荷读不出来（" .. tostring(err) .. "），已清掉引用")
+        return nil
+    end
+    Log("换图载荷已交付并清除：" .. tostring(handoff.PayloadKey))
+    return payload
+end
+
+-- 交接载荷的接收方注册：别的功能（或别的 mod）想知道“新地图开局时带过来了什么”，注册一个处理器
+local m_MapHandoffHandlers = {}
+function API.OnMapHandoff(handler)
+    if type(handler) ~= "function" then return false end
+    table.insert(m_MapHandoffHandlers, handler)
+    return true
+end
+
+local function DispatchMapHandoff(payload)
+    if payload == nil then return 0 end
+    local delivered = 0
+    for _, handler in ipairs(m_MapHandoffHandlers) do
+        local ok, err = pcall(handler, payload)
+        if ok then delivered = delivered + 1
+        else Log("换图载荷处理器出错 -> " .. tostring(err)) end
+    end
+    return delivered
 end
 
 function API.ClearPendingBranch(reason)
@@ -1297,10 +1360,29 @@ function API.PrepareSwitch(options)
     end
 
     local node = BuildNextNode()
-    -- 先写 pending：这是“新局算这条记录的分支”的唯一凭据，必须早于存档落盘
-    SetPendingBranch(node.Id, MODMISC_KIND_BRANCH, node.Stamp, node.Logical)
-    Log("换图[1/2]：待接分支已写入存储（parent=" .. tostring(node.Id) .. "，新局算分支，"
-        .. "起点逻辑回合=" .. tostring(node.Logical) .. "）")
+
+    -- 要带过去的数据（可选）：另存成用后即焚的 xmap_*，交接单里只留引用
+    local payloadKey = nil
+    if opts.Payload ~= nil then
+        local key, payloadErr = API.SetMapHandoffPayload(opts.Payload)
+        if key == nil then
+            return false, "换图载荷写入失败：" .. tostring(payloadErr)
+        end
+        payloadKey = key
+    end
+
+    -- 先写交接单：这是“新局算这条记录的分支”的唯一凭据，必须早于存档落盘。
+    -- 生命周期：**用后即焚**（ephemeral/small，TTL 900 秒）——不制造永久数据；
+    -- 新局开局会把它固化进本局身份（sgnode，persave）然后删掉它。
+    SetPendingBranch(node.Id, MODMISC_KIND_BRANCH, node.Stamp, node.Logical, {
+        FromMap = tostring(opts.FromMap or ""),
+        ToMap = tostring(opts.ToMap or ""),
+        Engine = tostring(opts.Engine or ""),
+        PayloadKey = payloadKey,
+    })
+    Log("换图[1/2]：交接单已写入（parent=" .. tostring(node.Id) .. "，新局算分支，"
+        .. "起点逻辑回合=" .. tostring(node.Logical)
+        .. (payloadKey ~= nil and ("，带载荷 " .. payloadKey) or "，无载荷") .. "）")
 
     local started = SaveNode(node, {
         Reason = "switch",
@@ -1389,19 +1471,36 @@ function API.ReportAfterLoad()
         --   ① 之后存档不再依赖“存储此刻读不读得到”（这正是分支认不出自己的根因）；
         --   ② 万一玩家之后退回主菜单另开新局，也不会被这条陈旧的 pending 误挂成分支。
         if currentId == nil and pending ~= nil and pending.Parent ~= nil then
+            -- ① 交接单里的**关系**固化进本局身份（sgnode，persave：随档走、新局不继承）
             local identity = LoadNodeIdentity() or {}
             identity.Parent = pending.Parent
             identity.Kind = pending.Kind or MODMISC_KIND_BRANCH
             identity.Logical = pending.Logical
+            if pending.FromMap ~= nil and pending.FromMap ~= "" then
+                identity.FromMap = pending.FromMap
+            end
+            if pending.ToMap ~= nil and pending.ToMap ~= "" then
+                identity.ToMap = pending.ToMap
+            end
             if pending.Logical ~= nil then
                 -- 顺手把本局偏移也固化：逻辑回合 = 引擎回合 + (起点逻辑回合 - 1)
                 identity.Offset = pending.Logical - 1
             end
             SaveNodeIdentity(identity)
+
+            -- ② 交接单里的**数据**取走并交付（TakeMapHandoffPayload 内部读到就删 = 用后即焚）
+            local payload = API.TakeMapHandoffPayload()
+            local delivered = DispatchMapHandoff(payload)
+
+            -- ③ 交接单本身消费掉（用后即焚）
             ClearPendingBranch("开局已固化成本局来源")
-            Log("本局接手待接分支：parent=" .. tostring(pending.Parent)
+            Log("本局接手换图交接：parent=" .. tostring(pending.Parent)
                 .. " kind=" .. tostring(pending.Kind or MODMISC_KIND_BRANCH)
-                .. "（已固化到本局身份，存储里那条已消费）")
+                .. " 地图 " .. tostring(pending.FromMap or "?") .. " → "
+                .. tostring(pending.ToMap or "?")
+                .. (payload ~= nil and ("；载荷已交付给 " .. tostring(delivered) .. " 个处理器")
+                    or "；无载荷")
+                .. "（交接单已消费，无永久数据留下）")
         end
     end)
     -- 顺手扫一次存档列表（异步），完成后把关系树打进日志，便于对照

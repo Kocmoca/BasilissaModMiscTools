@@ -1435,6 +1435,17 @@ API_Verification_Status.md §18.4/§18.6。
 建局侧 `ghost_citystates`/`ghost_majorplayers`、UI 数据 `ui_*`、探针 `probe_*`/`svprobe`。
 新增 `DataProtocol.ListMatching(前缀)` 用于“按前缀取真实键”（事件信箱按节点取件）。
 
+**换图（地图间数据传输）**：三层生命周期各就各位 ——
+交接单 `sg_pending`（ephemeral/small，TTL 900s，字段含 FromMap/ToMap/Engine/PayloadKey）、
+交接载荷 `xmap_*`（ephemeral/big，**读走即删**）、本局身份 `sgnode`（persave，新局开局固化
+父节点/类型/地图/逻辑回合偏移）。接口：
+
+    ModMiscSaveGraph.PrepareSwitch({ FromMap=, ToMap=, Engine=, Payload=<表> })
+    ModMiscSaveGraph.SetMapHandoffPayload(payload) / TakeMapHandoffPayload()
+    ModMiscSaveGraph.OnMapHandoff(fn)        -- 新局开局收到载荷（也挂在 ExposedMembers 上）
+
+换图这一步**不写永久数据**（`sg_head` 只在正常存档时写）——桩测试第 14 节盯着这条。
+
 信封 v2：`MMT2|<生命周期>|<版本>|<写入时间>|<类型>|<名字长度>:<数据集名>|<校验和>|<负载长度>|<负载>`
 （v1 老信封仍可读，只做长度校验）。名字用来拦**误领**（读到别人家的数据），
 校验和（FNV-1a 32）用来拦**静默损坏**（长度对得上、内容被改）。

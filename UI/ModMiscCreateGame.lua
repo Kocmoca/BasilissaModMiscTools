@@ -55,7 +55,7 @@
 --   GetCurrentMapScript()         当前地图脚本（多种读法依次尝试，返回 file, route）
 --   ApplyMapScript(file)          改地图配置 + 立即回读（返回 ok, 明细）
 --   ArmMarker(action)             写「切换前快照」标记（返回 payload；失败返回 nil, err）
---   ReadMarker()                  读标记（返回 payload 或 nil, err）
+--   ReadMarker()                  读标记（返回表 {Act, Nonce, At, Fingerprint} 或 nil, err）
 --   ClearMarker()                 清标记
 --   SaveBeforeSwitch()            切换前存档（Network.SaveGame，异步；SaveComplete 另判）
 --   RestartGame()                 Network.RestartGame（引擎自带的对局内重开）
@@ -71,7 +71,7 @@
 local MODMISC_CREATEGAME_BUILD_TAG = "2026-10-05-A"
 
 -- CustomData 键：写的是「调用创建游戏之前的快照」，用来判定调用之后到底进了哪一局
-local MODMISC_CREATEGAME_MARKER_KEY = "ModMiscCreateGameMarker"
+local MODMISC_CREATEGAME_MARKER_KEY = "cg_marker"   -- 登记项 cg_marker（persave）
 
 -- 切换前存档的档名（普通单机档，不占自动/快速存档位）
 local MODMISC_CREATEGAME_BACKUP_SAVE_NAME = "ModMiscCreateGame~switch-backup"
@@ -347,35 +347,38 @@ end
 -- 标记协议（切换前快照）
 -- ===========================================================================
 
+-- 标记存**表**、走协议的 persave 通道（随档：读档还在、新局不继承 —— 这正是本标记要的语义）
 function API.ArmMarker(actionName)
-    if WriteCustomData == nil then
-        Log("ArmMarker 失败：WriteCustomData 不可用（Civ6Common 没 include？）")
-        return nil, "WriteCustomData 不可用"
+    if DataProtocol == nil then
+        Log("ArmMarker 失败：数据协议没加载")
+        return nil, "数据协议没加载"
     end
-    local payload = string.format("act=%s;nonce=%d;t=%d;%s",
-        Sanitize(actionName or "?"), math.random(100000, 999999), os.time(),
-        API.DescribeFingerprint())
-    local ok, err = pcall(WriteCustomData, MODMISC_CREATEGAME_MARKER_KEY, payload)
+    local marker = {
+        Act = Sanitize(actionName or "?"),
+        Nonce = math.random(100000, 999999),
+        At = os.time(),
+        Fingerprint = API.DescribeFingerprint(),
+    }
+    local ok, err = DataProtocol.Save(MODMISC_CREATEGAME_MARKER_KEY, marker)
     if not ok then
         Log("ArmMarker 失败 -> " .. tostring(err))
         return nil, tostring(err)
     end
-    Log("marker armed: [" .. payload .. "]")
-    return payload
+    Log("marker armed: [act=" .. tostring(marker.Act) .. ";nonce=" .. tostring(marker.Nonce)
+        .. ";" .. tostring(marker.Fingerprint) .. "]")
+    return marker
 end
 
 function API.ReadMarker()
-    if ReadCustomData == nil then return nil, "ReadCustomData 不可用" end
-    local ok, value = pcall(ReadCustomData, MODMISC_CREATEGAME_MARKER_KEY)
-    if not ok then return nil, tostring(value) end
-    if value == nil or tostring(value) == "" then return nil end
-    return tostring(value)
+    if DataProtocol == nil then return nil, "数据协议没加载" end
+    local marker, err = DataProtocol.Load(MODMISC_CREATEGAME_MARKER_KEY)
+    if type(marker) ~= "table" then return nil, err end
+    return marker
 end
 
 function API.ClearMarker()
-    if WriteCustomData == nil then return false end
-    local ok = pcall(WriteCustomData, MODMISC_CREATEGAME_MARKER_KEY, "")
-    return ok
+    if DataProtocol == nil then return false end
+    return DataProtocol.Remove(MODMISC_CREATEGAME_MARKER_KEY) and true or false
 end
 
 -- 开局探针：每次进入游戏（新局 / 读档）各跑一次，只打日志。
@@ -397,17 +400,18 @@ function API.ReportAfterCreateInGame()
         return
     end
 
-    -- 标记里有当时的 script=/grid=，和现在的比一比：同一局应当完全一致
-    local armedScript = string.match(marker, "script=([^;%(]+)")
-    local armedGrid = string.match(marker, "grid=([^;]+)")
+    -- 标记里带的是当时的指纹（表形式），和现在的比一比：同一局应当完全一致
+    local armedFingerprint = tostring(marker.Fingerprint or "")
+    local armedGrid = string.match(armedFingerprint, "grid=([^;]+)")
     local nowGrid = GetGridSize()
     local mapChanged = "no"
     if armedGrid ~= nil and nowGrid ~= "?" and armedGrid ~= nowGrid then
         mapChanged = "yes"
     end
-    Log("after-create: VERDICT=marker-present 读到标记 [" .. marker .. "]"
+    Log("after-create: VERDICT=marker-present 读到标记 [act=" .. tostring(marker.Act)
+        .. ";nonce=" .. tostring(marker.Nonce) .. "]"
         .. " ⇒ 这局不是全新的（同一局，或读回了旧档）"
-        .. "；armedScript=" .. tostring(armedScript)
+        .. "；armed=" .. armedFingerprint
         .. "；mapChanged=" .. mapChanged
         .. "；now: " .. fingerprint)
 end
@@ -449,7 +453,9 @@ function API.DescribeContext()
     table.insert(lines, "api: " .. BuildApiFlagText())
 
     local marker = API.ReadMarker()
-    table.insert(lines, "marker: " .. (marker ~= nil and ("[" .. marker .. "]") or "nil"))
+    table.insert(lines, "marker: " .. (type(marker) == "table"
+        and ("[act=" .. tostring(marker.Act) .. ";nonce=" .. tostring(marker.Nonce)
+             .. ";" .. tostring(marker.Fingerprint) .. "]") or "nil"))
 
     for _, line in ipairs(lines) do
         Log(line)
