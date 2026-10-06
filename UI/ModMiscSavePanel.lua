@@ -559,6 +559,14 @@ end
 --   之前靠它 + 一个盲倒计时“猜”原档写完了，实机结果就是“面板说存好了、存档列表里却没有”。
 --   现在唯一的判据是**存档列表里查得到**；超时只重发一次，再不行就老实说失败。
 local function TickAutoSwitch(delta)
+    -- 创建分支后的补刷：等档真正落盘再画一次关系树
+    if m_BranchRefreshFrames ~= nil then
+        m_BranchRefreshFrames = m_BranchRefreshFrames - 1
+        if m_BranchRefreshFrames <= 0 then
+            m_BranchRefreshFrames = nil
+            RefreshAll()
+        end
+    end
     local state = ModMiscSaveGraph.GetSaveState ~= nil and ModMiscSaveGraph.GetSaveState() or nil
     if state ~= nil and state.Verified ~= true and state.Failed ~= true then
         m_SaveWaitFrames = (m_SaveWaitFrames or 0) + 1

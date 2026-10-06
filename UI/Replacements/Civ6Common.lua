@@ -1326,6 +1326,12 @@ if DataProtocol == nil then
 	include("ModMiscDataRegistry")
 end
 
+-- 载入自检：进了前端/建局上下文就把过期数据收拾掉（永久/随档的不碰）
+if DataProtocol ~= nil and DataProtocol.AutoGC ~= nil and ModMiscToolDataAutoGCDone == nil then
+	ModMiscToolDataAutoGCDone = true
+	pcall(function() DataProtocol.AutoGC("frontend") end)
+end
+
 -- 前端侧也把同一套接口挂到 ExposedMembers 上（前端 context 里别的 mod 也能直接用）
 if ModMiscStore ~= nil and ExposedMembers ~= nil then
 	if ExposedMembers.ModMiscToolUI == nil then

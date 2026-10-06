@@ -81,7 +81,7 @@
             <!-- 创建分支：把当前局存成一个**逻辑分支档**（只落一个档 + 关系，不重开、不切换） -->
             <GridButton ID="ModMiscSaveSwitchMap" Anchor="L,T" Offset="310,612" Size="280,58"
                         Style="ButtonControl" FontSize="24"
-                        String="LOC_MODMISC_SAVEPANEL_SWITCH" />
+                        String="LOC_MODMISC_SAVEPANEL_SWITCH_SELECTED" />
             <GridButton ID="ModMiscSaveLoadSelected" Anchor="L,T" Offset="600,612" Size="280,58"
                         Style="ButtonControl" FontSize="25" String="LOC_MODMISC_SAVEPANEL_LOAD" />
 

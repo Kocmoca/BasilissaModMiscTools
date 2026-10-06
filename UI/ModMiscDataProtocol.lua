@@ -321,10 +321,21 @@ M.Checksum = Checksum
 --   * 带**数据集名** ⇒ 读到别人家的数据能当作“误领”报出来（Load 会比对登记名/通配匹配）
 --   * 带**校验和** ⇒ 内容被改一个字节也认得出来
 --   * 仍然能读 v1 老信封（没有名字与校验和 ⇒ 只做长度校验，并在解码报告里标注）
+-- 时间戳是**可选项**（授权者 2026-10-06）：只有需要判过期的数据集才写，省字节也更干净。
+-- 需要时间戳的情形：① 声明了 TTL（ephemeral 过期判据）；② spec.KeepStamp == true（自己想看年龄）。
+-- 其余的（永久/随档/进程内）写空字段，读出来就是 nil，GC 也不会碰它们。
+local function NeedsStamp(spec)
+    return (tonumber(spec.TTL) ~= nil) or (spec.KeepStamp == true)
+        or spec.Lifecycle == DP_LIFECYCLE.Ephemeral
+end
+
 local function BuildEnvelope(spec, value, datasetName)
     local payload, err = M.EncodeValue(value)
     if payload == nil then return nil, err end
-    local stamp = tostring(TryCall(function() return os.time() end) or 0)
+    local stamp = ""
+    if NeedsStamp(spec) then
+        stamp = tostring(TryCall(function() return os.time() end) or 0)
+    end
     local name = tostring(datasetName or spec.Name or "")
     local head = table.concat({ DP_ENVELOPE_PREFIX_V2, tostring(spec.Lifecycle),
         tostring(spec.Version), stamp, type(value),
@@ -1037,7 +1048,8 @@ function M.GC(options)
                 if text ~= nil and type(text) == "string" then
                     local envelope = ParseEnvelope(text)
                     local stamp = envelope ~= nil and envelope.Stamp or nil
-                    -- 没有时间戳的一律当过期处理：宁可不留，也不留一堆来历不明的永久垃圾
+                    -- 声明了 TTL 却没有时间戳：属于写坏了 ⇒ 当过期清掉（有 TTL 的数据集一定会写时间戳，
+                    -- 见 NeedsStamp；永久/随档数据不带时间戳，也永远不会走到这个分支）
                     if stamp == nil or stamp == 0 or (now - stamp) > tonumber(spec.TTL) then
                         M.RemoveTree(key)
                         ChannelRemove(spec.Channel, key)
@@ -1090,6 +1102,21 @@ local function PurgeMatchingPrefix(prefix)
         end
     end
     return removed, failed
+end
+
+-- ===========================================================================
+-- 游戏加载时自检（授权者 2026-10-06）：到了过期时间的，直接删掉
+--
+-- 什么时候跑：各 context 在“游戏加载完成/进入对局”的探针里调一次（Support_UI 的开局探针
+-- 已经调了），所以开一局就能把上一轮留下的过期数据收拾干净，不必等玩家点面板。
+-- 只清**声明过 TTL 的 ephemeral**：永久/随档数据一律不碰。
+-- ===========================================================================
+function M.AutoGC(reason)
+    local result = M.GC({ PurgeOrphans = false })
+    Log("加载自检（" .. tostring(reason or "startup") .. "）：清过期 "
+        .. tostring(result.Removed) .. " 项"
+        .. (result.Removed > 0 and ("（" .. table.concat(result.Expired or {}, ", ") .. "）") or ""))
+    return result
 end
 
 -- 慎重的入口：清掉某个数据集（含其分片与头记录；通配条目清掉所有匹配键）

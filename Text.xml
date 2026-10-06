@@ -669,7 +669,7 @@
 		<Row Tag="LOC_MODMISC_SAVEPANEL_CREATE_BRANCH">
 			<Text>Create branch</Text>
 		</Row>
-		<Row Tag="LOC_MODMISC_SAVEPANEL_SWITCH">
+		<Row Tag="LOC_MODMISC_SAVEPANEL_SWITCH_SELECTED">
 			<Text>Switch to selected</Text>
 		</Row>
 		<Row Tag="LOC_MODMISC_SAVEPANEL_BRANCH_CREATED">

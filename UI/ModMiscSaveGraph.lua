@@ -1701,6 +1701,11 @@ function API.ReportAfterLoad()
                 .. "（交接单已消费，无永久数据留下）")
         end
     end)
+    -- 加载自检：把过了 TTL 的用后即焚数据清掉（永久/随档的不碰）——授权者 2026-10-06 要求
+    if DataProtocol ~= nil and DataProtocol.AutoGC ~= nil then
+        DataProtocol.AutoGC("after-load")
+    end
+
     -- 顺手扫一次存档列表（异步），完成后把关系树打进日志，便于对照
     API.Refresh(function()
         Log("after-load 关系树：\n" .. API.DescribeTree())

@@ -669,7 +669,7 @@
 		<Replace Tag="LOC_MODMISC_SAVEPANEL_CREATE_BRANCH" Language="zh_Hans_CN">
 			<Text>创建分支</Text>
 		</Replace>
-		<Replace Tag="LOC_MODMISC_SAVEPANEL_SWITCH" Language="zh_Hans_CN">
+		<Replace Tag="LOC_MODMISC_SAVEPANEL_SWITCH_SELECTED" Language="zh_Hans_CN">
 			<Text>切换到选中</Text>
 		</Replace>
 		<Replace Tag="LOC_MODMISC_SAVEPANEL_BRANCH_CREATED" Language="zh_Hans_CN">
