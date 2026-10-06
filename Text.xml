@@ -666,6 +666,12 @@
 		<Row Tag="LOC_MODMISC_SAVEPANEL_SWITCH_SENT">
 			<Text>Map-switch broadcast sent - the game restarts now (no save was written).</Text>
 		</Row>
+		<Row Tag="LOC_MODMISC_SAVEPANEL_SWITCH_CACHED">
+			<Text>Branch info cached (the switch is not done yet). Tap "Restart as new branch" once more to restart - that tap only restarts.</Text>
+		</Row>
+		<Row Tag="LOC_MODMISC_SAVEPANEL_SWITCH_CACHED_DETAIL">
+			<Text>Why two taps: writing the branch broadcast is an engine database write, and restarting right after it crashed the engine once (luaL_unref during teardown). The pause lets the write settle.</Text>
+		</Row>
 		<Row Tag="LOC_MODMISC_SAVEPANEL_SWITCH_SENT_DETAIL">
 			<Text>The new game will identify itself as a branch of this line when it loads. The broadcast lives 5 minutes and is deleted as soon as it is read.</Text>
 		</Row>

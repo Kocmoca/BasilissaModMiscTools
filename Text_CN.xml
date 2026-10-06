@@ -666,6 +666,12 @@
 		<Replace Tag="LOC_MODMISC_SAVEPANEL_SWITCH_SENT" Language="zh_Hans_CN">
 			<Text>换图广播已发出——游戏现在重启（没有写任何存档）。</Text>
 		</Replace>
+		<Replace Tag="LOC_MODMISC_SAVEPANEL_SWITCH_CACHED" Language="zh_Hans_CN">
+			<Text>分支信息已缓存（还没重开）。再点一次「重开为新分支」就重开——那一下只做重开。</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_SAVEPANEL_SWITCH_CACHED_DETAIL" Language="zh_Hans_CN">
+			<Text>为什么要分两下：写分支广播是一次引擎数据库写，写完立刻重开曾经把引擎搞崩（拆卸期的 luaL_unref）。中间停一下让写结算完。</Text>
+		</Replace>
 		<Replace Tag="LOC_MODMISC_SAVEPANEL_SWITCH_SENT_DETAIL" Language="zh_Hans_CN">
 			<Text>新局开局会认定自己是这条线的分支。广播只活 5 分钟，被读到就立刻删掉。</Text>
 		</Replace>

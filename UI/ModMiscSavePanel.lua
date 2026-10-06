@@ -575,24 +575,47 @@ end
 
 -- 换图：**只写广播 + 直接重开**（不存档、不验证、不等任何事件）。
 -- 执行必须在**按钮回调里**（这是实机唯一验证过能真重开的形态）。
-local function PerformBranchSwitch()
-    -- 借用 slot：把“主档”这件事交给关系树模块判断（没有主线存档就拒绝）
-    local ok, err = ModMiscSaveGraph.SwitchToNewBranch({ Reason = "面板按钮（重开为新分支）" })
+-- 换图分两下（都在按钮回调里，且**写广播与重开之间隔了玩家的点击**）：
+--   第 1 下：写广播（一次引擎数据库写）—— 顺手把“主线存档”门槛也过一遍；
+--   第 2 下：只重开（Broadcast=false，复用刚才那条广播）。
+-- 为什么要分开：实机 2026-10-06 反馈“重开时 unref 闪退” —— 数据库写紧跟拆卸期是最大嫌疑，
+-- 中间留几秒让引擎把写结算完，是成本最低的规避。
+local function PerformBranchSwitch(armed)
+    local ok, err = ModMiscSaveGraph.SwitchToNewBranch({
+        Reason = "面板按钮（重开为新分支）",
+        Restart = armed,        -- armed=false ⇒ **只写广播**（第一下）；true ⇒ 只重开（第二下）
+        Broadcast = not armed,  -- armed=true ⇒ 广播已经写过了，别重复写
+    })
     if not ok then
         -- 走到这里说明**没有重开**（调用被拒/失败），把原因写在状态行
         Report(Locale.Lookup("LOC_MODMISC_SAVEPANEL_SWITCH_REFUSED"), tostring(err))
-        return
+        return false
     end
     m_RestartAttempted = true
-    Report(Locale.Lookup("LOC_MODMISC_SAVEPANEL_SWITCH_SENT"),
-        Locale.Lookup("LOC_MODMISC_SAVEPANEL_SWITCH_SENT_DETAIL"))
+    if armed then
+        Report(Locale.Lookup("LOC_MODMISC_SAVEPANEL_SWITCH_SENT"),
+            Locale.Lookup("LOC_MODMISC_SAVEPANEL_SWITCH_SENT_DETAIL"))
+    else
+        Report(Locale.Lookup("LOC_MODMISC_SAVEPANEL_SWITCH_CACHED"),
+            Locale.Lookup("LOC_MODMISC_SAVEPANEL_SWITCH_CACHED_DETAIL"))
+    end
+    return true
 end
 
+local m_BranchSwitchArmed = false
 local function DoSwitchMap()
     NoteStillAlive("DoSwitchMap")
-    -- 这一个按钮既是“确认”也是“执行”：第一次点问一句，第二次点就在回调里跑
-    AskConfirm(Locale.Lookup("LOC_MODMISC_SAVEPANEL_SWITCH_CONFIRM"),
-        function() PerformBranchSwitch() end, "switch-newbranch")
+    if m_BranchSwitchArmed then
+        -- 第 2 下：广播早写好了，这次**只重开**
+        m_BranchSwitchArmed = false
+        PerformBranchSwitch(true)
+        return
+    end
+    -- 第 1 下：先确认，确认下来就写广播（不重开）
+    AskConfirm(Locale.Lookup("LOC_MODMISC_SAVEPANEL_SWITCH_CONFIRM"), function()
+        local ok = PerformBranchSwitch(false)
+        if ok then m_BranchSwitchArmed = true end
+    end, "switch-newbranch")
 end
 
 -- 把本档 / 选中的档改成主线或分支（关系覆盖表；档名改不了，见 SaveGraph.SetNodeRelation）

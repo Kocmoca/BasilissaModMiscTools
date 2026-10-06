@@ -1538,15 +1538,44 @@ function API.SwitchToNewBranch(options)
         Log("注意：切换前列表是空的（还没扫过存档列表）—— 主线判定用的是主线头/本局身份")
     end
 
-    local ok, payloadOrErr = API.BroadcastBranchSwitch({
-        Parent = opts.Parent, Reason = opts.Reason,
-    })
-    if not ok then
-        Log("换图失败：广播没写成功 -> " .. tostring(payloadOrErr))
-        return false, "换图广播没写成功：" .. tostring(payloadOrErr)
+    -- 【2026-10-06 实机：重开时 unref 闪退】写广播 = 一次模组配置组写（引擎数据库，落盘在工作线程上）；
+    -- 紧接着就 RestartGame ⇒ 引擎一边拆 Lua 状态一边还有数据库写在飞 ⇒ 崩在 luaL_unref。
+    -- 所以支持 `Broadcast=false`：广播**提前写**（面板在“确认”那一下写），这次点击只重开，
+    -- 中间隔了玩家点击的这几秒，数据库写早就结算完了。
+    local ageText = ""
+    if opts.Restart == false then
+        -- **只缓存广播**（面板第一下）：写一次数据库，然后立刻返回，不重开。
+        -- 这样“写广播”和“重开”之间隔着玩家的下一次点击，引擎数据库写早结算完了。
+        local cached, cacheErr = API.BroadcastBranchSwitch({
+            Parent = opts.Parent, Reason = opts.Reason,
+        })
+        if not cached then
+            Log("缓存分支广播失败 -> " .. tostring(cacheErr))
+            return false, "分支广播没写成功：" .. tostring(cacheErr)
+        end
+        Log("分支广播已缓存（本次**不重开**）：等玩家再点一次，那一下只重开")
+        return true, "cached"
+    end
+    if opts.Broadcast == false then
+        local existing = API.PeekBranchBroadcast()
+        if existing == nil then
+            Log("拒绝换图：广播不在了（过期或已被消费）—— 需要重新确认一次（会重新写广播）")
+            return false, "分支广播不在了（过期/已消费）：再点一次「重开为新分支」重新缓存"
+        end
+        ageText = "（广播写于 " .. tostring(existing.Age or "?") .. " 秒前，数据库写已结算）"
+        Log("广播复用：不重复写，直接用 " .. tostring(existing.Age or "?") .. " 秒前那条" .. ageText)
+    else
+        local ok, payloadOrErr = API.BroadcastBranchSwitch({
+            Parent = opts.Parent, Reason = opts.Reason,
+        })
+        if not ok then
+            Log("换图失败：广播没写成功 -> " .. tostring(payloadOrErr))
+            return false, "换图广播没写成功：" .. tostring(payloadOrErr)
+        end
     end
 
     Log("换图[3/3]：即将调用 Network.RestartGame()（原因=" .. tostring(opts.Reason or "面板按钮")
+        .. ageText .. "）"
         .. "） 环境：anyMultiplayer=" .. tostring(TryCall(function() return GameConfiguration.IsAnyMultiplayer() end))
         .. " savedGame=" .. tostring(TryCall(function() return GameConfiguration.IsSavedGame() end))
         .. " worldBuilder=" .. tostring(TryCall(function() return GameConfiguration.IsWorldBuilderEditor() end))
