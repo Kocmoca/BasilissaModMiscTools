@@ -60,6 +60,12 @@ local m_ForceArmed = nil           -- 未确认落盘时玩家又确认过一次
 local m_SwitchTargetId = nil       -- 本次切换的目标节点（落盘确认后用它标记“可以重开”）
 local m_SwitchTickArmed = false    -- 按帧回调（轮询落盘确认）是否已挂上
 local m_CheckSaveFrames = 0        -- 距离下一次查存档列表还有几帧（~2 秒查一次）
+-- 重开看门狗：`Network.RestartGame()` 有可能“调用返回了但游戏没重开”。真重开的话这个上下文
+-- 会被销毁、按帧回调不会再跑；还能跑 ⇒ 说明引擎没理这次调用。到点就把这件事**明确写进日志与状态行**，
+-- 不要再让人从“后面还有没有日志”去猜。
+local m_RestartWatchdogAt = nil
+local m_RestartWatchdogCount = 0
+local m_LoadViewStateCount = 0     -- 本上下文见过几次 LoadGameViewStateDone（重开后应重新计）
 local m_EventTypeKey = "GOLD"
 local m_EventDetailEntry = nil
 local m_EventTurnEntry = nil
@@ -580,6 +586,13 @@ local function DoSave()
         Locale.Lookup("LOC_MODMISC_SAVEPANEL_SAVING_DETAIL"))
 end
 
+-- 看门狗日志用的引擎回合（取不到就写 ?，不能因为读不到回合把看门狗本身弄炸）
+local function TryCallTurn()
+    local ok, value = pcall(function() return Game.GetCurrentGameTurn() end)
+    if ok and value ~= nil then return value end
+    return "?"
+end
+
 -- 换图按钮：① 确认 → ② 存原档（不重开）→ ③ 只重开
 -- 按帧推进只干一件事：**轮询存档列表，确认原档真的落盘**（唯一的判据，见第 19.13 条）。
 -- 前置声明：MarkRestartReady / PerformSwitch 都要用它把按帧回调挂上（Lua 5.1 必须先声明再使用）
@@ -605,6 +618,21 @@ end
 --   之前靠它 + 一个盲倒计时“猜”原档写完了，实机结果就是“面板说存好了、存档列表里却没有”。
 --   现在唯一的判据是**存档列表里查得到**；超时只重发一次，再不行就老实说失败，交给玩家显式决定。
 local function TickAutoSwitch(delta)
+    -- 看门狗：调过重开之后还能跑到这里 ⇒ 引擎没真的重开
+    if m_RestartWatchdogAt ~= nil then
+        local now = os.time()
+        if now == nil or now >= m_RestartWatchdogAt then
+            m_RestartWatchdogAt = nil
+            Log("**引擎没有重开**：Network.RestartGame() 已返回但游戏仍在运行（第 "
+                .. tostring(m_RestartWatchdogCount) .. " 次）—— 本上下文还活着，"
+                .. "LoadGameViewStateDone 见过 " .. tostring(m_LoadViewStateCount) .. " 次，"
+                .. "引擎回合=" .. tostring(TryCallTurn()) .. "。"
+                .. "真重开过的话日志里会出现新的 `panel loading build=…` 并重新走一遍开局探针。")
+            SetStatus(Locale.Lookup("LOC_MODMISC_SAVEPANEL_RESTART_IGNORED"))
+            SetDetail(Locale.Lookup("LOC_MODMISC_SAVEPANEL_RESTART_IGNORED_DETAIL",
+                tostring(m_RestartWatchdogCount)))
+        end
+    end
     local state = ModMiscSaveGraph.GetSaveState ~= nil and ModMiscSaveGraph.GetSaveState() or nil
     if state ~= nil and state.Verified ~= true and state.Failed ~= true then
         m_CheckSaveFrames = (m_CheckSaveFrames or 0) + 1
@@ -700,9 +728,14 @@ local function PerformRestart(targetId)
         ReportError("SwitchNow", err)
         return
     end
-    -- 走到了这里说明调用已返回；真重开了就不会再有日志（SwitchNow 里写了这一句）
+    -- 调用返回了，但这**不等于**重开了：真重开的话本上下文会被销毁、按帧回调不会再跑。
+    -- 所以这里上表看门狗，5 秒后如果还能跑，就把“引擎没重开”明确写出来（不再靠人猜）。
     m_RestartReady = nil
     m_ForceArmed = nil
+    m_RestartWatchdogCount = m_RestartWatchdogCount + 1
+    m_RestartWatchdogAt = (os.time() or 0) + 5
+    EnsureSwitchTick()
+    Log("重开看门狗已上表：5 秒后如果本上下文还活着，就说明引擎没理这次 RestartGame")
 end
 
 local function DoSwitchMap()
@@ -862,6 +895,7 @@ function OnInit()
 end
 
 function OnLoadGameViewStateDone()
+    m_LoadViewStateCount = m_LoadViewStateCount + 1
     AttachPanelToInGame()
     TryRegisterSidebarButton()
     UpdateInfoLine()

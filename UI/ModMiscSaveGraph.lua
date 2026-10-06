@@ -1561,6 +1561,9 @@ function API.PrepareSwitch(options)
     end
 
     local node = BuildNextNode()
+    -- 每次 PrepareSwitch 都**先清掉上一次记下的占位 id**：否则“先准备切占位 X、又改成切别的档”时，
+    -- 重开会把 X 一起删掉（X 根本不是这次的目标）。占位很便宜，但删错就是删错。
+    m_SwitchPlaceholderId = nil
     -- 【新逻辑】切换的目标是**选中的逻辑档**（不是“本局当前节点”）：交接单指向它，
     -- 于是新局算它的分支、回合同步以它的逻辑回合为锚点。
     local targetId = opts.TargetNodeId

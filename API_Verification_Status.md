@@ -2057,6 +2057,20 @@ SaveComplete 一到 ⇒ 认为“原档写好” ⇒ 起一个 8 秒（或 +7 �
   什么都不存），并把 `anyMultiplayer / worldBuilder / savedGame` 三个环境值对上引擎自己的门槛
   （`InGameTopOptionsMenu` 的重开对多人 / worldbuilder 有限制，见该文件 316 行附近）。
 
+#### 重开看门狗（v1.96）：把“引擎没重开”这件事直接写出来
+
+`Network.RestartGame()` 返回 true **不等于**重开了。真重开的话本 UI 上下文会被销毁、按帧回调不会再跑；
+还能跑就说明引擎没理这次调用。所以第 ④ 步发出重开后上表 5 秒看门狗，到点若本上下文还活着：
+
+```
+**引擎没有重开**：Network.RestartGame() 已返回但游戏仍在运行（第 N 次）—— 本上下文还活着，
+LoadGameViewStateDone 见过 X 次，引擎回合=…。真重开过的话日志里会出现新的 `panel loading build=…`
+并重新走一遍开局探针。
+```
+
+状态行同时变成「引擎**没有**重开——游戏还在跑。请再点一次「切换到选中」。」
+⇒ 下次实机不用再从“后面还有没有日志”去猜，日志和界面都会直接说。
+
 #### 桩测试
 
 `devtools/panel_harness.lua`（34 条断言）：把**真面板文件**读进来，用假 `ModMiscSaveGraph` 记录调用，

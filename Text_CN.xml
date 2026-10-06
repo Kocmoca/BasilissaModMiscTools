@@ -748,6 +748,12 @@
 		<Replace Tag="LOC_MODMISC_SAVEPANEL_SWITCH_NOW_DETAIL" Language="zh_Hans_CN">
 			<Text>按钮回调里直接调 Network.RestartGame()。要是游戏没重启，看日志里这次调用的 result。</Text>
 		</Replace>
+		<Replace Tag="LOC_MODMISC_SAVEPANEL_RESTART_IGNORED" Language="zh_Hans_CN">
+			<Text>引擎**没有**重开——游戏还在跑。请再点一次「切换到选中」。</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_SAVEPANEL_RESTART_IGNORED_DETAIL" Language="zh_Hans_CN">
+			<Text>Network.RestartGame() 已返回，可这个界面还活着（第 {1_Count} 次）。重开那次点击只做重开这一件事，所以要是还不生效，就是引擎在当前状态下拒绝了这次调用——日志那行里带着 anyMultiplayer / worldBuilder / savedGame。</Text>
+		</Replace>
 		<!-- 存档面板：跨存档事件（目标玩家 / 类型 / 内容 / 接受回合 + 发送与读档） -->
 		<Replace Tag="LOC_MODMISC_SAVEPANEL_EVENT_PLAYER" Language="zh_Hans_CN">
 			<Text>目标玩家</Text>
