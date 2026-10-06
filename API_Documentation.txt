@@ -1668,6 +1668,77 @@ API_Verification_Status.md §18.4/§18.6。
   PlayerPropertyNum   INTEGER  玩家属性阈值
 
 ------------------------------------------------------------------------------
+### 3.13.14 存档面板：换图 = 写广播 + 直接重开；关系可手动改（v3.00 起）
+------------------------------------------------------------------------------
+动机与实机证据见 API_Verification_Status.md §19.26（旧的两步式 + 落盘确认已废弃）。
+
+按钮语义（UI/ModMiscSavePanel.lua）：
+
+  按钮                 行为
+  -----------------    ------------------------------------------------------------
+  存档                 直接存（M/B 自动判；本局已有节点则原地覆盖同名线）
+  重开为新分支         ① 第一次点：确认；② 第二次点（按钮回调里）：查主线存档 →
+                       写换图广播 → Network.RestartGame()。**不写任何存档**
+  载入选中 / 删除选中  先确认（弹窗，或本上下文没有弹窗时“再点一次确认”）
+  本档→主线            把本档设为主线（M）
+  本档→分支            把本档设成分支（B），父 = 选中的档（没选就挂主线头）
+  选中→主线 / 选中→分支 把选中的那条档改成主线/分支（分支的父 = 本局节点或主线头）
+  收件 / 刷新列表      直接执行
+
+换图的门槛与广播（UI/ModMiscSaveGraph.lua）：
+
+  GetMainlineAnchor() -> (id, 来源说明)   主线档在哪：主线头 / 列表里的主线档 / 本局就是主线档
+  HasMainlineSave() -> (bool, 原因)       **没有主线存档就拒绝换图**（要求玩家先手动存档）
+  BroadcastBranchSwitch({ Parent? })      写广播 sw_bcast（ephemeral/big，TTL 300s）
+  PeekBranchBroadcast() / TakeBranchBroadcast() / ClearBranchBroadcast()
+                                         看 / 取（读到即删 = 用后即焚）/ 清
+  SwitchToNewBranch({ Reason? })          门槛 → 写广播 → 直接 Network.RestartGame()
+  RestartNow(reason)                      只重开（诊断用）
+
+  广播字段：{ Parent, Kind="B", Logical（逻辑回合锚点）, Turn, Map, FromNode, Stamp, WrittenAt }
+  新局开局（ReportAfterLoad）：先清过期（AutoGC + 300 秒自检），再检测广播 →
+  **有就一律认定本局是分支**（父/锚点取自广播）→ 立刻删掉广播。
+  已知漏洞（授权者接受）：这 5 分钟内开的任何新局都会被当成分支；
+  若本局已有自己的身份，则不改本局关系、只消费广播（日志写明）。
+
+手动改关系（档名改不了 ⇒ 关系覆盖表 sg_over，permanent/small）：
+
+  SetCurrentRelation(kind[, parentId])    本档设为主线/分支（同时改写本局身份）
+  SetNodeRelation(id, kind[, parentId])   别的档设为主线/分支（父不能是自己）
+  ClearNodeRelation(id) / ListRelationOverrides()
+  覆盖在“读列表 → 建树”之间套用（节点上带 Overridden 标记，树里显示「手动改过关系」）；
+  本局自己那条同时改写身份 ⇒ 下次存档把新关系写进档名，自然收敛。
+
+------------------------------------------------------------------------------
+### 4.2 Kocmoca_Build_RequirementModels（要求模型）
+------------------------------------------------------------------------------
+  RequirementModel TEXT PK   模型标识
+  TerrainList      TEXT      所需地形列表（FK → Kocmoca_Build_RequireTerrainList）
+  FeatureList      TEXT      所需地貌列表（FK → Kocmoca_Build_RequireFeatureList）
+  ResourceList     TEXT      所需资源列表（FK → Kocmoca_Build_RequireResourceList）
+  PlotOwnerList    TEXT      地块归属列表（FK → Kocmoca_Build_RequirePlotOwnerList）
+  UnitType         TEXT      所需单位类型
+  AbilityType      TEXT      所需单位能力
+  TechType         TEXT      所需科技（如 "TECH_IRRIGATION"）
+  CivicType        TEXT      所需市政（如 "CIVIC_FEUDALISM"）
+  TraitType        TEXT      所需玩家特质
+
+------------------------------------------------------------------------------
+### 4.3 Kocmoca_Build_CostModels（花费模型）
+------------------------------------------------------------------------------
+  CostModel           TEXT PK  模型标识
+  BuildCharge         INTEGER  消耗建造次数
+  GoldAmount          INTEGER  消耗金币
+  FaithAmount         INTEGER  消耗信仰
+  ResourceType        TEXT     消耗资源类型
+  ResourceAmount      INTEGER  消耗资源数量
+  UnitMovement        INTEGER  消耗移动力（默认=全部剩余）
+  UnitPropertyType    TEXT     单位属性检查类型
+  UnitPropertyNum     INTEGER  单位属性阈值
+  PlayerPropertyType  TEXT     玩家属性检查类型
+  PlayerPropertyNum   INTEGER  玩家属性阈值
+
+------------------------------------------------------------------------------
 ### 3.13.14 存档面板的三段式：确认 → 存原档 → 只重开（v1.95 起）
 ------------------------------------------------------------------------------
 动机与日志证据见 API_Verification_Status.md §19.24；这里只写接口与行为。

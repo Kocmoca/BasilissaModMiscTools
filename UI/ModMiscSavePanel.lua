@@ -39,33 +39,17 @@ local EVENT_LIST_MAX = 80
 
 local m_SelectedNode = nil        -- 关系树里选中的节点（发送事件 / 读档 / 删除的目标）
 
--- 换图（授权者 2026-10-06 定稿）：**“存原档”和“重开”分开占两次点击**。
+-- 换图（授权者 2026-10-06 新方案）：**存储与切换彻底分开**
 --
---   ① 点「切换到选中」→ 确认（引擎弹窗；本上下文没有弹窗时退化成“再点一次确认”）。
---      确认下来的这一下**只做两件事**：写交接单 + 存当前档（`PrepareSwitch`），**绝不重开**
---      （存原档放到弹窗回调里是安全的：引擎自己的存档菜单也在弹窗回调里调 Network.SaveGame）。
---   ② 原档在存档列表里**确认落盘后**，再点一次 → **这次点击只调 `Network.RestartGame()`**
+--   点「重开为新分支」→ 确认 → 同一个按钮回调里：
+--     ① 门槛：有没有主线存档？没有就只报「请先按「存档」手动存一档」，**不做任何自动存档**；
+--     ② 写一条**换图广播**（sw_bcast：5 分钟有效、读到即删）；
+--     ③ 立刻 Network.RestartGame()。
 --
--- 为什么非要分开：实机证明 `Network.RestartGame()` **只有在按钮回调里直接调**才有效
--- （弹窗回调 / 事件回调 / 按帧回调里调都是“返回了但游戏不重开”，第 42 条），
--- 而且存档还在写的时候重开既可能被引擎直接忽略、也可能把原档截断（异步排队写，第 19.13 条）。
--- 所以重开那一次点击的回调里**不做别的事**——这是唯一被实机验证过的调用形态。
---
--- 实机 2026-10-06 的“切换失败”根因（Lua.log 可查）：面板这个上下文里 `PopupDialogInGame` 是 nil，
--- 走的是“再点一次确认”那条退化成路，而它拿**闭包对象**比相等 —— 每次点击都是新闭包，永远不相等，
--- 于是永远停在“Tap again to confirm”。现在改成用**稳定的键**（目标 id）比。
-local m_RestartReady = nil         -- 原档状态已知（确认落盘 / 两次都没确认）⇒ 下一次点击重开
-local m_RestartUnverified = false  -- 上面那个状态是“**没确认**落盘”（玩家显式选择强切）
-local m_ForceArmed = nil           -- 未确认落盘时玩家又确认过一次（防误触）
-local m_SwitchTargetId = nil       -- 本次切换的目标节点（落盘确认后用它标记“可以重开”）
-local m_SwitchTickArmed = false    -- 按帧回调（轮询落盘确认）是否已挂上
-local m_CheckSaveFrames = 0        -- 距离下一次查存档列表还有几帧（~2 秒查一次）
--- 重开看门狗：`Network.RestartGame()` 有可能“调用返回了但游戏没重开”。真重开的话这个上下文
--- 会被销毁、按帧回调不会再跑；还能跑 ⇒ 说明引擎没理这次调用。到点就把这件事**明确写进日志与状态行**，
--- 不要再让人从“后面还有没有日志”去猜。
-local m_RestartWatchdogAt = nil
-local m_RestartWatchdogCount = 0
-local m_LoadViewStateCount = 0     -- 本上下文见过几次 LoadGameViewStateDone（重开后应重新计）
+--   新局开局读到广播就认定自己是那条线的分支（父/逻辑锚点取自广播），广播随即被消费。
+--   面板这边**不再有任何状态机**：不轮询、不验证落盘、不自动重开、不自动存档。
+local m_RestartAttempted = false   -- 上次调过 RestartGame：还能响应点击 ⇒ 引擎没真重开（见 NoteStillAlive）
+
 local m_EventTypeKey = "GOLD"
 local m_EventDetailEntry = nil
 local m_EventTurnEntry = nil
@@ -110,6 +94,15 @@ local function SafeCall(name, fn, ...)
     return true, a
 end
 
+-- 上次调过 RestartGame 却还能响应点击 ⇒ 引擎没真的重开。每个按钮动作开头叫一次。
+local function NoteStillAlive(actionName)
+    if not m_RestartAttempted then return end
+    m_RestartAttempted = false
+    Log("**引擎没有重开**：上次 RestartGame 之后本上下文还活着（动作=" .. tostring(actionName)
+        .. "）—— 这是最直接的证据，不需要按帧回调")
+    SetDetail(Locale.Lookup("LOC_MODMISC_SAVEPANEL_RESTART_IGNORED_DETAIL", "1"))
+end
+
 -- ===========================================================================
 -- 信息行 / 关系树渲染
 -- ===========================================================================
@@ -124,7 +117,8 @@ end
 local function UpdateInfoLine()
     local current = ModMiscSaveGraph.GetCurrentNodeId()
     local head = ModMiscSaveGraph.GetMainlineHeadId()
-    local pending = ModMiscSaveGraph.GetPendingBranch()
+    local broadcast = ModMiscSaveGraph.PeekBranchBroadcast ~= nil
+        and ModMiscSaveGraph.PeekBranchBroadcast() or nil
     local incoming = ModMiscSaveGraph.GetIncomingBranch()
     local noneText = Locale.Lookup("LOC_MODMISC_SAVEPANEL_NONE")
 
@@ -133,9 +127,11 @@ local function UpdateInfoLine()
     if incoming ~= nil then
         incomingText = tostring(incoming.Parent) .. " → " .. tostring(incoming.Kind)
     end
-    local pendingText = noneText
-    if pending ~= nil then
-        pendingText = tostring(pending.Parent) .. " → " .. tostring(pending.Kind)
+    -- 换图广播（5 分钟、读到即删）：有它 = 刚有人点了换图，本局/下一局会被认成分支
+    local broadcastText = noneText
+    if broadcast ~= nil then
+        broadcastText = Locale.Lookup("LOC_MODMISC_SAVEPANEL_BROADCAST",
+            tostring(broadcast.Parent), tostring(broadcast.Age or "?"))
     end
     -- 回合同步（纯逻辑）：逻辑回合 = 引擎回合 + 偏移
     local logicalTurn, engineTurn, offset = nil, nil, nil
@@ -149,7 +145,7 @@ local function UpdateInfoLine()
     end
 
     Controls.ModMiscSaveInfo:SetText(Locale.Lookup("LOC_MODMISC_SAVEPANEL_INFO",
-        DescribeId(current), incomingText, logicalText, DescribeId(head), pendingText))
+        DescribeId(current), incomingText, logicalText, DescribeId(head), broadcastText))
 end
 
 -- 一条关系档的显示文本：缩进 + [M/B] + id + T回合 + 地图 + 时间 + 标记
@@ -439,6 +435,7 @@ local function SelectEventDefaultsIfNeeded()
 end
 
 local function DoSendEvent()
+    NoteStillAlive("DoSendEvent")
     if m_SelectedNode == nil then
         Report(Locale.Lookup("LOC_MODMISC_SAVEPANEL_NO_SELECTION"),
             Locale.Lookup("LOC_MODMISC_SAVEPANEL_NO_SELECTION_DETAIL"))
@@ -504,6 +501,7 @@ end
 -- 之所以允许确认回调里直接调 Network.LoadGame：引擎自己就是这么干的
 -- （Base/Assets/UI/FrontEnd/LoadGameMenu.lua 的 OnLoadYes —— 弹窗 Yes 回调里调 Network.LoadGame）。
 local function DoLoadSelected()
+    NoteStillAlive("DoLoadSelected")
     if m_SelectedNode == nil then
         Report(Locale.Lookup("LOC_MODMISC_SAVEPANEL_NO_SELECTION"),
             Locale.Lookup("LOC_MODMISC_SAVEPANEL_NO_SELECTION_DETAIL"))
@@ -542,19 +540,8 @@ end
 -- 按钮动作
 -- ===========================================================================
 
--- 创建分支（授权者 2026-10-06 新逻辑）：把当前局存成一个**逻辑分支档**，不重开、不切换
-local function DoCreateBranch()
-    local ok, idOrErr = ModMiscSaveGraph.CreateBranchNode()
-    if not ok then
-        ReportError("CreateBranch", idOrErr)
-        return
-    end
-    Report(Locale.Lookup("LOC_MODMISC_SAVEPANEL_BRANCH_CREATED", tostring(idOrErr)),
-        Locale.Lookup("LOC_MODMISC_SAVEPANEL_BRANCH_CREATED"))
-    RefreshAll()
-end
-
 local function DoSave()
+    NoteStillAlive("DoSave")
     local ok, err = ModMiscSaveGraph.SaveCurrentGame({
         Reason = "manual",
         -- ① SaveComplete 回执（立刻）：只报“已回执”，落盘复查是下一步
@@ -586,211 +573,66 @@ local function DoSave()
         Locale.Lookup("LOC_MODMISC_SAVEPANEL_SAVING_DETAIL"))
 end
 
--- 看门狗日志用的引擎回合（取不到就写 ?，不能因为读不到回合把看门狗本身弄炸）
-local function TryCallTurn()
-    local ok, value = pcall(function() return Game.GetCurrentGameTurn() end)
-    if ok and value ~= nil then return value end
-    return "?"
-end
-
--- 换图按钮：① 确认 → ② 存原档（不重开）→ ③ 只重开
--- 按帧推进只干一件事：**轮询存档列表，确认原档真的落盘**（唯一的判据，见第 19.13 条）。
--- 前置声明：MarkRestartReady / PerformSwitch 都要用它把按帧回调挂上（Lua 5.1 必须先声明再使用）
-local EnsureSwitchTick = nil
-
--- 原档状态确定（确认落盘 / 两次都没确认）⇒ 标记“可以重开了”。
--- 注意：这里**只改状态、把提示打在状态行**，绝不在这里重开 —— 按帧回调里调 Network.RestartGame()
--- 是实机证明“返回了但不重开”的形态之一，重开必须留给玩家那次按钮点击。
-local function MarkRestartReady(reason, unverified)
-    local target = m_SwitchTargetId
-    if target == nil then return end
-    m_RestartReady = target
-    m_RestartUnverified = unverified == true
-    m_ForceArmed = nil
-    EnsureSwitchTick()
-    Log("换图：进入“可重开”状态（" .. tostring(reason) .. "，目标=" .. tostring(target)
-        .. (m_RestartUnverified and "，**原档未确认落盘**" or "，原档已确认落盘")
-        .. "）——等玩家点一次「切换到选中」，那一次只做重开")
-end
-
--- 换图状态机（只剩两件事：轮询确认落盘 → 标记可重开）
---   为什么要等确认：SaveComplete 认不出是哪一份存档（换图前刚好写了交接单那个小配置档），
---   之前靠它 + 一个盲倒计时“猜”原档写完了，实机结果就是“面板说存好了、存档列表里却没有”。
---   现在唯一的判据是**存档列表里查得到**；超时只重发一次，再不行就老实说失败，交给玩家显式决定。
-local function TickAutoSwitch(delta)
-    -- 看门狗：调过重开之后还能跑到这里 ⇒ 引擎没真的重开
-    if m_RestartWatchdogAt ~= nil then
-        local now = os.time()
-        if now == nil or now >= m_RestartWatchdogAt then
-            m_RestartWatchdogAt = nil
-            Log("**引擎没有重开**：Network.RestartGame() 已返回但游戏仍在运行（第 "
-                .. tostring(m_RestartWatchdogCount) .. " 次）—— 本上下文还活着，"
-                .. "LoadGameViewStateDone 见过 " .. tostring(m_LoadViewStateCount) .. " 次，"
-                .. "引擎回合=" .. tostring(TryCallTurn()) .. "。"
-                .. "真重开过的话日志里会出现新的 `panel loading build=…` 并重新走一遍开局探针。")
-            SetStatus(Locale.Lookup("LOC_MODMISC_SAVEPANEL_RESTART_IGNORED"))
-            SetDetail(Locale.Lookup("LOC_MODMISC_SAVEPANEL_RESTART_IGNORED_DETAIL",
-                tostring(m_RestartWatchdogCount)))
-            -- 状态行让玩家“再点一次”，那一次就必须是**纯重开重试**：原档早就确认落盘了，
-            -- 不该再让他走一遍确认 + 再存一档。所以把“可重开”状态摆回去
-            -- （交接单若已过期，模块会拒绝并让面板回到“重新准备”，见 PerformRestart 的 handoff-lost）
-            if m_SwitchTargetId ~= nil then
-                m_RestartReady = m_SwitchTargetId
-                m_RestartUnverified = false
-                Log("看门狗：把状态摆回“可重开”，下一次点击 = 纯重开重试（不会再存一档）")
-            end
-        end
-    end
-    local state = ModMiscSaveGraph.GetSaveState ~= nil and ModMiscSaveGraph.GetSaveState() or nil
-    if state ~= nil and state.Verified ~= true and state.Failed ~= true then
-        m_CheckSaveFrames = (m_CheckSaveFrames or 0) + 1
-        -- 先写“正在确认”，**再**查列表：查到之后回调里的“已确认 / 可重开”才不会被这一行盖掉
-        SetStatus(Locale.Lookup("LOC_MODMISC_SAVEPANEL_SAVE_VERIFYING",
-            tostring(state.Name or "?"), tostring(math.floor((state.Elapsed or 0)))))
-        -- 每 ~2 秒查一次列表（帧率按 30 估）
-        if m_CheckSaveFrames >= 60 then
-            m_CheckSaveFrames = 0
-            ModMiscSaveGraph.VerifySaveNow(function(found)
-                if found then
-                    SetStatus(Locale.Lookup("LOC_MODMISC_SAVEPANEL_SAVE_VERIFIED"))
-                    MarkRestartReady("落盘确认回调")
-                end
-            end)
-        end
-        -- 等太久（40 秒）⇒ 重发一次；再等 40 秒还没有 ⇒ 老实报错，改由玩家显式决定
-        if (state.Elapsed or 0) > 40 then
-            if (state.Attempts or 1) < 2 then
-                m_CheckSaveFrames = 0
-                Report(Locale.Lookup("LOC_MODMISC_SAVEPANEL_SWITCH_RESAVE", "2"),
-                    Locale.Lookup("LOC_MODMISC_SAVEPANEL_SWITCH_PREPARED_DETAIL"))
-                ModMiscSaveGraph.RetrySave(function(found)
-                    if found then
-                        SetStatus(Locale.Lookup("LOC_MODMISC_SAVEPANEL_SAVE_VERIFIED"))
-                        MarkRestartReady("重发后落盘确认回调")
-                    end
-                end)
-            else
-                Log("换图：原档两次都没能确认落盘；不自动重开，等玩家显式决定")
-                SetStatus(Locale.Lookup("LOC_MODMISC_SAVEPANEL_SAVE_FAILED"))
-                ModMiscSaveGraph.MarkSaveFailed()
-                MarkRestartReady("两次都没确认落盘（玩家可显式强切）", true)
-            end
-        end
-    end
-    ContextPtr:RequestRefresh()
-end
-
-EnsureSwitchTick = function()
-    if m_SwitchTickArmed then return end
-    m_SwitchTickArmed = true
-    ContextPtr:SetRefreshHandler(TickAutoSwitch)
-    ContextPtr:RequestRefresh()
-    Log("落盘确认轮询（按帧回调）已挂上")
-end
-
--- 切换（授权者 2026-10-06 定稿）：**重开单独占一次点击**，见文件顶部说明。
---   ① 确认（AskConfirm：弹窗或“再点一次”）→ 确认下来这一下**只存原档**（本函数）；
---   ② 原档确认落盘后再点一次 → 只重开（PerformRestart）。
-local function PerformSwitch(targetId)
-    -- 先把上一次没走完的存档状态复位：否则新请求会被“上一笔还在等回执”挡回去，
-    -- 表现就是“点切换没反应”（实机 2026-10-06）。
-    if ModMiscSaveGraph.ResetSaveState ~= nil then
-        ModMiscSaveGraph.ResetSaveState("开始切换")
-    end
-    m_SwitchTargetId = tostring(targetId)
-    m_RestartReady = nil
-    m_RestartUnverified = false
-    m_ForceArmed = nil
-    m_CheckSaveFrames = 59            -- 下一帧就去查一次存档列表
-    -- 【实机 2026-10-06 抓到的坑】落盘轮询跑在按帧回调里，而按帧回调只有 EnsureSwitchTick 会挂。
-    -- 早前只有 MarkRestartReady 调它，可 MarkRestartReady 又只在轮询回调里被调到 ⇒ 自锁：
-    -- 轮询根本没开始过，“落盘确认”那几行日志一行都不会出现。现在开切就挂上。
-    EnsureSwitchTick()
-    local ok, idOrErr = ModMiscSaveGraph.PrepareSwitch({
-        TargetNodeId = targetId,
-        OnVerified = function(found)
-            if found then
-                SetStatus(Locale.Lookup("LOC_MODMISC_SAVEPANEL_SAVE_VERIFIED"))
-                MarkRestartReady("落盘确认回调（PrepareSwitch）")
-            end
-        end,
-    })
+-- 换图：**只写广播 + 直接重开**（不存档、不验证、不等任何事件）。
+-- 执行必须在**按钮回调里**（这是实机唯一验证过能真重开的形态）。
+local function PerformBranchSwitch()
+    -- 借用 slot：把“主档”这件事交给关系树模块判断（没有主线存档就拒绝）
+    local ok, err = ModMiscSaveGraph.SwitchToNewBranch({ Reason = "面板按钮（重开为新分支）" })
     if not ok then
-        ReportError("PrepareSwitch", idOrErr)
+        -- 走到这里说明**没有重开**（调用被拒/失败），把原因写在状态行
+        Report(Locale.Lookup("LOC_MODMISC_SAVEPANEL_SWITCH_REFUSED"), tostring(err))
         return
     end
-    Report(Locale.Lookup("LOC_MODMISC_SAVEPANEL_SWITCH_PREPARED", tostring(idOrErr)),
-        Locale.Lookup("LOC_MODMISC_SAVEPANEL_SWITCH_PREPARED_DETAIL"))
-end
-
--- ③ 重开：**这个按钮回调里只做重开这一件事**（唯一被实机证明有效的形态）。
--- 原档确认落盘才允许切；两次都没确认时，玩家要**再确认一次**才强切（Force）。
-local function PerformRestart(targetId)
-    Report(Locale.Lookup("LOC_MODMISC_SAVEPANEL_SWITCH_NOW"),
-        Locale.Lookup("LOC_MODMISC_SAVEPANEL_SWITCH_NOW_DETAIL"))
-    local ok, err, code = ModMiscSaveGraph.SwitchNow({
-        Reason = "按钮回调（重开专用）",
-        Force = m_RestartUnverified == true,
-    })
-    if not ok then
-        if code == "handoff-lost" then
-            -- 交接单过期/被消费：重开会丢关系，所以模块拒绝了。这里把“可重开”状态清掉，
-            -- 玩家下一次点「切换到选中」就是重新准备（重新写交接单 + 存原档）。
-            Report(Locale.Lookup("LOC_MODMISC_SAVEPANEL_SWITCH_HANDOFF_LOST"),
-                Locale.Lookup("LOC_MODMISC_SAVEPANEL_SWITCH_HANDOFF_LOST_DETAIL"))
-            m_RestartReady = nil
-            m_RestartUnverified = false
-            m_ForceArmed = nil
-        else
-            ReportError("SwitchNow", err)
-        end
-        return
-    end
-    -- 调用返回了，但这**不等于**重开了：真重开的话本上下文会被销毁、按帧回调不会再跑。
-    -- 所以这里上表看门狗，5 秒后如果还能跑，就把“引擎没重开”明确写出来（不再靠人猜）。
-    m_RestartReady = nil
-    m_ForceArmed = nil
-    m_RestartWatchdogCount = m_RestartWatchdogCount + 1
-    m_RestartWatchdogAt = (os.time() or 0) + 5
-    EnsureSwitchTick()
-    Log("重开看门狗已上表：5 秒后如果本上下文还活着，就说明引擎没理这次 RestartGame")
+    m_RestartAttempted = true
+    Report(Locale.Lookup("LOC_MODMISC_SAVEPANEL_SWITCH_SENT"),
+        Locale.Lookup("LOC_MODMISC_SAVEPANEL_SWITCH_SENT_DETAIL"))
 end
 
 local function DoSwitchMap()
-    local selected = m_SelectedNode
-    if selected == nil then
-        Report(Locale.Lookup("LOC_MODMISC_SAVEPANEL_NO_SELECTION"),
-            Locale.Lookup("LOC_MODMISC_SAVEPANEL_SWITCH_NEED_SELECTION"))
-        return
-    end
-    local targetId = tostring(selected.Id)
-
-    -- ③ 原档状态已知（确认落盘 / 两次都没确认）⇒ 这一次点击**只重开**
-    if m_RestartReady == targetId then
-        if m_RestartUnverified and m_ForceArmed ~= targetId then
-            -- 原档没确认落盘：把警告写在状态行，**再点一次**就是玩家的显式选择（这里不重开：
-            -- 重开只能在按钮回调里做；警告本身就已经是“确认”这一步了，不再套一层确认）
-            m_ForceArmed = targetId
-            Report(Locale.Lookup("LOC_MODMISC_SAVEPANEL_SWITCH_UNVERIFIED_WARN"),
-                Locale.Lookup("LOC_MODMISC_SAVEPANEL_CONFIRM_AGAIN"))
-            return
-        end
-        PerformRestart(targetId)
-        return
-    end
-
-    -- ① + ② 确认：有弹窗就弹窗，没有就“再点一次确认”。**确认下来这一下只存原档、不重开。**
-    AskConfirm(Locale.Lookup("LOC_MODMISC_SAVEPANEL_SWITCH_CONFIRM",
-            tostring(selected.RawName or targetId)),
-        function()
-            m_RestartReady = nil
-            m_RestartUnverified = false
-            PerformSwitch(targetId)
-        end, "switch:" .. targetId)
+    NoteStillAlive("DoSwitchMap")
+    -- 这一个按钮既是“确认”也是“执行”：第一次点问一句，第二次点就在回调里跑
+    AskConfirm(Locale.Lookup("LOC_MODMISC_SAVEPANEL_SWITCH_CONFIRM"),
+        function() PerformBranchSwitch() end, "switch-newbranch")
 end
 
--- 收件：把发给本局节点的事件拉进回合事件列表（开局会自动跑一次，这里是手动入口）
+-- 把本档 / 选中的档改成主线或分支（关系覆盖表；档名改不了，见 SaveGraph.SetNodeRelation）
+local function DoSetRelation(scope)
+    NoteStillAlive("DoSetRelation")
+    local selected = m_SelectedNode
+    local ok, err
+    local parentId = ModMiscSaveGraph.GetCurrentNodeId() or ModMiscSaveGraph.GetMainlineHeadId()
+    if scope == "this-mainline" then
+        ok, err = ModMiscSaveGraph.SetCurrentRelation(ModMiscSaveGraph.KindMainline)
+    elseif scope == "this-branch" then
+        -- 父 = 选中的那条档（没选就挂主线头）
+        ok, err = ModMiscSaveGraph.SetCurrentRelation(ModMiscSaveGraph.KindBranch,
+            (selected ~= nil and tostring(selected.Id)) or parentId)
+    elseif scope == "sel-mainline" then
+        if selected == nil then
+            Report(Locale.Lookup("LOC_MODMISC_SAVEPANEL_NO_SELECTION"),
+                Locale.Lookup("LOC_MODMISC_SAVEPANEL_SWITCH_NEED_SELECTION"))
+            return
+        end
+        ok, err = ModMiscSaveGraph.SetNodeRelation(tostring(selected.Id), ModMiscSaveGraph.KindMainline)
+    elseif scope == "sel-branch" then
+        if selected == nil then
+            Report(Locale.Lookup("LOC_MODMISC_SAVEPANEL_NO_SELECTION"),
+                Locale.Lookup("LOC_MODMISC_SAVEPANEL_SWITCH_NEED_SELECTION"))
+            return
+        end
+        ok, err = ModMiscSaveGraph.SetNodeRelation(tostring(selected.Id), ModMiscSaveGraph.KindBranch,
+            parentId)
+    end
+    if not ok then
+        ReportError("SetRelation", err)
+        return
+    end
+    Report(Locale.Lookup("LOC_MODMISC_SAVEPANEL_RELATION_SET", tostring(scope)), nil)
+    RefreshAll()
+end
+
 local function DoIntakeEvents()
+    NoteStillAlive("DoIntakeEvents")
     if ModMiscSaveGraph.IntakeEvents == nil then
         ReportError("IntakeEvents", "模块没加载")
         return
@@ -803,6 +645,7 @@ end
 
 -- 删除选中存档
 local function DoDeleteSelected()
+    NoteStillAlive("DoDeleteSelected")
     if m_SelectedNode == nil then
         Report(Locale.Lookup("LOC_MODMISC_SAVEPANEL_NO_SELECTION"),
             Locale.Lookup("LOC_MODMISC_SAVEPANEL_NO_SELECTION_DETAIL"))
@@ -902,12 +745,18 @@ function OnInit()
         function() SafeCall("DeleteSelected", DoDeleteSelected) end)
     Controls.ModMiscSaveCurrent:RegisterCallback(Mouse.eLClick,
         function() SafeCall("Save", DoSave) end)
-    Controls.ModMiscSaveCreateBranch:RegisterCallback(Mouse.eLClick,
-        function() SafeCall("CreateBranch", DoCreateBranch) end)
+    Controls.ModMiscSaveThisMainline:RegisterCallback(Mouse.eLClick,
+        function() SafeCall("ThisMainline", function() DoSetRelation("this-mainline") end) end)
+    Controls.ModMiscSaveThisBranch:RegisterCallback(Mouse.eLClick,
+        function() SafeCall("ThisBranch", function() DoSetRelation("this-branch") end) end)
+    Controls.ModMiscSaveSelMainline:RegisterCallback(Mouse.eLClick,
+        function() SafeCall("SelMainline", function() DoSetRelation("sel-mainline") end) end)
+    Controls.ModMiscSaveSelBranch:RegisterCallback(Mouse.eLClick,
+        function() SafeCall("SelBranch", function() DoSetRelation("sel-branch") end) end)
     Controls.ModMiscSaveSwitchMap:RegisterCallback(Mouse.eLClick,
-        function() SafeCall("SwitchMap", DoSwitchMap) end)
+        function() SafeCall("SwitchBranch", DoSwitchMap) end)
     Controls.ModMiscSaveRefresh:RegisterCallback(Mouse.eLClick,
-        function() SafeCall("Refresh", function() RefreshAll() end) end)
+        function() SafeCall("Refresh", function() NoteStillAlive("Refresh"); RefreshAll() end) end)
 
     UpdateInfoLine()
 end
@@ -922,17 +771,6 @@ end
 Events.LoadGameViewStateDone.Add(OnLoadGameViewStateDone)
 Events.LocalPlayerTurnBegin.Add(TryRegisterSidebarButton)
 
--- 换图后新局的**第一档自动存掉**（“真存档接手逻辑占位”，授权者 2026-10-06 的约定）。
--- 挂在回合开始而不是载入完成：加载画面里存档实机证否过；没有待自动存档标记时它什么都不做。
-local function TryAutoSaveAfterSwitch()
-    if ModMiscSaveGraph == nil or ModMiscSaveGraph.RunPendingAutoSave == nil then return end
-    local ok, done, err = pcall(ModMiscSaveGraph.RunPendingAutoSave, "换图后第一个回合开始")
-    if not ok then
-        Log("换图后自动存档调用失败 -> " .. tostring(done))
-    elseif done ~= true and err ~= nil then
-        Log("换图后未自动存档：" .. tostring(err))
-    end
-end
-Events.LocalPlayerTurnBegin.Add(TryAutoSaveAfterSwitch)
+
 LuaEvents.ModMiscToolUIReady.Add(TryRegisterSidebarButton)
 ContextPtr:SetInitHandler(OnInit)

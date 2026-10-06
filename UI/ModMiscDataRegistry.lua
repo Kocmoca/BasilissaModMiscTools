@@ -37,18 +37,26 @@ Register({
     Describe = "主线头节点 id（关系树的入口；换图后新局靠它认亲）",
 })
 
--- 换图待接分支：换图前写、新局开局消费；过期作废 → ephemeral
+-- 换图**广播**（授权者 2026-10-06 新方案）：点「重开为新分支」时写一条，新局开局读。
+--
+--   语义是**广播**而不是定向交接单：写的人不关心谁读，读到的人**一律认定自己是分支**
+--   （有漏洞 —— 5 分钟内开的任何新局都会被当成分支 —— 但实现容易，授权者认可）。
+--   生命周期：用后即焚 + **5 分钟**有效期；开局先清过期，再检测有没有它。
+--   通道同下：大通道是模组数据库的同步调用（实机 1 MB 验证过），不受“排队异步写”的时间窗影响。
 Register({
-    -- 现在存的是**表**（{Parent, Kind, Stamp, WrittenAt, Logical, FromMap, ToMap, PayloadKey}），
-    -- 不再是 "a|B|stamp|epoch" 那种拼串（拼串历史上踩过 3 段/4 段解析 bug，表由协议编解码）。
-    --
-    -- 【通道为什么从 small 改成 big（实机 2026-10-06）】small 的每个键 = 一个小配置档，
-    -- 由 Network.SaveGame **排队异步**写出；换图时“写交接单 → 存原档 → 重开”只隔几秒，
-    -- 实测 4 个分片文件里只有 1 个赶在重开前落盘 ⇒ 新局读不到交接单 ⇒ **分支认不出自己**。
-    -- 大通道是模组数据库的同步调用（实机 1 MB 跨进程验证过），不受这个时间窗影响。
-    Name = "sg_pending", Lifecycle = "ephemeral", Channel = "big",
-    Owner = "存档关系树", Version = 1, Type = "table", TTL = 900,
-    Describe = "换图时的待接分支（表：NodeId/Kind/Stamp/Epoch；900 秒内有效）",
+    Name = "sw_bcast", Lifecycle = "ephemeral", Channel = "big",
+    Owner = "存档关系树", Version = 1, Type = "table", TTL = 300,
+    Describe = "换图广播（表：Parent/Kind/Logical/Turn/Map/FromNode/WrittenAt；5 分钟内有效，读到即删）",
+})
+
+-- 存档关系**覆盖**（授权者 2026-10-06 要求的手动接口）：把某条档改成主线/分支、或改它的父。
+-- 档名里的 parent/kind 是引擎写下的、改不了（没有改名 API），所以“改关系”只能在树这一层覆盖：
+--   读列表时套用覆盖 → 树上立刻生效；本局自己那条同时改写身份，下次存档就写进档名。
+-- 生命周期：permanent（很小的表，一条覆盖几十字节；关系是长期事实，不该 5 分钟就没）。
+Register({
+    Name = "sg_over", Lifecycle = "permanent", Channel = "small",
+    Owner = "存档关系树", Version = 1, Type = "table", MaxBytes = 4096,
+    Describe = "存档关系覆盖（表：{ [节点id] = {K=主线/分支, P=父节点id 或 根, Stamp=改动时间} }）",
 })
 
 Register({
@@ -118,16 +126,69 @@ Register({
     Describe = "对局内 SetData/GetData 的随档数据（数字/字符串/表都行；本档内持久、新局不继承）",
 })
 
--- 逻辑分支**占位**（授权者 2026-10-06）：它**不是真存档**，只是“打算从某条线分出去”的占位记录；
--- 玩家确认切换、新局生成真存档之后，占位就被移除、由真存档接手。
---
--- 【授权者 2026-10-06】“逻辑档保留在存档内即可，无需设为跨存档数据” ⇒ 改成 **persave**：
--- 它随本局的档走（写进 CustomData，下次读档还在），不需要跨存档。
--- 注意 CustomData **没有枚举接口**，所以这里用**一个键装一张表**：{ [id] = {P,K,T,M,S,L} }。
+
+-- ===========================================================================
+-- 二、跨存档事件
+-- ===========================================================================
+
 Register({
-    Name = "sg_branches", Lifecycle = "persave", Owner = "存档关系树", Version = 1, Type = "table",
-    Describe = "本局的逻辑分支占位表（{[id]={P=父,K=类型,T=回合,M=地图,S=戳,L=逻辑回合}}）——切换确认后移除该条",
+    -- 同样是表（{Type, Detail, Amount, AcceptTurn, FromNode, FromPlayerID, FromCiv, Stamp, PayloadKey}）
+    -- 通道同 sg_pending：信箱条目 ~200 字节，在 small 上要分 3 片 ⇒ 爆发写有落盘风险
+    -- （收件人可能正好在读档/重开的窗口里），所以也走大通道。
+    Name = "ev_*", Lifecycle = "ephemeral", Channel = "big",
+    Owner = "跨存档事件", Version = 1, Type = "table", TTL = 7 * 24 * 3600,
+    Describe = "事件信箱条目（表；发给某个节点，收件后由调用方投递并清理）",
 })
+
+Register({
+    -- 换图时要带过去的**数据**（大块）：一次换图一份，新局开局读走就删（用后即焚）
+    Name = "xmap_*", Lifecycle = "ephemeral", Channel = "big",
+    Owner = "换图交接", Version = 1, Type = "table", TTL = 900,
+    Describe = "换图交接载荷（表）——新局开局消费后删掉，900 秒没被消费就过期",
+})
+
+Register({
+    -- 注意：**不能**设 AutoDeleteOnLoad —— 取件（FetchEventsForNode）和投递是两步，
+    -- 读到就删的话“取了没投”就把载荷弄丢了。这里靠 TTL + 投递时显式 Remove 双保险。
+    Name = "evb_*", Lifecycle = "ephemeral", Channel = "big",
+    Owner = "跨存档事件", Version = 1, Type = "string", TTL = 7 * 24 * 3600,
+    Describe = "事件大载荷（PayloadText；投递后由 DropEventKeys 删除，过期由 GC 清）",
+})
+
+-- ===========================================================================
+-- 三、通用大对象（分片 blob / 载体档）
+-- ===========================================================================
+
+Register({
+    Name = "blob*", Lifecycle = "permanent", Channel = "small",
+    Owner = "通用分片大对象", Version = 1, Type = "string",
+    Describe = "ModMiscStore 的分片大对象（元数据 + 分片，键名带 $m / $<n> 后缀）",
+})
+
+Register({
+    Name = "carrier*", Lifecycle = "permanent", Channel = "carrier",
+    Owner = "载体存档", Version = 1, Type = "string",
+    Describe = "载体档里的大块数据（要载入那份档才能读）",
+})
+
+-- ===========================================================================
+-- 四、探针与测试数据（都是临时货，别当永久用）
+-- ===========================================================================
+
+Register({
+    Name = "probe_*", Lifecycle = "ephemeral", Channel = "small",
+    Owner = "诊断探针", Version = 1, Type = "string", TTL = 3600, MaxBytes = 96,
+    Describe = "开局/读档探针写的小标记（selftest/ingame 这类；1 小时过期）",
+})
+
+-- gameplay 侧的随档存储（Game:SetProperty）：DataStore 的公开 API 用的就是这条。
+-- **通配**：外部 mod 可以拿任意 key 存东西（API 是通用的，不能要求每个 key 都来登记）。
+Register({
+    Name = "ds_*", Lifecycle = "persave", Channel = "property",
+    Owner = "DataStore（gameplay 侧公开 API）", Version = 1, Type = "any",
+    Describe = "对局内 SetData/GetData 的随档数据（数字/字符串/表都行；本档内持久、新局不继承）",
+})
+
 
 Register({
     Name = "cg_marker", Lifecycle = "persave", Owner = "创建新局验证", Version = 1, Type = "table",

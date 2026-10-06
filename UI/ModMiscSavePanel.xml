@@ -78,7 +78,7 @@
             <!-- 操作按钮 -->
             <GridButton ID="ModMiscSaveCurrent" Anchor="L,T" Offset="20,612" Size="280,58"
                         Style="ButtonControl" FontSize="25" String="LOC_MODMISC_SAVEPANEL_SAVE" />
-            <!-- 创建分支：把当前局存成一个**逻辑分支档**（只落一个档 + 关系，不重开、不切换） -->
+            <!-- 切换 = 写一条换图广播 + **直接重开**（不存档；没有主线存档时要求先手动存一档） -->
             <GridButton ID="ModMiscSaveSwitchMap" Anchor="L,T" Offset="310,612" Size="280,58"
                         Style="ButtonControl" FontSize="24"
                         String="LOC_MODMISC_SAVEPANEL_SWITCH_SELECTED" />
@@ -91,12 +91,22 @@
                         Style="ButtonControl" FontSize="25" String="LOC_MODMISC_SAVEPANEL_INTAKE" />
             <GridButton ID="ModMiscSaveDelete" Anchor="L,T" Offset="460,678" Size="205,58"
                         Style="ButtonControl" FontSize="25" String="LOC_MODMISC_SAVEPANEL_DELETE" />
-            <!-- 创建分支：把当前局存成一个**逻辑分支档**（只落档 + 记关系，不重开、不切换） -->
-            <GridButton ID="ModMiscSaveCreateBranch" Anchor="L,T" Offset="680,678" Size="215,58"
-                        Style="ButtonControl" FontSize="24"
-                        String="LOC_MODMISC_SAVEPANEL_CREATE_BRANCH" />
 
-            <Label ID="ModMiscSaveDetail" Anchor="L,T" Offset="20,748" Size="parent-40,140"
+            <!-- 关系：把本档 / 选中的档改成主线或分支（覆盖表，见 ModMiscSaveGraph.SetNodeRelation） -->
+            <GridButton ID="ModMiscSaveThisMainline" Anchor="L,T" Offset="20,744" Size="280,58"
+                        Style="ButtonControl" FontSize="24"
+                        String="LOC_MODMISC_SAVEPANEL_THIS_MAINLINE" />
+            <GridButton ID="ModMiscSaveThisBranch" Anchor="L,T" Offset="310,744" Size="280,58"
+                        Style="ButtonControl" FontSize="24"
+                        String="LOC_MODMISC_SAVEPANEL_THIS_BRANCH" />
+            <GridButton ID="ModMiscSaveSelMainline" Anchor="L,T" Offset="600,744" Size="135,58"
+                        Style="ButtonControl" FontSize="24"
+                        String="LOC_MODMISC_SAVEPANEL_SEL_MAINLINE" />
+            <GridButton ID="ModMiscSaveSelBranch" Anchor="L,T" Offset="745,744" Size="135,58"
+                        Style="ButtonControl" FontSize="24"
+                        String="LOC_MODMISC_SAVEPANEL_SEL_BRANCH" />
+
+            <Label ID="ModMiscSaveDetail" Anchor="L,T" Offset="20,812" Size="parent-40,80"
                    FontSize="22" Color="225,225,225,255" WrapWidth="860" VerticalAlignment="Top"
                    String="" />
 

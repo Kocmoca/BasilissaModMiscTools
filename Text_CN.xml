@@ -642,30 +642,6 @@
 		<Replace Tag="LOC_MODMISC_SAVEPANEL_TITLE" Language="zh_Hans_CN">
 			<Text>存档与换图</Text>
 		</Replace>
-		<Replace Tag="LOC_MODMISC_SAVEPANEL_SAVE_VERIFYING" Language="zh_Hans_CN">
-			<Text>正在确认原档落盘… {1_Name}（{2_Seconds} 秒）</Text>
-		</Replace>
-		<Replace Tag="LOC_MODMISC_SAVEPANEL_SWITCH_RESAVE" Language="zh_Hans_CN">
-			<Text>正在重发原档存档（第 {1} 次）</Text>
-		</Replace>
-		<Replace Tag="LOC_MODMISC_SAVEPANEL_SWITCH_UNVERIFIED_WARN" Language="zh_Hans_CN">
-			<Text>没能确认原档落盘 —— 再点一次「换图」仍要切换（不保证原档完整）</Text>
-		</Replace>
-		<Replace Tag="LOC_MODMISC_SAVEPANEL_SWITCH_FORCED" Language="zh_Hans_CN">
-			<Text>按玩家选择继续切换（原档未确认落盘）…</Text>
-		</Replace>
-		<Replace Tag="LOC_MODMISC_SAVEPANEL_SAVE_VERIFIED" Language="zh_Hans_CN">
-			<Text>原档已确认在存档列表里——再点一次「切换到选中」就重开（那一次点击只做重开）。</Text>
-		</Replace>
-		<Replace Tag="LOC_MODMISC_SAVEPANEL_SAVE_FAILED" Language="zh_Hans_CN">
-			<Text>两次都没能确认原档落盘——仍要切换就再点一次「切换到选中」（会再问一次，不安全）。</Text>
-		</Replace>
-		<Replace Tag="LOC_MODMISC_SAVEPANEL_SWITCH_HANDOFF_LOST" Language="zh_Hans_CN">
-			<Text>换图交接单过期了——为免丢掉分支关系，这次切换被取消。再点一次「切换到选中」重新准备。</Text>
-		</Replace>
-		<Replace Tag="LOC_MODMISC_SAVEPANEL_SWITCH_HANDOFF_LOST_DETAIL" Language="zh_Hans_CN">
-			<Text>没有交接单就重开，新局会不知道自己是分支。重新准备会再写一张交接单、并把当前局再存一档。</Text>
-		</Replace>
 		<Replace Tag="LOC_MODMISC_SAVEPANEL_TOOLTIP" Language="zh_Hans_CN">
 			<Text>打开存档关系 / 换图面板</Text>
 		</Replace>
@@ -675,20 +651,41 @@
 		<Replace Tag="LOC_MODMISC_SAVEPANEL_CONFIRM_AGAIN" Language="zh_Hans_CN">
 			<Text>再点一次确认</Text>
 		</Replace>
-		<Replace Tag="LOC_MODMISC_SAVEPANEL_CREATE_BRANCH" Language="zh_Hans_CN">
-			<Text>创建分支</Text>
-		</Replace>
 		<Replace Tag="LOC_MODMISC_SAVEPANEL_SWITCH_SELECTED" Language="zh_Hans_CN">
-			<Text>切换到选中</Text>
-		</Replace>
-		<Replace Tag="LOC_MODMISC_SAVEPANEL_BRANCH_CREATED" Language="zh_Hans_CN">
-			<Text>已创建分支档</Text>
+			<Text>重开为新分支</Text>
 		</Replace>
 		<Replace Tag="LOC_MODMISC_SAVEPANEL_SWITCH_NEED_SELECTION" Language="zh_Hans_CN">
 			<Text>先在列表里选中一个分支档</Text>
 		</Replace>
 		<Replace Tag="LOC_MODMISC_SAVEPANEL_SWITCH_CONFIRM" Language="zh_Hans_CN">
-			<Text>切换到 {1_Target}？会先保存当前存档，然后重开游戏到新地图。</Text>
+			<Text>要重开为新分支吗？游戏会立刻重启，新的一局会记成这条线的分支。不会自动存档。</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_SAVEPANEL_SWITCH_REFUSED" Language="zh_Hans_CN">
+			<Text>无法切换：{1_Reason}</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_SAVEPANEL_SWITCH_SENT" Language="zh_Hans_CN">
+			<Text>换图广播已发出——游戏现在重启（没有写任何存档）。</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_SAVEPANEL_SWITCH_SENT_DETAIL" Language="zh_Hans_CN">
+			<Text>新局开局会认定自己是这条线的分支。广播只活 5 分钟，被读到就立刻删掉。</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_SAVEPANEL_THIS_MAINLINE" Language="zh_Hans_CN">
+			<Text>本档→主线</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_SAVEPANEL_THIS_BRANCH" Language="zh_Hans_CN">
+			<Text>本档→分支</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_SAVEPANEL_SEL_MAINLINE" Language="zh_Hans_CN">
+			<Text>选中→主线</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_SAVEPANEL_SEL_BRANCH" Language="zh_Hans_CN">
+			<Text>选中→分支</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_SAVEPANEL_RELATION_SET" Language="zh_Hans_CN">
+			<Text>关系已改（{1_Scope}）——关系树会重画；本档从下次存档起会把关系写进档名。</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_SAVEPANEL_BROADCAST" Language="zh_Hans_CN">
+			<Text>来自 {1_Parent} 的分支广播（{2_Age} 秒前）</Text>
 		</Replace>
 		<Replace Tag="LOC_MODMISC_SAVEPANEL_SWITCH" Language="zh_Hans_CN">
 			<Text>换图（自动）</Text>
@@ -742,23 +739,11 @@
 		<Replace Tag="LOC_MODMISC_SAVEPANEL_SAVED_ACKED" Language="zh_Hans_CN">
 			<Text>已收到存档回执，正在复查落盘…</Text>
 		</Replace>
-		<Replace Tag="LOC_MODMISC_SAVEPANEL_SWITCH_PREPARED" Language="zh_Hans_CN">
-			<Text>原档存档请求已发出（节点 {1_Id}）。正在等它出现在存档列表里…</Text>
-		</Replace>
-		<Replace Tag="LOC_MODMISC_SAVEPANEL_SWITCH_PREPARED_DETAIL" Language="zh_Hans_CN">
-			<Text>三步里的第二步已完成：分支关系已记、原档正在写。这次点击不重开——确认落盘后的下一次点击才只做重开。</Text>
-		</Replace>
-		<Replace Tag="LOC_MODMISC_SAVEPANEL_SWITCH_NOW" Language="zh_Hans_CN">
-			<Text>正在重启到新地图…</Text>
-		</Replace>
-		<Replace Tag="LOC_MODMISC_SAVEPANEL_SWITCH_NOW_DETAIL" Language="zh_Hans_CN">
-			<Text>按钮回调里直接调 Network.RestartGame()。要是游戏没重启，看日志里这次调用的 result。</Text>
-		</Replace>
 		<Replace Tag="LOC_MODMISC_SAVEPANEL_RESTART_IGNORED" Language="zh_Hans_CN">
-			<Text>引擎**没有**重开——游戏还在跑。请再点一次「切换到选中」。</Text>
+			<Text>引擎没有重开——游戏还在跑。</Text>
 		</Replace>
 		<Replace Tag="LOC_MODMISC_SAVEPANEL_RESTART_IGNORED_DETAIL" Language="zh_Hans_CN">
-			<Text>Network.RestartGame() 已返回，可这个界面还活着（第 {1_Count} 次）。重开那次点击只做重开这一件事；现在再点一次就是**纯重开重试**（不会再存一档）。要是还不生效，就是引擎在当前状态下拒绝了这次调用——日志那行里带着 anyMultiplayer / worldBuilder / savedGame。</Text>
+			<Text>Network.RestartGame() 已返回，可这个界面还活着——引擎在当前状态下拒绝了重开。之后再点任何按钮都会再记一次；日志那行里带着 anyMultiplayer / worldBuilder / savedGame。</Text>
 		</Replace>
 		<!-- 存档面板：跨存档事件（目标玩家 / 类型 / 内容 / 接受回合 + 发送与读档） -->
 		<Replace Tag="LOC_MODMISC_SAVEPANEL_EVENT_PLAYER" Language="zh_Hans_CN">

@@ -625,12 +625,6 @@ ExposedMembers.ModMiscToolUI.RunCrossSaveProbeUI = RunCrossSaveProbeUI
 	-- 载体存档（大块数据跨存档）：写载荷 + 存一份载体档；接收方载入后 Read
 	if ModMiscCarrier ~= nil then
 		ExposedMembers.ModMiscToolUI.Carrier = ModMiscCarrier
-		-- 换图交接：别的 mod 可以注册处理器拿“新地图开局带过来的数据”，也可以自己塞一份
-		if ModMiscSaveGraph ~= nil then
-			ExposedMembers.ModMiscToolUI.OnMapHandoff = ModMiscSaveGraph.OnMapHandoff
-			ExposedMembers.ModMiscToolUI.SetMapHandoffPayload = ModMiscSaveGraph.SetMapHandoffPayload
-			ExposedMembers.ModMiscToolUI.TakeMapHandoffPayload = ModMiscSaveGraph.TakeMapHandoffPayload
-		end
 		ExposedMembers.ModMiscToolUI.WriteCarrierPayload = ModMiscCarrier.Write
 		ExposedMembers.ModMiscToolUI.ReadCarrierPayload = ModMiscCarrier.Read
 		ExposedMembers.ModMiscToolUI.ClearCarrierPayload = ModMiscCarrier.Clear
@@ -643,8 +637,18 @@ ExposedMembers.ModMiscToolUI.RunCrossSaveProbeUI = RunCrossSaveProbeUI
 		ExposedMembers.ModMiscToolUI.DescribeSaveGraph = ModMiscSaveGraph.DescribeContext
 		ExposedMembers.ModMiscToolUI.GetSaveGraphTree = ModMiscSaveGraph.BuildTreeLines
 		ExposedMembers.ModMiscToolUI.SaveGameWithRelation = ModMiscSaveGraph.SaveCurrentGame
-		ExposedMembers.ModMiscToolUI.PrepareSwitch = ModMiscSaveGraph.PrepareSwitch
-		ExposedMembers.ModMiscToolUI.SwitchNow = ModMiscSaveGraph.SwitchNow
+		-- 换图（授权者 2026-10-06 新方案）：写广播 + 直接重开；另有手动改关系的接口
+		ExposedMembers.ModMiscToolUI.HasMainlineSave = ModMiscSaveGraph.HasMainlineSave
+		ExposedMembers.ModMiscToolUI.SwitchToNewBranch = ModMiscSaveGraph.SwitchToNewBranch
+		ExposedMembers.ModMiscToolUI.RestartNow = ModMiscSaveGraph.RestartNow
+		ExposedMembers.ModMiscToolUI.BroadcastBranchSwitch = ModMiscSaveGraph.BroadcastBranchSwitch
+		ExposedMembers.ModMiscToolUI.PeekBranchBroadcast = ModMiscSaveGraph.PeekBranchBroadcast
+		ExposedMembers.ModMiscToolUI.TakeBranchBroadcast = ModMiscSaveGraph.TakeBranchBroadcast
+		ExposedMembers.ModMiscToolUI.ClearBranchBroadcast = ModMiscSaveGraph.ClearBranchBroadcast
+		ExposedMembers.ModMiscToolUI.SetCurrentRelation = ModMiscSaveGraph.SetCurrentRelation
+		ExposedMembers.ModMiscToolUI.SetNodeRelation = ModMiscSaveGraph.SetNodeRelation
+		ExposedMembers.ModMiscToolUI.ClearNodeRelation = ModMiscSaveGraph.ClearNodeRelation
+		ExposedMembers.ModMiscToolUI.ListRelationOverrides = ModMiscSaveGraph.ListRelationOverrides
 		ExposedMembers.ModMiscToolUI.BuildRelationSaveName = ModMiscSaveGraph.BuildSaveName
 		ExposedMembers.ModMiscToolUI.ParseRelationSaveName = ModMiscSaveGraph.ParseSaveName
 	end
@@ -665,13 +669,13 @@ ExposedMembers.ModMiscToolUI.RunCrossSaveProbeUI = RunCrossSaveProbeUI
 		ExposedMembers.ModMiscToolUI.StoreGetBuildTag = function() return ModMiscStore.BuildTag end
 	end
 end
--- 退出到主菜单 = 这一局到此为止：把「待接分支」清掉。
--- 不清的话，之后新开的一局会把上一次没走完的换图关系认成自己的来源
--- —— 授权者 2026-10-05 实测到的“退出到主界面新开存档被识别为分支”。
+-- 退出到主菜单 = 这一局到此为止：把**换图广播**清掉。
+-- 不清的话，之后 5 分钟内新开的一局会被这条广播认成分支（这就是广播方案的漏洞，
+-- 退出时清一下是最便宜的补救）。真正的兜底是 5 分钟有效期。
 if Events.ExitToMainMenu ~= nil and Events.ExitToMainMenu.Add ~= nil then
 	Events.ExitToMainMenu.Add(function()
-		if ModMiscSaveGraph ~= nil and ModMiscSaveGraph.ClearPendingBranch ~= nil then
-			pcall(ModMiscSaveGraph.ClearPendingBranch, "退出到主菜单")
+		if ModMiscSaveGraph ~= nil and ModMiscSaveGraph.ClearBranchBroadcast ~= nil then
+			pcall(ModMiscSaveGraph.ClearBranchBroadcast, "退出到主菜单")
 		end
 	end)
 end

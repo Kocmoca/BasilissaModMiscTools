@@ -27,41 +27,29 @@
 --   每次写出 M 档就把主线头推进到它；B 档不动主线头。
 --
 -- 【换图流程】（两步式：先存原档 → 再点一次直接重开）
---   ① 先算好节点，**先写“待接分支”**到跨存档存储（`sg_pending` = `<原档id>|B|<stamp>|<epoch>`）
---      —— 因为重开后 CustomData / 游戏状态都不继承，只有存储通道能把关系带过去；
---   ② 存原档：按上面的规则自动判 M/B（在主线上就是 M），档名带好父子关系；
---   ③ `Events.SaveComplete` 一回执就 `Network.RestartGame()`。
---      ⚠️ 这里**只等 SaveComplete**：早先版本还串了一层“扫存档列表确认落盘”的异步门，
---      那层门一旦不回调，换图就永远不会发生（授权者实测：点了换图没跳转）。
---      扫列表现在只用来打日志；面板另挂 10 秒兜底计时器，SaveComplete 不来也能跳。
---   ④ 新局进游戏 → 开局探针读到“待接分支”，**立刻固化成本局来源**（写进 CustomData 与
---      Game:SetProperty 两条通道）并消费掉存储里那条；之后本局存档就挂到原档下、算**分支**。
---
--- 【三条通道各管什么】（2026-10-05 定稿）
---   * 存档文件名（通道 C）：关系树的**唯一**持久载体，跨进程、跨存档都在；
---   * CustomData + `Game:SetProperty`：**本局节点身份**，随档保存、读档还原、**新局不继承**
---     （两条都写、互为校验；SetProperty 是授权者提议的单向通道：只能在 gameplay 读，
---      前端拿不到，也不会像全局存储那样串到别的局）；
---   * ModMiscStore（跨存档存储）：只用来跨过“重开”这一瞬间带**待接分支**，
---     并且**带有效期**（默认 900 秒）+ 退出到主菜单即清 —— 否则新开的局会被误判成分支。
---
--- 【当前节点怎么知道】（关键）**随档保存**：存档前把节点身份写进 CustomData
---   （`ModMiscSaveGraph_*`），CustomData 随普通存档序列化、读档原样还原（第 21 条）
---   ⇒ 读档进游戏后就能知道“我在哪个节点”，之后存的档自然接在它下面。新局没有 CustomData，
---   所以走上面第 ④ 条的“待接分支”。
+--   ① 换图（面板「重开为新分支」）**不存档**：先看有没有主线存档（没有就要求玩家手动存一档），
+--      然后写一条**换图广播**（`sw_bcast`：跨存档存储、**5 分钟有效、读到即删**），立刻重开；
+--   ② 新局进游戏 → 开局探针先清过期广播，再看有没有它：**有就一律认定自己是分支**
+--      （父 / 逻辑回合锚点都取自广播），然后删掉广播（用后即焚）；
+--   ③ 玩家手动改关系（设主线/分支、换父）走**关系覆盖表** `sg_over`：档名改不了（引擎没有改名
+--      API），所以在树这一层覆盖；本局自己那条同时改写身份，下次存档自然写进档名。
 --
 -- 【公开 API】本 mod 内直接调 ModMiscSaveGraph.*
---   DescribeContext()                 只读：格式说明 + 当前节点 / 主线头 / 待接分支 + 扫描状态
+--   DescribeContext()                 只读：格式说明 + 当前节点 / 主线头 / 换图广播 + 扫描状态
 --   BuildSaveName(node) / ParseSaveName(rawName)   档名 ↔ 节点（外部工具/测试也用）
 --   Refresh(onDone)                   扫存档列表（只收 MMT~ 前缀的档）
 --   GetNodes()                        已解析的节点副本
 --   BuildTreeLines()                  深度优先的 { { Node, Depth }, … }（面板渲染用）
 --   DescribeTree()                    关系树文本（日志/面板都能用）
---   GetCurrentNodeId() / GetMainlineHeadId() / GetPendingBranch()
---   SaveCurrentGame(options)          options = { Reason = "manual"|"switch", OnSaved = fn }
---   PrepareSwitch()                   换图第一步：写待接分支 + 存原档
---   SwitchNow(reason)                 换图第二步：在**按钮回调里**直接 Network.RestartGame()
---   HasPendingSwitch() / IsSwitchSaveInFlight()   面板判断该走第一步还是第二步
+--   GetCurrentNodeId() / GetMainlineHeadId() / GetIncomingBranch()
+--   SaveCurrentGame(options)          options = { Reason = "manual", OnSaved = fn, OnChecked = fn }
+--   HasMainlineSave()                 换图门槛：有没有主线存档（没有就得先手动存档）
+--   BroadcastBranchSwitch()           写换图广播（sw_bcast：5 分钟、读到即删）
+--   TakeBranchBroadcast() / PeekBranchBroadcast() / ClearBranchBroadcast()
+--   SwitchToNewBranch()               换图 = 写广播 + 直接重开（**不存档**）
+--   RestartNow(reason)                只重开（诊断用）
+--   SetCurrentRelation(kind, parentId) / SetNodeRelation(id, kind, parentId) / ClearNodeRelation(id)
+--                                     手动把某条档设为主线/分支、或改它的父（关系覆盖表 sg_over）
 --   ReportAfterLoad()                 开局探针（由 Support_UI.Initialize 调一次）
 --
 -- ⚠️ 本文件**不挂 Events**（会被多个 context include）；`Events.SaveComplete` 只在
@@ -76,26 +64,24 @@ local MODMISC_SAVE_ROOT_PARENT = "0"
 local MODMISC_KIND_MAINLINE = "M"
 local MODMISC_KIND_BRANCH = "B"
 
+-- 前置声明（Lua 5.1：local 必须先用后声明就会解析成全局 nil —— 本项目踩过好几次）：
+-- 这两个在后面才定义，但换图广播 / 关系覆盖那两块要用它们。
+local GetMapToken = nil
+local SetMainlineHead = nil
+
 -- 跨存档存储（ModMiscStore，通道 C）里的键
 local MODMISC_IDENTITY_KEY = "sgnode"       -- 本局身份（persave 表）
-local MODMISC_BRANCH_KEY = "sg_branches"   -- 逻辑分支占位表（随档；不是真存档，见 CreateBranchNode）
 local MODMISC_STORE_KEY_MAINLINE_HEAD = "sg_head"
-local MODMISC_STORE_KEY_PENDING = "sg_pending"
+local MODMISC_BCAST_KEY = "sw_bcast"        -- 换图广播（ephemeral/big，5 分钟，读到即删）
+local MODMISC_OVERRIDE_KEY = "sg_over"      -- 存档关系覆盖表（permanent/small）
 
--- 待接分支的有效期（秒）。换图重开是“写了 pending → 几秒后新局起来”，
--- 正常远小于这个窗口；超过就当成陈旧数据丢掉 —— 否则“退出到主界面另开新局”
--- 会被上一次没走完的换图误判成分支（授权者 2026-10-05 实测到的现象）。
-local MODMISC_PENDING_MAX_AGE = 900
+-- 换图广播的有效期（秒）——授权者 2026-10-06 定的 **5 分钟**：
+-- 点「重开为新分支」时写一条，新局开局读到就认定自己是分支，读完立刻删（用后即焚）。
+-- 开局先清过期的，再看有没有它。有漏洞（5 分钟内开的任何新局都会被当成分支），但实现容易。
+local MODMISC_BCAST_MAX_AGE = 300
 
--- 存档失败/回执丢失时的自愈：超过这个秒数还没等到 SaveComplete 就丢弃待回执状态
+-- 存档回执丢失时的自愈：超过这个秒数还没等到 SaveComplete 就丢弃待回执状态
 local MODMISC_SAVE_PENDING_TIMEOUT = 20
-
--- 换图是**两步式**（见下面 PrepareSwitch / SwitchNow）：
---   第一步存原档（异步，但 pending 在存之前就写好了）；第二步由玩家再点一次按钮，
---   在**按钮回调里直接调 Network.RestartGame()** —— 完全复刻唯一被实机证明可行的调用方式，
---   不依赖引擎事件、不依赖按帧回调、不依赖时钟。
--- 这个秒数只用来判断“原档是不是还在写”（还在写就先别重开，免得把存档截断）
-local MODMISC_SWITCH_SAVE_GRACE = 12
 
 -- 事件信箱：键前缀 + 值里的分隔符
 local MODMISC_EVENT_KEY_PREFIX = "ev_"
@@ -283,7 +269,7 @@ function API.ParseSaveName(rawName)
 end
 
 -- ===========================================================================
--- 当前节点 / 主线头 / 待接分支
+-- 当前节点 / 主线头 / 换图广播
 -- ===========================================================================
 
 -- ===========================================================================
@@ -452,134 +438,204 @@ function API.GetMainlineHeadId()
     return tostring(value)
 end
 
--- 待接分支（表：{Parent, Kind, Stamp, WrittenAt, Logical}）
--- 换图重开前写入，新局开局时固化成本局来源并消费掉；
--- Logical 就是“回合同步”的锚点：新局引擎第 1 回合 = 那个逻辑回合。
-function API.GetPendingBranch()
-    if DataProtocol == nil then return nil end
-    local value = DataProtocol.Load(MODMISC_STORE_KEY_PENDING)
-    if type(value) ~= "table" then return nil end
-    local parent = value.Parent
-    local kind = value.Kind
-    local stamp = value.Stamp
-    if parent == nil or tostring(parent) == "" then return nil end
-    local fromMap, toMap = value.FromMap, value.ToMap
-    local payloadKey = value.PayloadKey
+-- ===========================================================================
+-- 换图**广播**（授权者 2026-10-06 新方案）
+--
+--   点「重开为新分支」时写一条：**进程内、用后即焚、5 分钟有效**。
+--   新局开局：先清过期的 → 再看有没有它 → **有就一律认定自己是分支**（父/锚点取自广播），
+--   然后立刻删掉它（读到即删）。
+--
+--   为什么不再用“定向交接单”：换图不再存原档、不再依赖逻辑存档，写的人不需要知道谁读；
+--   广播的漏洞（5 分钟内开的任何新局都会被当成分支）授权者明确接受。
+-- ===========================================================================
 
-    local writtenEpoch = tonumber(value.WrittenAt)
-    local originLogical = tonumber(value.Logical)
-    if writtenEpoch ~= nil then
-        local now = ReadClock()
-        if now ~= nil and (now - writtenEpoch) > MODMISC_PENDING_MAX_AGE then
-            Log("待接分支已过期（写入于 " .. tostring(writtenEpoch) .. "，" .. tostring(now - writtenEpoch)
-                .. " 秒前 > " .. tostring(MODMISC_PENDING_MAX_AGE) .. " 秒）→ 丢弃，避免误判分支")
-            -- 用表字段调用：ClearPendingBranch 的 local 声明在本函数之后
-            -- （直接写名字会被 Lua 5.1 解析成全局 nil —— 本项目踩过的坑）
-            API.ClearPendingBranch("过期")
+-- 写广播。parentId 省略时用**本局当前节点**，再退到主线头。
+function API.BroadcastBranchSwitch(options)
+    if DataProtocol == nil then return false, "数据协议没加载" end
+    local opts = options or {}
+    -- 父 = **主线存档**（门槛已经保证它存在）；调用方也可以显式指定
+    local parentId = opts.Parent or API.GetMainlineAnchor()
+    if parentId == nil then
+        return false, "没有主线存档：请先按「存档」手动存一档，再换图"
+    end
+    local logicalTurn = API.GetLogicalTurn()
+    local payload = {
+        Parent = tostring(parentId),
+        Kind = MODMISC_KIND_BRANCH,
+        Logical = tonumber(logicalTurn),
+        Turn = tonumber(TryCall(function() return Game.GetCurrentGameTurn() end)),
+        Map = GetMapToken(),
+        FromNode = tostring(API.GetCurrentNodeId() or ""),
+        Stamp = BuildStamp(),
+        WrittenAt = ReadClock() or 0,
+    }
+    local ok, err = DataProtocol.Save(MODMISC_BCAST_KEY, payload)
+    if not ok then
+        Log("换图广播写入失败 -> " .. tostring(err))
+        return false, tostring(err)
+    end
+    Log("换图广播已写入（**5 分钟内有效、读到即删**）：父=" .. tostring(payload.Parent)
+        .. " 逻辑回合=" .. tostring(payload.Logical) .. " 地图=" .. tostring(payload.Map)
+        .. " 来自节点=" .. tostring(payload.FromNode))
+    return true, payload
+end
+
+-- 只读广播（不删）。过期的一律当没有，并顺手删掉（“开局先清超出有效期的信息”）。
+function API.PeekBranchBroadcast()
+    if DataProtocol == nil then return nil end
+    local value = DataProtocol.Load(MODMISC_BCAST_KEY, { keep = true })
+    if type(value) ~= "table" then return nil end
+    local written = tonumber(value.WrittenAt)
+    local now = ReadClock()
+    if written ~= nil and now ~= nil then
+        local age = now - written
+        if age > MODMISC_BCAST_MAX_AGE then
+            Log("换图广播已过期（写于 " .. tostring(age) .. " 秒前 > "
+                .. tostring(MODMISC_BCAST_MAX_AGE) .. " 秒）→ 清掉，不认这条")
+            DataProtocol.Remove(MODMISC_BCAST_KEY)
             return nil
         end
+        value.Age = age
+    end
+    value.Parent = (value.Parent ~= nil and tostring(value.Parent) ~= MODMISC_SAVE_ROOT_PARENT)
+        and tostring(value.Parent) or nil
+    value.Kind = (value.Kind ~= nil and tostring(value.Kind) ~= "")
+        and tostring(value.Kind) or MODMISC_KIND_BRANCH
+    return value
+end
+
+-- 取广播（读到即删 = 用后即焚）
+function API.TakeBranchBroadcast(reason)
+    local value = API.PeekBranchBroadcast()
+    if value == nil then return nil end
+    DataProtocol.Remove(MODMISC_BCAST_KEY)
+    Log("换图广播已消费（" .. tostring(reason or "?") .. "）：父=" .. tostring(value.Parent)
+        .. " 逻辑回合=" .. tostring(value.Logical)
+        .. (value.Age ~= nil and ("，写于 " .. tostring(value.Age) .. " 秒前") or ""))
+    return value
+end
+
+function API.ClearBranchBroadcast(reason)
+    if DataProtocol == nil then return false end
+    Log("清除换图广播（" .. tostring(reason or "?") .. "）")
+    return DataProtocol.Remove(MODMISC_BCAST_KEY) and true or false
+end
+
+-- ===========================================================================
+-- 存档关系**覆盖**（授权者 2026-10-06 要求的手动接口）
+--
+--   为什么需要覆盖：parent/kind 写在**档名**里，而引擎没有改名 API ⇒ “把某条档改成主线/分支、
+--   或改它的父”只能在树这一层做：读列表时套用覆盖，树上立刻生效。
+--   本局自己那条同时改写身份（sgnode），于是**下次存档**就把它写进档名里（自然收敛）。
+--
+--   kind：MODMISC_KIND_MAINLINE / MODMISC_KIND_BRANCH；parent：父节点 id，主线传 nil（根）。
+-- ===========================================================================
+
+local function LoadOverrideTable()
+    if DataProtocol == nil then return {} end
+    local value = DataProtocol.Load(MODMISC_OVERRIDE_KEY, { keep = true })
+    if type(value) ~= "table" then return {} end
+    return value
+end
+
+function API.ListRelationOverrides()
+    return LoadOverrideTable()
+end
+
+function API.GetRelationOverride(nodeId)
+    if nodeId == nil then return nil end
+    return LoadOverrideTable()[tostring(nodeId)]
+end
+
+-- 设一条档的关系。isCurrent=true（或 nodeId == 本局节点）时同时改写本局身份。
+function API.SetNodeRelation(nodeId, kind, parentId, extra)
+    if DataProtocol == nil then return false, "数据协议没加载" end
+    if nodeId == nil or tostring(nodeId) == "" then return false, "没指定存档" end
+    local id = tostring(nodeId)
+    if kind ~= MODMISC_KIND_MAINLINE and kind ~= MODMISC_KIND_BRANCH then
+        return false, "类型只能是 M（主线）或 B（分支）"
+    end
+    local parent = nil
+    if kind == MODMISC_KIND_BRANCH then
+        if parentId == nil or tostring(parentId) == "" then
+            return false, "设为分支要指定父存档"
+        end
+        parent = tostring(parentId)
+        if parent == id then return false, "父不能是自己" end
     end
 
-    return {
-        Parent = (parent ~= MODMISC_SAVE_ROOT_PARENT) and parent or nil,
-        Kind = (kind ~= nil and kind ~= "") and kind or MODMISC_KIND_BRANCH,
-        Stamp = stamp,
-        WrittenAt = writtenEpoch,
-        Logical = originLogical,
-        FromMap = fromMap,
-        ToMap = toMap,
-        PayloadKey = payloadKey,
-        -- 切到**逻辑占位**时才有：占位重开前就被移除了，发给它的信箱（ev_<占位id>_*）
-        -- 得由新局接过去，否则玩家发给逻辑档的事件永远收不到（见 IntakeEvents / GetInheritedNodeIds）
-        InheritNodeId = value.InheritNodeId,
+    local table_ = LoadOverrideTable()
+    table_[id] = {
+        K = kind,
+        P = parent or MODMISC_SAVE_ROOT_PARENT,
+        Stamp = BuildStamp(),
+        Why = extra ~= nil and extra.Why or nil,
     }
-end
+    local ok, err = DataProtocol.Save(MODMISC_OVERRIDE_KEY, table_)
+    if not ok then return false, tostring(err) end
 
--- 交接单（换图/建局用）：**用后即焚**（ephemeral，TTL 900 秒），新局开局消费掉。
--- 字段：Parent/Kind/Stamp/WrittenAt/Logical（分支关系与回合同步锚点）
---       FromMap/ToMap/Engine（地图信息，便于诊断“换的是哪张图”）
---       PayloadKey（要带过去的数据，另存 xmap_* 用后即焚大载荷；交接单里只留引用）
-local function SetPendingBranch(parentId, kind, stamp, originLogical, extra)
-    if DataProtocol == nil then return false end
-    extra = extra or {}
-    local parent = parentId
-    if parent == nil or tostring(parent) == "" then parent = MODMISC_SAVE_ROOT_PARENT end
-    local written = DataProtocol.Save(MODMISC_STORE_KEY_PENDING, {
-        Parent = tostring(parent),
-        Kind = tostring(kind or MODMISC_KIND_BRANCH),
-        Stamp = tostring(stamp or ""),
-        WrittenAt = ReadClock() or 0,
-        Logical = originLogical,
-        FromMap = extra.FromMap,
-        ToMap = extra.ToMap,
-        Engine = extra.Engine,
-        PayloadKey = extra.PayloadKey,
-        InheritNodeId = extra.InheritNodeId,   -- 切到逻辑占位时：新局要继承它的信箱
-    })
-    return written == true
-end
+    Log("关系覆盖已写入：" .. id .. " ⇒ " .. kind
+        .. (parent ~= nil and ("（父=" .. parent .. "）") or "（根）"))
 
--- 换图要带过去的数据：存成 xmap_* 的用后即焚大载荷，交接单里只留键
-function API.SetMapHandoffPayload(payload)
-    if DataProtocol == nil then return nil, "数据协议没加载" end
-    if payload == nil then return nil end
-    local key = "xmap_" .. tostring(math.random(100000, 999999))
-        .. tostring(TryCall(function() return os.time() end) or 0)
-    local ok, err = DataProtocol.Save(key, payload)
-    if not ok then
-        Log("换图载荷写入失败 -> " .. tostring(err))
-        return nil, err
+    -- 本局自己那条：同时改写身份，下次存档就写进档名
+    if API.GetCurrentNodeId() ~= nil and tostring(API.GetCurrentNodeId()) == id then
+        local identity = LoadNodeIdentity() or {}
+        identity.Id = id
+        identity.Kind = kind
+        identity.Parent = parent or MODMISC_SAVE_ROOT_PARENT
+        if kind == MODMISC_KIND_MAINLINE then
+            SetMainlineHead(id)
+            identity.Offset = tonumber(identity.Offset) or 0
+        end
+        SaveNodeIdentity(identity)
+        Log("本局身份同步改写：kind=" .. kind .. " parent=" .. tostring(identity.Parent))
     end
-    Log("换图载荷已存：" .. key .. "（用后即焚，新局开局消费）")
-    return key
+    return true, id
 end
 
--- 新局开局取换图载荷（取完即删：**用后即焚**）
-function API.TakeMapHandoffPayload()
-    local handoff = API.GetPendingBranch()
-    if handoff == nil or handoff.PayloadKey == nil then return nil end
-    local payload, err = DataProtocol.Load(handoff.PayloadKey)
-    DataProtocol.Remove(handoff.PayloadKey)
-    if payload == nil then
-        Log("换图载荷读不出来（" .. tostring(err) .. "），已清掉引用")
-        return nil
+-- 本档设为主线/分支（本局必须已经存过档 —— 没有 id 就没有“本档”这回事）
+function API.SetCurrentRelation(kind, parentId, extra)
+    local currentId = API.GetCurrentNodeId()
+    if currentId == nil then
+        return false, "本局还没有本 mod 的存档：先按「存档」建一档，再改关系"
     end
-    Log("换图载荷已交付并清除：" .. tostring(handoff.PayloadKey))
-    return payload
+    return API.SetNodeRelation(currentId, kind, parentId, extra)
 end
 
--- 交接载荷的接收方注册：别的功能（或别的 mod）想知道“新地图开局时带过来了什么”，注册一个处理器
-local m_MapHandoffHandlers = {}
--- 前置声明：扫描/渲染都要用（实体定义在 CreateBranchNode 那一带，Lua 5.1 必须先声明）
-local MergeBranchPlaceholders = nil
-function API.OnMapHandoff(handler)
-    if type(handler) ~= "function" then return false end
-    table.insert(m_MapHandoffHandlers, handler)
-    return true
+function API.ClearNodeRelation(nodeId)
+    if DataProtocol == nil or nodeId == nil then return false end
+    local table_ = LoadOverrideTable()
+    if table_[tostring(nodeId)] == nil then return false, "这条没有覆盖" end
+    table_[tostring(nodeId)] = nil
+    Log("关系覆盖已清除：" .. tostring(nodeId))
+    local empty = true
+    for _ in pairs(table_) do empty = false break end
+    if empty then return DataProtocol.Remove(MODMISC_OVERRIDE_KEY) and true or false end
+    return DataProtocol.Save(MODMISC_OVERRIDE_KEY, table_) == true
 end
 
-local function DispatchMapHandoff(payload)
-    if payload == nil then return 0 end
-    local delivered = 0
-    for _, handler in ipairs(m_MapHandoffHandlers) do
-        local ok, err = pcall(handler, payload)
-        if ok then delivered = delivered + 1
-        else Log("换图载荷处理器出错 -> " .. tostring(err)) end
+-- 把覆盖套到扫出来的节点上（读列表之后、建树之前调用）
+-- nodes 由调用方传进来：m_Nodes 的 local 声明在本函数之后（Lua 5.1 不能前向引用）
+local function ApplyRelationOverrides(nodes)
+    local table_ = LoadOverrideTable()
+    local applied = 0
+    for _, node in ipairs(nodes or {}) do
+        local override = table_[tostring(node.Id)]
+        if type(override) == "table" then
+            node.Kind = override.K or node.Kind
+            node.Parent = (override.P ~= nil and tostring(override.P) ~= MODMISC_SAVE_ROOT_PARENT)
+                and tostring(override.P) or nil
+            node.Overridden = true
+            applied = applied + 1
+        end
     end
-    return delivered
+    if applied > 0 then
+        Log("套用关系覆盖 " .. tostring(applied) .. " 条（手动改过主线/分支的档）")
+    end
+    return applied
 end
 
-function API.ClearPendingBranch(reason)
-    if DataProtocol == nil then return false end
-    Log("清除待接分支（" .. tostring(reason or "?") .. "）")
-    return DataProtocol.Remove(MODMISC_STORE_KEY_PENDING) and true or false
-end
-
-local function ClearPendingBranch(reason)
-    return API.ClearPendingBranch(reason)
-end
-
-local function SetMainlineHead(nodeId)
+SetMainlineHead = function(nodeId)
     if DataProtocol == nil or nodeId == nil then return false end
     return DataProtocol.Save(MODMISC_STORE_KEY_MAINLINE_HEAD, tostring(nodeId)) == true
 end
@@ -684,7 +740,7 @@ local function OnSaveGraphQueryResults(fileList, requestId)
     API.LinkTree()
     Log("扫描完成：列表 " .. tostring(total) .. " 档，其中本 mod 关系档 "
         .. tostring(#m_Nodes) .. " 档")
-    MergeBranchPlaceholders()
+    ApplyRelationOverrides(m_Nodes)   -- 手动改过主线/分支的档（覆盖表）在建树前套上
 
     -- 把解析出来的节点逐条打出来：一眼看出“刚建的分支档到底进没进列表”
     for _, node in ipairs(m_Nodes) do
@@ -768,27 +824,14 @@ local function CollectTreeLines(node, depth, lines, visited)
     end
 end
 
--- 逻辑分支占位并进 m_Nodes（幂等）：不是真存档，但要在树里显示、可被选中
-MergeBranchPlaceholders = function()
-    if DataProtocol == nil then return end
-    for _, placeholder in ipairs(API.ListBranchPlaceholders()) do
-        if m_NodeById[placeholder.Id] == nil then
-            table.insert(m_Nodes, placeholder)
-            m_NodeById[placeholder.Id] = placeholder
-        end
-    end
-    table.sort(m_Nodes, function(a, b) return tostring(a.Id) < tostring(b.Id) end)
-end
-
--- 占位行加个标记，跟真存档区分开
+-- 存档行标签：手动改过关系的加个标记，跟档名里写死的区分开
 local function NodeLabel(node)
     local label = tostring(node.Id) .. " " .. tostring(node.Kind)
-    if node.Placeholder then label = label .. "（逻辑占位）" end
+    if node.Overridden then label = label .. "（手动改过关系）" end
     return label
 end
 
 function API.BuildTreeLines()
-    if MergeBranchPlaceholders ~= nil then MergeBranchPlaceholders() end   -- 树里也要能看到占位
     API.LinkTree()
     local lines = {}
     local visited = {}
@@ -1045,39 +1088,13 @@ function API.IntakeEvents(onDone)
         end
 
         local nodeId = API.GetCurrentNodeId()
-        -- 收件目标 = 本局节点（可能有）+ 继承来的逻辑档 id（换图过来的新局）
-        local targets, seenTargets = {}, {}
-        if nodeId ~= nil then
-            seenTargets[tostring(nodeId)] = true
-            targets[#targets + 1] = { Id = tostring(nodeId), Inherited = false }
-        end
-        for _, inheritedId in ipairs(API.GetInheritedNodeIds()) do
-            -- 同一个 id 只收一次（身份和交接单可能都记着它）
-            if not seenTargets[inheritedId] then
-                seenTargets[inheritedId] = true
-                targets[#targets + 1] = { Id = inheritedId, Inherited = true }
-            end
-        end
-        if #targets == 0 then
-            Log("收件跳过：本局还没有节点身份、也没有继承的信箱"
-                .. "（第一次存档之后才会收到发给它的信箱）")
+        if nodeId == nil then
+            Log("收件跳过：本局还没有节点身份（第一次存档之后才会收到发给它的信箱）")
             if onDone ~= nil then pcall(onDone, 0, "no-node") end
             return
         end
 
-        local events, keys = {}, {}
-        for _, target in ipairs(targets) do
-            local targetEvents, targetKeys = API.FetchEventsForNode(target.Id)
-            for _, event in ipairs(targetEvents) do
-                -- 继承来的事件打个标：gameplay 侧可以据此写“来自（已切换掉的）逻辑档 X”
-                event.InheritedFrom = target.Inherited and target.Id or nil
-                events[#events + 1] = event
-            end
-            for _, key in ipairs(targetKeys) do keys[#keys + 1] = key end
-        end
-        table.sort(events, function(a, b)
-            return (tonumber(a.AcceptTurn) or 0) < (tonumber(b.AcceptTurn) or 0)
-        end)
+        local events, keys = API.FetchEventsForNode(nodeId)
         if #events == 0 then
             if onDone ~= nil then pcall(onDone, 0, "empty") end
             return
@@ -1089,45 +1106,12 @@ function API.IntakeEvents(onDone)
             if ok then added = added + 1 end
         end
         API.DropEventKeys(keys)
-        Log("收件完成：本局节点 " .. tostring(nodeId or "（还没身份）")
-            .. "，继承信箱 " .. tostring(#targets - (nodeId ~= nil and 1 or 0)) .. " 个 ⇒ 入列 "
-            .. tostring(added) .. " 条（本局逻辑回合 " .. tostring(logicalTurn)
-            .. "，引擎 " .. tostring(engineTurn) .. "，偏移 +" .. tostring(offset) .. "）")
+        Log("收件完成：本局节点 " .. tostring(nodeId) .. " 入列 " .. tostring(added) .. " 条"
+            .. "（本局逻辑回合 " .. tostring(logicalTurn) .. "，引擎 " .. tostring(engineTurn)
+            .. "，偏移 +" .. tostring(offset) .. "）")
         if onDone ~= nil then pcall(onDone, added, "ok") end
     end
     Run()
-end
-
--- ===========================================================================
--- 信箱继承：切到逻辑占位之后，新局要把发给**那个占位**的信箱也收掉
---
---   为什么需要：占位在重开前就被移除（由新局的真存档接手），可它的信箱键是 `ev_<占位id>_*`，
---   新局的节点 id 是后来才生成的、跟占位 id 不一样 ⇒ 不继承的话，玩家“发给某个逻辑档的事件”
---   永远收不到（静默丢失，最难查）。所以：
---     ① 交接单里带上占位 id（InheritNodeId）；
---     ② 新局固化身份时把它记进 identity.InheritIds（随档走）；
---     ③ 收件时把“本局节点 + 继承来的 id”都扫一遍。
---   身份还没固化（开局探针是异步的）时退回读交接单 —— 收件本来就在开局探针之前跑。
--- ===========================================================================
-function API.GetInheritedNodeIds()
-    local ids, seen = {}, {}
-    local identity = LoadNodeIdentity()
-    if type(identity) == "table" and type(identity.InheritIds) == "table" then
-        for _, id in ipairs(identity.InheritIds) do
-            local key = tostring(id)
-            if key ~= "" and not seen[key] then seen[key] = true; ids[#ids + 1] = key end
-        end
-    end
-    -- 交接单只在“本局还没有身份”时才算继承来源 —— 换图**之前**那一局如果点「收件」，
-    -- 会把占位的信箱提前领走并删掉（API.DropEventKeys），新局就永远收不到了。
-    if API.GetCurrentNodeId() == nil then
-        local pending = API.GetPendingBranch()
-        if pending ~= nil and pending.InheritNodeId ~= nil then
-            local key = tostring(pending.InheritNodeId)
-            if key ~= "" and not seen[key] then seen[key] = true; ids[#ids + 1] = key end
-        end
-    end
-    return ids
 end
 
 -- ===========================================================================
@@ -1145,9 +1129,10 @@ function API.DescribeContext()
         .. " property=" .. tostring(ReadNodeProperty() ~= nil and ReadNodeProperty().Id or "nil")
         .. " head=" .. tostring(API.GetMainlineHeadId()))
 
-    local pending = API.GetPendingBranch()
-    table.insert(lines, "pending=" .. (pending ~= nil
-        and (tostring(pending.Parent) .. "|" .. tostring(pending.Kind)) or "nil"))
+    local broadcast = API.PeekBranchBroadcast()
+    table.insert(lines, "broadcast=" .. (broadcast ~= nil
+        and (tostring(broadcast.Parent) .. "|" .. tostring(broadcast.Kind)
+             .. "|" .. tostring(broadcast.Age) .. "s") or "nil"))
 
     local store = GetScanStore()
     table.insert(lines, "policy=" .. tostring(DataProtocol ~= nil)
@@ -1170,7 +1155,7 @@ local function GetTurnNumber()
 end
 
 -- 地图脚本名（去掉 .lua）；读不到就写 unknown
-local function GetMapToken()
+GetMapToken = function()
     local mapScript = nil
     if ModMiscCreateGame ~= nil and ModMiscCreateGame.GetCurrentMapScript ~= nil then
         mapScript = TryCall(function() return (ModMiscCreateGame.GetCurrentMapScript()) end)
@@ -1200,10 +1185,10 @@ local function ResolveNewSaveParent()
     if incoming ~= nil then
         return incoming.Parent, incoming.Kind or MODMISC_KIND_BRANCH, "incoming"
     end
-    -- 兜底：存储里的待接分支（理论上开局就该被固化，这里防“探针没跑到”）
-    local pending = API.GetPendingBranch()
-    if pending ~= nil and pending.Parent ~= nil then
-        return pending.Parent, pending.Kind or MODMISC_KIND_BRANCH, "pending"
+    -- 兜底：存储里的**换图广播**（理论上开局探针已经消费掉，这里防“探针没跑到”）
+    local broadcast = API.PeekBranchBroadcast()
+    if broadcast ~= nil and broadcast.Parent ~= nil then
+        return broadcast.Parent, broadcast.Kind or MODMISC_KIND_BRANCH, "broadcast"
     end
     -- 什么都没有（第一次用 / 读的是老档或非本 mod 档）→ 无父，当树根
     return nil, MODMISC_KIND_MAINLINE, "root"
@@ -1213,7 +1198,7 @@ end
 local function BuildNextNode()
     local currentId = API.GetCurrentNodeId()
     local headId = API.GetMainlineHeadId()
-    local pending = API.GetPendingBranch()
+    local broadcast = API.PeekBranchBroadcast()
 
     local incoming = API.GetIncomingBranch()
     local logicalTurn, engineTurn, offset, logicalSource = API.GetLogicalTurnInfo()
@@ -1246,7 +1231,6 @@ local function BuildNextNode()
             Overwrite = true,
             OldEntry = existing ~= nil and existing.FileEntry or nil,
             OldName = existing ~= nil and existing.RawName or nil,
-            ConsumedPending = false,
         }
     end
 
@@ -1255,15 +1239,12 @@ local function BuildNextNode()
     if kind == nil then
         kind = IsMainlineHead(parentId) and MODMISC_KIND_MAINLINE or MODMISC_KIND_BRANCH
     end
-    -- 父来自“待接分支 / 本局来源” ⇒ 这是换图后新局的第一次存档，要消费掉存储里的 pending
-    local consumedPending = (currentId == nil and parentSource ~= "root")
     Log("判定：current=" .. tostring(currentId)
         .. " incoming=" .. (incoming ~= nil and tostring(incoming.Parent) or "nil")
         .. " head=" .. tostring(headId)
-        .. " pending=" .. (pending ~= nil and tostring(pending.Parent) or "nil")
+        .. " broadcast=" .. (broadcast ~= nil and tostring(broadcast.Parent) or "nil")
         .. " 来源=" .. tostring(parentSource)
         .. " => parent=" .. tostring(parentId) .. " kind=" .. tostring(kind)
-        .. " consumePending=" .. tostring(consumedPending)
         .. " ｜逻辑回合=" .. tostring(logicalTurn) .. "（引擎 " .. tostring(engineTurn)
         .. "，偏移 +" .. tostring(offset) .. "，来源 " .. tostring(logicalSource) .. "）")
     return {
@@ -1280,11 +1261,6 @@ local function BuildNextNode()
 end
 
 local m_SavePending = nil
--- 存档确认状态：SaveComplete 只记日志，**能不能切换以“列表里查得到”为准**
--- （实机 2026-10-06：面板说存好了、列表里却没有 —— 就是错信了 SaveComplete）
-local m_SaveState = nil
--- 本次切换的目标如果是“逻辑占位”，记下它：重开前移除、由新局的真存档接手
-local m_SwitchPlaceholderId = nil
 
 local function OnSaveGraphSaveComplete(...)
     if m_SavePending == nil then return end
@@ -1327,15 +1303,9 @@ local function OnSaveGraphSaveComplete(...)
         end
     end
 
-    -- 主线头推进 / 待接分支消费
-    -- ⚠️ 只有“父来自待接分支”的那次存档才清 pending。换图时存的是**原档**（父是当前节点），
-    -- 它绝不能把刚写好的 pending 清掉 —— 新局还等着它接关系（这里是踩过的坑）。
+    -- 主线头推进：主线档存成功就把它记成主线头
     if pending.Node.Kind == MODMISC_KIND_MAINLINE then
         SetMainlineHead(pending.Node.Id)
-    end
-    if pending.Node.ConsumedPending then
-        Log("已消费待接分支（本局第一次存档，父=" .. tostring(pending.Node.Parent) .. "）")
-        ClearPendingBranch("已被本局第一次存档消费")
     end
 
     -- 【2026-10-06 实机教训】**SaveComplete 不等于“我们这份档写好了”**：
@@ -1343,10 +1313,6 @@ local function OnSaveGraphSaveComplete(...)
     --   换图前刚好写了交接单（小配置档）⇒ 很容易把**它的回执**当成原档写完 ⇒ 提前重开 ⇒
     --   原档根本没落盘（授权者实测：面板说存好了，存档列表里却没有）。
     --   所以这里**只记日志**，能不能切换一律以“存档列表里查得到”为准（见 API.VerifySaveNow）。
-    if m_SaveState ~= nil then
-        m_SaveState.SaveCompleteSeen = true
-        m_SaveState.SaveCompleteArg = tostring(saveResult)
-    end
     Log("SaveComplete 回执：" .. tostring(saveResult) .. "（节点 " .. tostring(pending.Node.Id)
         .. "）—— 注意：这个事件认不出是哪一份存档，是否落盘以列表复查为准")
 
@@ -1382,8 +1348,9 @@ local function SaveNode(node, opts)
         -- 卡在这里会让之后每一次存档与换图都被拒，所以超时后丢弃旧状态、继续走。
         local now, clockOk = NowOrExpired(m_SavePending.StartedAt)
         local age = now - (m_SavePending.StartedAt or 0)
-        -- 【实机反馈 2026-10-06】第一次按切换键写了档但没确认 ⇒ 之后每次按都被这里拦住、再也存不了。
-        -- 所以只在“刚发出去的一小段时间内”才拦（8 秒），超时一律自愈放行。
+        -- 【实机反馈 2026-10-06】上一笔的回执可能永远不来（引擎不给 / 上下文被顶掉），
+        -- 卡在这里会让之后每一次存档都被拒。所以只在“刚发出去的一小段时间内”才拦（8 秒），
+        -- 超时一律自愈放行。
         local blockWindow = math.min(MODMISC_SAVE_PENDING_TIMEOUT or 8, 8)
         if (not clockOk) or age > blockWindow then
             Log("警告：上一笔存档等回执已超时 " .. tostring(age) .. " 秒，丢弃该状态继续")
@@ -1411,9 +1378,6 @@ local function SaveNode(node, opts)
     if options.WriteIdentity == false then
         Log("按调用方要求：本次只写档，**不改本局身份**（创建分支档）")
     else
-        -- ⚠️ 这里的身份是**整表覆盖**写的：继承来的信箱列表（InheritIds）必须带上，
-        -- 否则新局第一次存档之后“继承的信箱”就断了（占位的 ev_* 再也收不到）。
-        local previousIdentity = LoadNodeIdentity() or {}
         local identityOk = SaveNodeIdentity({
             Id = node.Id,
             Parent = node.Parent or MODMISC_SAVE_ROOT_PARENT,
@@ -1421,7 +1385,6 @@ local function SaveNode(node, opts)
             Stamp = node.Stamp,
             Offset = node.Offset,
             Logical = node.Logical,
-            InheritIds = previousIdentity.InheritIds,
         })
         local propertyOk, propertyErr = WriteNodeProperty(node)
         Log("节点身份已写入：persave=" .. tostring(identityOk) .. " property=" .. tostring(propertyOk)
@@ -1437,19 +1400,10 @@ local function SaveNode(node, opts)
     saveFile.IsAutosave = false
     saveFile.IsQuicksave = false
 
-    m_SaveState = {
-        Node = node,
-        NewName = name,
-        Attempts = ((options.Attempts ~= nil) and tonumber(options.Attempts)) or 1,
-        Verified = false,
-        Failed = false,
-        StartedAt = ReadClock() or 0,
-        OnVerified = options.OnVerified,   -- 列表里查到了才回调（面板据此开放切换）
-    }
     m_SavePending = {
         Node = node,
-        OnSaved = options.OnSaved,      -- 已废弃（SaveComplete 认不出是谁）；保留字段只为兼容老调用
-        OnChecked = options.OnChecked,  -- 同上
+        OnSaved = options.OnSaved,      -- SaveComplete 一回执就回调（只代表“引擎受理了”）
+        OnChecked = options.OnChecked,  -- 列表复查之后的结论（found 才代表真的在盘上）
         Reason = options.Reason,
         StartedAt = ReadClock() or 0,
         -- 原地覆盖：旧档等这一笔写成功之后再删（写失败也不丢旧档）
@@ -1531,429 +1485,92 @@ function API.SaveCurrentGame(options)
     return true, nil
 end
 
--- ===========================================================================
--- 换图（两步式，**不依赖任何引擎事件/按帧回调/时钟**）
+-- 换图 = **纯重开**（授权者 2026-10-06 新方案：存储与切换彻底分开）
 --
--- 为什么要两步：换图 = “先存原档 + 再重开”，而重开 `Network.RestartGame()` 只有一种调用方式
--- 被实机证明可行 —— **在按钮回调里直接调**（第 42 条，Automation 面板那次）。之前三版把重开
--- 挂在 SaveComplete 事件里、或挂在按帧回调驱动的状态机里，都出现过“点了不跳转”。现在：
+--   ① 门槛：必须先存在**主线存档**（本局这条线已经存过，或列表里有主线档）。
+--      没有 ⇒ 直接告诉玩家「请先手动按「存档」创建一档」，**不做任何自动存档**。
+--   ② 写一条**换图广播**（sw_bcast：进程内、用后即焚、5 分钟）。
+--   ③ 立刻 `Network.RestartGame()` —— 这两步都在**按钮回调里**跑（唯一被实机证明可用的形态）。
 --
---   第一步 PrepareSwitch()：算节点 → **先写 pending** → Network.SaveGame 存原档（异步）
---   第二步 SwitchNow()：玩家再点一次按钮 → 直接 Network.RestartGame()
---
--- pending 在存档**之前**写好，所以哪怕存档回执/列表刷新全都不来，关系也已经记下了；
--- 第一、二步之间玩家看到的状态行会明说“原档已存好，再点一次就切换”。
+--   新局开局读到广播 ⇒ 认定自己是那条线的分支（父=广播里的 Parent，锚点=广播里的逻辑回合），
+--   读完删掉广播。详见 ReportAfterLoad。
 -- ===========================================================================
 
--- ===========================================================================
--- 创建分支档（授权者 2026-10-06 的新逻辑：**创建分支与切换分开**）
---
---   「创建分支」= 把当前局存成一个**逻辑分支档**：写一个 B 档 + 记好父子关系，
---                  **不重开、不切换**，玩家随时可以在列表里看到这条分支线。
---   「切换」    = 选中某个逻辑档 → 先保存当前档 → 弹窗确认 → 重开（见 PrepareSwitch/SwitchNow）。
---
--- 和「存档」的区别：存档走 M/B 自动判定（本局有节点就沿用），创建分支**强制** B，
--- 且父指向当前节点（没有当前节点时指向主线头）。
--- ===========================================================================
-function API.CreateBranchNode(options)
+-- 门槛（授权者 2026-10-06）：**必须存在主线存档**才允许换图 —— 它就是新分支的父。
+-- 本局自己是分支、或本局还没存过档，都**不算**（那时要让玩家先手动按「存档」建主线）。
+function API.GetMainlineAnchor()
+    local head = API.GetMainlineHeadId()
+    if head ~= nil and tostring(head) ~= "" then return tostring(head), "主线头" end
+    for _, node in ipairs(m_Nodes) do
+        if node.Kind == MODMISC_KIND_MAINLINE then
+            return tostring(node.Id), "列表里的主线档"
+        end
+    end
+    -- 兜底（不用扫列表也能判）：**本局自己就是一条主线档**（身份里 Kind=M）——
+    -- 刚存完档就点换图时列表可能还没扫完，这时拒掉就纯属误伤。
+    local identity = LoadNodeIdentity()
+    local currentId = API.GetCurrentNodeId()
+    if currentId ~= nil and identity ~= nil
+        and (identity.Kind == MODMISC_KIND_MAINLINE or identity.Kind == nil) then
+        return tostring(currentId), "本局就是主线档"
+    end
+    return nil, "既没有主线头、存档列表里也没有主线档"
+end
+
+function API.HasMainlineSave()
+    local anchor, why = API.GetMainlineAnchor()
+    return anchor ~= nil, why
+end
+
+-- 切换 = 写广播 + 重开（**不存档**）。返回 (ok, err)；成功时游戏通常已经重开。
+function API.SwitchToNewBranch(options)
     local opts = options or {}
-    if DataProtocol == nil then return false, "数据协议没加载" end
-    local base = BuildNextNode()          -- 复用“算 id/回合/逻辑回合”的那套
-    if base == nil then return false, "节点构造失败" end
-    local parentId = API.GetCurrentNodeId() or API.GetMainlineHeadId()
-    local branch = {
-        P = tostring(parentId or MODMISC_SAVE_ROOT_PARENT),
-        K = MODMISC_KIND_BRANCH,
-        T = tonumber(base.Turn),
-        M = base.Map ~= nil and tostring(base.Map) or nil,
-        S = tostring(base.Stamp or ""),
-        L = tonumber(base.Logical),
-    }
-    -- **不写真存档**（授权者 2026-10-06：逻辑档只是占位）：只记一条占位，
-    -- 面板把它当一条 B 线显示；玩家确认切换时才移除它，由新局生成的真存档接手。
-    -- 占位随本局的档走（persave）；CustomData 没有枚举接口 ⇒ 用**一个键装一张表**。
-    local table_ = DataProtocol.Load(MODMISC_BRANCH_KEY, { keep = true })
-    if type(table_) ~= "table" then table_ = {} end
-    table_[tostring(base.Id)] = branch
-    local ok, err = DataProtocol.Save(MODMISC_BRANCH_KEY, table_)
-    if not ok then return false, err end
-    Log("创建分支占位：id=" .. tostring(base.Id) .. " 父=" .. tostring(branch.P)
-        .. " 逻辑回合=" .. tostring(branch.L) .. "（**没有写真存档**，只落占位）")
-    if opts.OnCreated ~= nil then pcall(opts.OnCreated, base.Id) end
-    return true, base.Id
-end
-
--- 占位：列出 / 读 / 删
-function API.ListBranchPlaceholders()
-    if DataProtocol == nil then return {} end
-    local out = {}
-    local table_ = DataProtocol.Load(MODMISC_BRANCH_KEY, { keep = true })
-    if type(table_) ~= "table" then return out end
-    for id, record in pairs(table_) do
-        if type(record) == "table" then
-            table.insert(out, {
-                Id = tostring(id),
-                Parent = (record.P ~= nil and tostring(record.P) ~= MODMISC_SAVE_ROOT_PARENT)
-                    and tostring(record.P) or nil,
-                Kind = record.K or MODMISC_KIND_BRANCH,
-                Turn = tonumber(record.T),
-                Map = record.M,
-                Stamp = record.S,
-                Logical = tonumber(record.L),
-                Placeholder = true,
-            })
-        end
-    end
-    return out
-end
-
-function API.RemoveBranchPlaceholder(id)
-    if DataProtocol == nil or id == nil then return false end
-    Log("移除逻辑分支占位：" .. tostring(id) .. "（由真存档接手）")
-    local table_ = DataProtocol.Load(MODMISC_BRANCH_KEY, { keep = true })
-    if type(table_) ~= "table" then return false end
-    table_[tostring(id)] = nil
-    local empty = true
-    for _ in pairs(table_) do empty = false break end
-    if empty then return DataProtocol.Remove(MODMISC_BRANCH_KEY) and true or false end
-    return DataProtocol.Save(MODMISC_BRANCH_KEY, table_) == true
-end
-
--- 第一步：存原档（供换图用）。返回 (ok, err)
--- options = { OnSaved = fn, OnChecked = fn }（面板用它在落盘/回执后排自动重开倒计时）
-function API.PrepareSwitch(options)
-    local opts = options or {}
-    if Network == nil or Network.SaveGame == nil then
-        return false, "Network.SaveGame 不可用"
-    end
-    if m_SavePending ~= nil then
-        return false, "上一笔存档还在等回执，稍后再试"
-    end
-
-    local node = BuildNextNode()
-    -- 每次 PrepareSwitch 都**先清掉上一次记下的占位 id**：否则“先准备切占位 X、又改成切别的档”时，
-    -- 重开会把 X 一起删掉（X 根本不是这次的目标）。占位很便宜，但删错就是删错。
-    m_SwitchPlaceholderId = nil
-    -- 【新逻辑】切换的目标是**选中的逻辑档**（不是“本局当前节点”）：交接单指向它，
-    -- 于是新局算它的分支、回合同步以它的逻辑回合为锚点。
-    local targetId = opts.TargetNodeId
-    -- 新局的回合同步**锚点**：默认是本局的逻辑回合；切到某个逻辑档时改成**那个档**的逻辑回合
-    -- （新局要从那条线接着走）。锚点只喂给交接单 —— **不要**拿它覆盖 node.Logical/Offset：
-    -- 那个 node 是“本局这一档”的记录，覆盖了会张冠李戴（本局引擎 42 回合、偏移 0 ⇒ 逻辑 42，
-    -- 却被记成目标档的逻辑 18 / 偏移 17），下次读这一档回来逻辑回合就变成 59 了。
-    local anchorLogical = node.Logical
-    if targetId ~= nil then
-        local target = m_NodeById[targetId]
-        -- 目标不在节点表里（树还没刷新 / 刚被刷新掉）时，去**占位表**里再找一次：
-        -- 占位本来就不是真存档，只活在随档数据里。找不到就会写出**悬空父**
-        -- （node.Parent = 一个不在树上的 id）—— 这类错已经踩过一次，这里堵住入口。
-        if target == nil then
-            for _, placeholder in ipairs(API.ListBranchPlaceholders()) do
-                if tostring(placeholder.Id) == tostring(targetId) then
-                    target = placeholder
-                    Log("切换目标 " .. tostring(targetId)
-                        .. " 不在节点表里，但占位表里有它 ⇒ 按逻辑占位处理（树可能没刷新）")
-                    break
-                end
-            end
-        end
-        node.Parent = tostring(targetId)
-        node.Kind = MODMISC_KIND_BRANCH
-        if target ~= nil and target.Logical ~= nil then
-            anchorLogical = target.Logical
-        end
-        -- 目标是**逻辑占位**：重开前要把它移除（由新局的真存档接手）——
-        -- 所以关系要挂在**占位所依附的那条线**上（占位的父），而不是占位自己。
-        if target ~= nil and target.Placeholder then
-            m_SwitchPlaceholderId = tostring(targetId)
-            -- 占位自己就是树根（还没存过任何本 mod 的档就建了分支）⇒ 关系挂到**根**。
-            -- ⚠️ 这里不能留着 node.Parent = 占位 id：占位马上要被移除，留下就是个悬空父
-            -- （树里显示成“父档不在列表”，新局也跟着挂到不存在的节点上）。
-            if target.Parent ~= nil then
-                node.Parent = tostring(target.Parent)
-                Log("切换目标是逻辑占位 " .. tostring(targetId) .. " ⇒ 关系挂到它的父 "
-                    .. tostring(target.Parent) .. "，占位将在重开前移除")
-            else
-                node.Parent = MODMISC_SAVE_ROOT_PARENT
-                Log("切换目标是**树根位置的**逻辑占位 " .. tostring(targetId)
-                    .. " ⇒ 关系挂到根（占位自己没有父，且它会在重开前被移除）")
-            end
-        end
-        if target == nil then
-            Log("警告：切换目标 " .. tostring(targetId)
-                .. " 既不在节点表、也不在占位表（树是不是被刷新过？）—— 仍按它写关系，"
-                .. "若这条 id 其实已经不存在，新局会挂到悬空父上")
-        end
-        Log("切换目标：选中的逻辑档 " .. tostring(targetId)
-            .. "（它的逻辑回合 " .. tostring(anchorLogical) .. "，本局这一档记 "
-            .. tostring(node.Turn) .. "/L" .. tostring(node.Logical) .. "）"
-            .. "⇒ 新局挂在它下面、回合同步以它为锚点")
-    end
-
-    -- 要带过去的数据（可选）：另存成用后即焚的 xmap_*，交接单里只留引用
-    local payloadKey = nil
-    if opts.Payload ~= nil then
-        local key, payloadErr = API.SetMapHandoffPayload(opts.Payload)
-        if key == nil then
-            return false, "换图载荷写入失败：" .. tostring(payloadErr)
-        end
-        payloadKey = key
-    end
-
-    -- 先写交接单：这是“新局算这条记录的分支”的唯一凭据，必须早于存档落盘。
-    -- 生命周期：**用后即焚**（ephemeral/small，TTL 900 秒）——不制造永久数据；
-    -- 新局开局会把它固化进本局身份（sgnode，persave）然后删掉它。
-    SetPendingBranch(node.Parent or node.Id, MODMISC_KIND_BRANCH, node.Stamp, anchorLogical, {
-        FromMap = tostring(opts.FromMap or ""),
-        ToMap = tostring(opts.ToMap or ""),
-        Engine = tostring(opts.Engine or ""),
-        PayloadKey = payloadKey,
-        -- 目标是逻辑占位 ⇒ 新局要把发给它的信箱接过去（占位重开前就被移除）
-        InheritNodeId = m_SwitchPlaceholderId,
-    })
-    Log("换图[2/3]：交接单已写入（这一步只存原档、**不重开**；新局挂到 parent="
-        .. tostring(node.Parent or node.Id) .. " 下面算分支，"
-        .. "起点逻辑回合=" .. tostring(anchorLogical)
-        .. (payloadKey ~= nil and ("，带载荷 " .. payloadKey) or "，无载荷") .. "）")
-
-    local started = SaveNode(node, {
-        Reason = "switch",
-        -- 只有“列表里查到了”才回调；SaveComplete / 猜时间都不算
-        OnVerified = function(found, checkedNode)
-            Log("换图：原档已确认落盘（" .. tostring(checkedNode ~= nil and checkedNode.Id or node.Id)
-                .. " 在存档列表里）")
-            if opts.OnVerified ~= nil then pcall(opts.OnVerified, found, checkedNode or node) end
-        end,
-    })
-    if not started then
-        Log("换图 失败：存档请求没发出去")
-        return false, "存档请求没发出去"
-    end
-    return true, node.Id
-end
-
--- ===========================================================================
--- 换图存档的**唯一判据**：这份档到底有没有出现在存档列表里
---
--- SaveComplete 认不出是哪一份存档（见上面那次实机教训），所以不要用它判断。
--- 面板按帧调 VerifySaveNow：查到了 ⇒ 可以切换；超时 ⇒ 重发一次；还不行 ⇒ 老实报错。
--- ===========================================================================
-
--- 复位存档/切换状态（面板在开始一次新的切换前调用）：
--- 上一次没走完的 pending 会把新的存档请求挡回去（“上一笔存档还在等回执”）——
--- 实机表现为“点切换没反应”。
-function API.ResetSaveState(reason)
-    Log("复位存档状态（" .. tostring(reason or "?") .. "）：pending="
-        .. tostring(m_SavePending ~= nil) .. " state=" .. tostring(m_SaveState ~= nil))
-    if Events ~= nil and Events.SaveComplete ~= nil and OnSaveGraphSaveComplete ~= nil then
-        pcall(function() Events.SaveComplete.Remove(OnSaveGraphSaveComplete) end)
-    end
-    m_SavePending = nil
-    m_SaveState = nil
-    return true
-end
-
--- 当前存档状态（面板用它显示“正在确认落盘…”）
-function API.GetSaveState()
-    if m_SaveState == nil then return nil end
-    local now = ReadClock()
-    return {
-        NodeId = m_SaveState.Node ~= nil and m_SaveState.Node.Id or nil,
-        Name = m_SaveState.NewName,
-        Attempts = m_SaveState.Attempts,
-        Verified = m_SaveState.Verified,
-        Failed = m_SaveState.Failed,
-        Elapsed = (now ~= nil and m_SaveState.StartedAt ~= nil)
-            and (now - m_SaveState.StartedAt) or nil,
-        SaveCompleteSeen = m_SaveState.SaveCompleteSeen,
-    }
-end
-
--- 查一次存档列表：在 ⇒ 标记已确认；不在 ⇒ 保持待确认（面板据此决定重发或放弃）
-function API.VerifySaveNow(onDone)
-    if m_SaveState == nil or m_SaveState.Node == nil then
-        if onDone ~= nil then pcall(onDone, false, "没有待确认的存档") end
-        return false
-    end
-    local wantedId = m_SaveState.Node.Id
-    local wantedName = m_SaveState.NewName
-    API.Refresh(function(nodes)
-        -- 判据用**档名**（我们要的就是这个名字，比“解析出来的 id”更直接）：
-        -- 实机反馈“切换写的档在 UI 里看不到、而储存键写的能看到” ⇒ 先把事实打出来，
-        -- 别让解析差异把“文件在不在”这件事搅浑。
-        -- ⚠️ 解析出来的节点把原始档名放在 **RawName**（`Name` 一直是 nil）——
-        -- 早前这里比的是 node.Name，于是“档名一致”那条判据**从来没生效过**，
-        -- 一直靠下面的 id 回退在判，日志还写成“档名不同？”（实机 2026-10-06 排查时被这行误导过）。
-        local found, foundBy = false, nil
-        for _, node in ipairs(nodes) do
-            local raw = node.RawName or node.Name
-            if raw ~= nil and StripExtension(raw) == wantedName then
-                found, foundBy = true, "档名一致"
-                break
-            end
-        end
-        if not found then
-            for _, node in ipairs(nodes) do
-                if node.Id == wantedId then found, foundBy = true, "解析出的 id 一致（档名不同？）" break end
-            end
-        end
-        local sample = {}
-        for _, node in ipairs(nodes) do
-            if #sample >= 4 then break end
-            local raw = node.RawName or node.Name
-            if raw ~= nil then table.insert(sample, tostring(raw)) end   -- 占位没有档名，跳过
-        end
-        Log("落盘确认：找 " .. tostring(wantedName) .. "；列表 " .. tostring(#nodes) .. " 条"
-            .. (#sample > 0 and ("（前几条：" .. table.concat(sample, " / ") .. "）") or "（空）")
-            .. "；最近一次存档名(引擎)=" .. tostring(TryCall(function() return UI.GetLastSaveName() end)))
-        if found then
-            local firstTime = (m_SaveState.Verified ~= true)
-            m_SaveState.Verified = true
-            Log("落盘确认：已找到（" .. tostring(foundBy) .. "）⇒ 可以切换")
-            if firstTime and m_SaveState.OnVerified ~= nil then
-                pcall(m_SaveState.OnVerified, true, m_SaveState.Node)
-            end
-        else
-            Log("落盘确认：节点 " .. tostring(wantedId) .. " 还不在列表里（第 "
-                .. tostring(m_SaveState.Attempts) .. " 次尝试）")
-        end
-        if onDone ~= nil then pcall(onDone, found, m_SaveState.Node) end
-    end)
-    return true
-end
-
--- 重发一次存档（面板在超时后调一次；再失败就老实报错，不做无限重试）
-function API.RetrySave(onVerified)
-    if m_SaveState == nil or m_SaveState.Node == nil then
-        return false, "没有可重发的存档"
-    end
-    local node = m_SaveState.Node
-    local attempts = (m_SaveState.Attempts or 1)
-    Log("落盘确认超时，重发存档（第 " .. tostring(attempts + 1) .. " 次）")
-    m_SaveState = nil
-    m_SavePending = nil
-    local ok, err = SaveNode(node, { Reason = "retry", Attempts = attempts + 1,
-                                     OnVerified = onVerified })
-    return ok, err
-end
-
--- 面板等够了两次都没确认到：标记失败（之后要切换必须重新走一次换图）
-function API.MarkSaveFailed()
-    if m_SaveState ~= nil then
-        m_SaveState.Failed = true
-        Log("存档确认失败：节点 " .. tostring(m_SaveState.Node ~= nil and m_SaveState.Node.Id or "?")
-            .. "（" .. tostring(m_SaveState.NewName) .. "）—— 不做无限重试，等玩家手动重来")
-    end
-    return true
-end
-
--- 原档是不是还在写（还在写就先别重开；超时后自愈，见 MODMISC_SAVE_PENDING_TIMEOUT）
-function API.IsSwitchSaveInFlight()
-    if m_SavePending == nil then return false end
-    local now, clockOk = NowOrExpired(m_SavePending.StartedAt)
-    if not clockOk then
-        -- 取不到时钟就没法判断“写了多久”：**放行**（宁可让玩家能换图，也别把人永久拦在门外；
-        -- 真被截断也只是这一份原档不完整，重存一次即可）。日志里写清楚。
-        Log("警告：取不到时钟，无法确认原档是否写完，仍允许重开")
-        return false
-    end
-    local age = now - (m_SavePending.StartedAt or 0)
-    return age <= MODMISC_SWITCH_SAVE_GRACE
-end
-
-function API.HasPendingSwitch()
-    return API.GetPendingBranch() ~= nil
-end
-
--- 第二步：**在按钮回调里直接重开**（这是唯一被实机证明可行的调用方式）
--- reason 可以是字符串，也可以是 { Reason = "...", Force = true }。
-function API.SwitchNow(reason)
-    -- 【硬门槛】必须先在存档列表里见到这份原档才能重开。
-    -- 之前靠 SaveComplete + 倒计时“猜”它写完了，实机证明会猜错（列表里根本没有那份档），
-    -- 于是“声称留下了存档、实际没有” —— 现在不确认就不许切。
-    local force, reasonText = false, reason
-    if type(reason) == "table" then
-        force = (reason.Force == true)
-        reasonText = reason.Reason or "(未说明)"
-    end
-    if m_SaveState ~= nil and m_SaveState.Verified ~= true and not force then
-        local state = API.GetSaveState() or {}
-        Log("拒绝切换：原档还没确认落盘（节点 " .. tostring(state.NodeId)
-            .. "，第 " .. tostring(state.Attempts) .. " 次尝试，已等 "
-            .. tostring(state.Elapsed) .. " 秒）—— 连续两次都没确认时，面板会让玩家显式选择“仍要切换”")
-        return false, "原档还没确认落盘"
-    end
-    if force then
-        Log("按玩家显式选择继续切换（**原档未确认落盘**）")
-    end
     if Network == nil or Network.RestartGame == nil then
-        return false, "Network.RestartGame 不可用（换图只能靠它，见第 42 条）"
+        return false, "Network.RestartGame 不可用（换图只能靠它）"
+    end
+    local hasMainline, why = API.HasMainlineSave()
+    if not hasMainline then
+        Log("拒绝换图：" .. tostring(why))
+        return false, "没有主线存档：请先按「存档」手动存一档，再换图"
+    end
+    if m_Nodes == nil or #m_Nodes == 0 then
+        -- 列表没扫过也能切（广播只依赖本局节点/主线头），但要把这件事记下来
+        Log("注意：切换前列表是空的（还没扫过存档列表）—— 主线判定用的是主线头/本局身份")
     end
 
-    -- 交接单是“新局算这条线的分支”的**唯一凭据**，它不在就别重开：
-    -- 硬切只会得到一局**不知道自己是分支**的新局（关系静默丢失，比失败更难查）。
-    -- 常见原因：第 ② 步到第 ③ 步之间隔太久（超过 TTL），或交接单已被消费掉。
-    local pending = API.GetPendingBranch()
-    if pending == nil then
-        Log("拒绝切换：存储里没有待接分支（写于太久之前已过期，或已被消费）——"
-            .. "这时重开会得到一局不知道自己是分支的新局；请重新点一次「切换到选中」")
-        return false, "换图交接单不在了（过期或已消费）—— 请重新点一次「切换到选中」", "handoff-lost"
+    local ok, payloadOrErr = API.BroadcastBranchSwitch({
+        Parent = opts.Parent, Reason = opts.Reason,
+    })
+    if not ok then
+        Log("换图失败：广播没写成功 -> " .. tostring(payloadOrErr))
+        return false, "换图广播没写成功：" .. tostring(payloadOrErr)
     end
 
-    -- 把重开那一刻的环境一起打出来：引擎自己的重开是有门槛的
-    -- （InGameTopOptionsMenu.lua:316：not IsAnyMultiplayer()；worldbuilder 里禁用）
-    -- 【授权者 2026-10-06】确认切换后：**先移除逻辑占位**，由新局生成的真存档接手
-    if m_SwitchPlaceholderId ~= nil then
-        API.RemoveBranchPlaceholder(m_SwitchPlaceholderId)
-        m_SwitchPlaceholderId = nil
-    end
-
-    Log("换图[3/3]：即将调用 Network.RestartGame()（原因=" .. tostring(reasonText)
-        .. (force and "，Force" or "") .. "）"
-        .. " 环境：anyMultiplayer=" .. tostring(TryCall(function() return GameConfiguration.IsAnyMultiplayer() end))
+    Log("换图[3/3]：即将调用 Network.RestartGame()（原因=" .. tostring(opts.Reason or "面板按钮")
+        .. "） 环境：anyMultiplayer=" .. tostring(TryCall(function() return GameConfiguration.IsAnyMultiplayer() end))
         .. " savedGame=" .. tostring(TryCall(function() return GameConfiguration.IsSavedGame() end))
         .. " worldBuilder=" .. tostring(TryCall(function() return GameConfiguration.IsWorldBuilderEditor() end))
         .. " isGameHost=" .. tostring(TryCall(function() return Network.IsGameHost() end))
         .. " turn=" .. tostring(TryCall(function() return Game.GetCurrentGameTurn() end)))
-
-    local ok, result = pcall(function() return Network.RestartGame() end)
-    if not ok then
+    local called, result = pcall(function() return Network.RestartGame() end)
+    if not called then
         Log("换图[3/3]：调用失败 -> " .. tostring(result))
         return false, tostring(result)
     end
     Log("换图[3/3]：调用已返回 result=" .. tostring(result)
-        .. "（**若之后还打得出日志，说明引擎没真的重开** —— 那就再点一次「切换到选中」，"
-        .. "那一次回调里只做重开这一件事）")
+        .. "（**若之后还打得出日志，说明引擎没真的重开**）")
     return true, result
 end
 
--- ===========================================================================
--- 换图后新局：自动存第一档（授权者 2026-10-06：逻辑占位移除后“由真存档接手”）
---
---   触发点必须是**回合开始之后**（面板在 LocalPlayerTurnBegin 上叫它）。加载画面里存档
---   已经实机证否过一次（第 19.8 条），所以不挂 LoadGameViewStateDone。
---   标记随本局身份走（CustomData），所以只有“刚换图过来的那一局”会被自动存一次；
---   清标记**先于**发存档请求 ⇒ 新档里不带这个标记，读档回来也不会又存一次。
--- ===========================================================================
-local m_AutoSaveTried = false
-function API.RunPendingAutoSave(reason)
-    if m_AutoSaveTried then return false, "本局已经自动存过" end
-    local identity = LoadNodeIdentity()
-    if identity == nil or identity.AutoSavePending ~= true then
-        return false, "没有待自动存档的换图"
+-- 复用给别的入口（Automation 面板等）的诊断：只重开，什么都不做
+function API.RestartNow(reason)
+    if Network == nil or Network.RestartGame == nil then
+        return false, "Network.RestartGame 不可用"
     end
-    identity.AutoSavePending = nil          -- 先清（含写回 CustomData），再发存档请求
-    SaveNodeIdentity(identity)
-    m_AutoSaveTried = true
-    Log("换图后新局：按“真存档接手逻辑占位”的约定，自动存本局第一档（触发="
-        .. tostring(reason) .. "）：parent=" .. tostring(identity.Parent)
-        .. " kind=" .. tostring(identity.Kind) .. " 逻辑回合=" .. tostring(identity.Logical))
-    local ok, err = API.SaveCurrentGame({ Reason = "switch-newgame" })
-    if not ok then
-        Log("警告：换图后自动存档没发出去 -> " .. tostring(err) .. "（玩家仍可手动按「存档」）")
-        return false, err
-    end
-    return true, nil
+    Log("只重开（" .. tostring(reason or "?") .. "）：Network.RestartGame()")
+    local ok, result = pcall(function() return Network.RestartGame() end)
+    if not ok then return false, tostring(result) end
+    return true, result
 end
 
 -- ===========================================================================
@@ -1961,64 +1578,47 @@ end
 -- ===========================================================================
 
 function API.ReportAfterLoad()
-    -- ⚠️ 新 context 的存储内存表是空的：不等它读起来，pending/head 一定读成 nil
+    -- ⚠️ 新 context 的存储内存表是空的：不等它读起来，广播/主线头一定读成 nil
     -- （“分支不知道自己是分支”就是这么来的）。所以探针先触发存储扫描，扫完再打权威那行。
     EnsureStoreReady(function(ready, reason)
+        -- 【授权者 2026-10-06 新方案】开局先清**超出有效期**的信息，再检测有没有换图广播：
+        -- 有就**一律认定本局是分支**（父 / 逻辑回合锚点取自广播），读到即删（用后即焚）。
+        local broadcast = API.PeekBranchBroadcast()   -- 过期的会在里面被删掉并记日志
+
         local currentId = API.GetCurrentNodeId()
         local head = API.GetMainlineHeadId()
-        local pending = API.GetPendingBranch()
         Log("after-load(store=" .. tostring(ready) .. "/" .. tostring(reason) .. "): current="
             .. tostring(currentId) .. " head=" .. tostring(head)
-            .. " pending=" .. (pending ~= nil and tostring(pending.Parent) or "nil"))
+            .. " broadcast=" .. (broadcast ~= nil
+                and (tostring(broadcast.Parent) .. "（写于 " .. tostring(broadcast.Age) .. " 秒前）")
+                or "nil"))
 
-        -- 新局 + 有待接分支 ⇒ **开局就固化成本局的来源**（写进 CustomData，随档保存），
-        -- 然后把存储里那条消费掉：
-        --   ① 之后存档不再依赖“存储此刻读不读得到”（这正是分支认不出自己的根因）；
-        --   ② 万一玩家之后退回主菜单另开新局，也不会被这条陈旧的 pending 误挂成分支。
-        -- 条件里的第二个分支：切到**树根位置的逻辑占位**时 pending.Parent 是 nil（根），
-        -- 但那也是一次换图（kind=B + 逻辑锚点 + 信箱继承），必须固化。
-        if currentId == nil and pending ~= nil
-            and (pending.Parent ~= nil or pending.InheritNodeId ~= nil) then
-            -- ① 交接单里的**关系**固化进本局身份（sgnode，persave：随档走、新局不继承）
+        if broadcast ~= nil and currentId == nil and broadcast.Parent ~= nil then
+            -- 新局（没有本局身份）+ 有广播 ⇒ 固化成本局来源
             local identity = LoadNodeIdentity() or {}
-            identity.Parent = pending.Parent or MODMISC_SAVE_ROOT_PARENT
-            identity.Kind = pending.Kind or MODMISC_KIND_BRANCH
-            identity.Logical = pending.Logical
-            if pending.FromMap ~= nil and pending.FromMap ~= "" then
-                identity.FromMap = pending.FromMap
+            identity.Parent = tostring(broadcast.Parent)
+            identity.Kind = broadcast.Kind or MODMISC_KIND_BRANCH
+            identity.Logical = tonumber(broadcast.Logical)
+            if broadcast.Logical ~= nil then
+                -- 回合同步锚点：逻辑回合 = 引擎回合 + (起点逻辑回合 - 1)
+                identity.Offset = tonumber(broadcast.Logical) - 1
             end
-            if pending.ToMap ~= nil and pending.ToMap ~= "" then
-                identity.ToMap = pending.ToMap
+            if broadcast.Map ~= nil and tostring(broadcast.Map) ~= "" then
+                identity.FromMap = tostring(broadcast.Map)
             end
-            if pending.Logical ~= nil then
-                -- 顺手把本局偏移也固化：逻辑回合 = 引擎回合 + (起点逻辑回合 - 1)
-                identity.Offset = pending.Logical - 1
-            end
-            -- 继承信箱：占位已删，但发给它的 ev_<占位id>_* 还在大通道里，记下来让新局收掉
-            if pending.InheritNodeId ~= nil and tostring(pending.InheritNodeId) ~= "" then
-                identity.InheritIds = { tostring(pending.InheritNodeId) }
-                Log("本局继承信箱：逻辑档 " .. tostring(pending.InheritNodeId)
-                    .. " 的待收事件由本局接收（占位已随切换移除）")
-            end
-            -- 【授权者 2026-10-06 的约定】逻辑占位在重开前就被移除，“由**真存档**接手” ⇒
-            -- 新局的第一档由 mod 自己存掉（见 RunPendingAutoSave）。这里只留一个标记，
-            -- 真正落盘等到**本局第一个回合开始**（加载画面里存档已证否，不能在 LoadGameViewStateDone 存）。
-            identity.AutoSavePending = true
             SaveNodeIdentity(identity)
-
-            -- ② 交接单里的**数据**取走并交付（TakeMapHandoffPayload 内部读到就删 = 用后即焚）
-            local payload = API.TakeMapHandoffPayload()
-            local delivered = DispatchMapHandoff(payload)
-
-            -- ③ 交接单本身消费掉（用后即焚）
-            ClearPendingBranch("开局已固化成本局来源")
-            Log("本局接手换图交接：parent=" .. tostring(pending.Parent)
-                .. " kind=" .. tostring(pending.Kind or MODMISC_KIND_BRANCH)
-                .. " 地图 " .. tostring(pending.FromMap or "?") .. " → "
-                .. tostring(pending.ToMap or "?")
-                .. (payload ~= nil and ("；载荷已交付给 " .. tostring(delivered) .. " 个处理器")
-                    or "；无载荷")
-                .. "（交接单已消费，无永久数据留下）")
+            API.TakeBranchBroadcast("开局已认定本局为分支")   -- 用后即焚
+            Log("本局认定为**分支**（换图广播）：父=" .. tostring(identity.Parent)
+                .. " kind=" .. tostring(identity.Kind)
+                .. " 锚点逻辑回合=" .. tostring(identity.Logical)
+                .. "（偏移 +" .. tostring(identity.Offset) .. "）"
+                .. "；广播已消费（无永久数据留下）")
+        elseif broadcast ~= nil then
+            -- 有广播但本局已经有自己的身份（玩家在这 5 分钟里读了一份老档）：
+            -- 不覆盖它的关系，但广播要消费掉 —— 否则它会一直骗下一个人。
+            Log("注意：检测到换图广播，但本局已经有自己的身份（current=" .. tostring(currentId)
+                .. "）⇒ **不改**本局关系，只把广播消费掉（这就是广播的漏洞）")
+            API.TakeBranchBroadcast("本局已有身份，丢弃")
         end
     end)
     -- 加载自检：把过了 TTL 的用后即焚数据清掉（永久/随档的不碰）——授权者 2026-10-06 要求
