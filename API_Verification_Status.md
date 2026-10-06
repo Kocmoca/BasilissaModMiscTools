@@ -2497,3 +2497,36 @@ modinfo 的 `<Description>` / `<Teaser>` 都引用 `LOC_MODMISC_MOD_DESCRIPTION`
 #### 3. 版本
 
 `BasilissaModMiscTools.modinfo` → **3.10**（发布准备版）。
+
+### 19.33 发布整理（v3.10，2026-10-06 授权者要求）
+
+#### 1. 三个实验探针**已从 mod 里移除**
+
+| 删掉的文件 | 曾经的结论（保留在文档里） |
+|---|---|
+| `UI/FrontEnd_SaveProbe.lua` | 前端配置档探针：主界面建/读普通存档**闪退**（第 17 / 32-37 节） |
+| `UI/FrontEnd_GameSaveProbe.lua` | 前端普通存档：**闪退**（第 73 条） |
+| `UI/LoadTime_SaveProbe.lua` | 载入期存档：**闪退**（第 17 / 76 条） |
+
+一并清掉：modinfo 里两个 `<ImportFiles>` 段与主清单三行、`UI/Replacements/Civ6Common.lua`
+里的三段 include 与两个刷新钩子调用（那里现在只留一段说明，指向本文档的结论）。
+保留 `UI/ModMiscNameStoreProbe.lua`：Automation 测试面板的通道自检还要用它（面板只是不注册入口）。
+历史实现想看就看 git（v3.10 之前的提交）。
+
+#### 2. 版本号不变
+
+按授权者要求，本次整理**不改版本号**（仍是 `3.10`）。
+
+#### 3. `devtools/` 并入 `devs` 仓库
+
+原来的 `devtools/`（静态检查 + 桩测试套件）一直在任何 git 仓库之外，现在整包搬进
+`devs/BasilissaModMiscTools/Tools/`（同一个仓库，已提交）：
+
+```
+bash devs/BasilissaModMiscTools/Tools/sweep.sh      # 一条命令跑完全部检查
+```
+
+搬入时同步做了：脚本内部的绝对路径 `/Data/devtools` → `/Data/devs/BasilissaModMiscTools/Tools`；
+删掉 `fgs_harness` / `lt_harness`（它们测的正是上面三个已移除的探针）；
+更新 `devs/README.md` 与 `Tools/README.md` 的目录表与命令；旧 `devtools/` 目录已删除。
+从新位置跑 sweep：**12 个桩测试全绿**（少了那两个已删的）。

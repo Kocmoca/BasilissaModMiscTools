@@ -1234,72 +1234,12 @@ local function ModMiscToolApplyGhostMajorPlayers()
 end
 
 -- ===========================================================================
--- 前端存档/读档探针（UI/FrontEnd_SaveProbe.lua）—— **默认关闭**
---
--- 【当前状态：OFF】「配置档能否把 CustomData 跨存档带回来」那组实验已经跑完，
--- 结论是**不能**（见 API_Verification_Status.md 第 39 条），所以按原决定关回去。
---
--- 探针做三件事：写 CustomData → 查存档列表 → 档在就强制读、不在就创建，
--- 读档后补跑游戏菜单那套收尾（SetToPreGame + RegenerateSeeds + 清领袖/文明选择）。
--- 前端这条路是通的，但副作用是**每次开机都会动一遍配置**（尤其清领袖选择），
--- 所以结论入库后默认关掉（授权者 2026-10-04 决定）。
---
--- 【开关】就是下面这一个布尔值，不用改别处。默认 false（关）；
--- 关掉的原因：每次开机都会动一遍配置（读档后按游戏菜单语义清空领袖/文明选择）。
--- 结论与踩过的坑见 API_Verification_Status.md 第 32-37 条。
---
--- 探针认“主界面 / 创建游戏 / 创建场景”三个界面，只打日志、不带 UI，
--- 所以复用下面那条刷新回调；**不要**给它单独 SetRefreshHandler ——
--- 一个上下文只有一条刷新回调，再设一次会把幽灵那边的顶掉。
--- 本文件在创建游戏/创建场景里会被执行两次（PlayerSetupLogic 里 include 一次、
--- 界面自己再 include 一次，日志里“setup hook installed”打两行就是这个原因），
--- 所以探针用全局函数名做一次幂等，免得同一个 context 里塞进两份探针状态。
+-- 【发布态 2026-10-06 授权者要求】三个实验探针文件已移除：
+--   UI/FrontEnd_SaveProbe.lua（前端配置档）/ UI/FrontEnd_GameSaveProbe.lua（前端普通存档）
+--   / UI/LoadTime_SaveProbe.lua（载入期存档）
+-- 结论保留在 API_Verification_Status.md 第 17 / 32-37 / 73 节：那三条路都实机闪退，不可行。
+-- 这里不再有 include 与刷新钩子；要看历史实现请查 git（v3.10 之前）。
 -- ===========================================================================
-local MODMISC_FRONT_END_PROBE_ENABLED = false
-
--- 【本轮实验 · 2026-10-05】前端「普通存档」探针：验证能不能在**前端**建立/读取
--- GAME_STATE（普通存档）。实机结果：**主界面调用直接闪退** —— 这条路不可行
--- （见 API_Verification_Status.md 第 73 条），所以按结论关回去。
--- 想复现就把下面这行改 true（会闪退，别在正式存档环境里开）。
-local MODMISC_FRONT_END_GAMESAVE_PROBE_ENABLED = false
-
-if MODMISC_FRONT_END_PROBE_ENABLED
-	and ModMiscFrontEndProbeRefresh == nil
-	and ModMiscToolIsGameSetupContext() then
-	include("FrontEnd_SaveProbe")
-end
-
-if MODMISC_FRONT_END_GAMESAVE_PROBE_ENABLED
-	and ModMiscFrontEndGameSaveProbeRefresh == nil
-	and ModMiscToolIsGameSetupContext() then
-	include("FrontEnd_GameSaveProbe")
-end
-
--- ===========================================================================
--- 「游戏加载完成之前」存档/读档探针（UI/LoadTime_SaveProbe.lua）—— **默认开启**
---
--- 【授权者 2026-10-05 的方向】前端主界面建普通存档会闪退（上面那个探针），换个时机：
--- **刚开始读档 / 创建游戏、游戏还没加载完的时候**做存档读档操作，看看会怎样。
---
--- 探针挂在引擎事件 `Events.LoadScreenContentReady`（载入界面自己注释写的：
--- 此时“游戏数据已经存在、但游戏视图还没就绪”）与 `Events.LoadGameViewStateDone`（阶段二核对）。
---
--- 【为什么这条 include 不加“上下文判断”】本文件在**载入界面**（LoadScreen 会 include 本文件）
--- 和**对局内**（Support_UI 等会 include 本文件）都会被跑一遍：
---   载入界面那份负责阶段一；对局内那份负责阶段二核对与清理。
--- 两个上下文都要 include 到，所以只做 include 幂等，不做 frontend/in-game 过滤。
--- 幂等标记 ModMiscLoadTimeSaveProbeLoaded 由探针文件自己置上。
---
--- 【开关】下面这一个布尔值；探针文件顶部还有 L4/L5 两个分步开关（L5 默认关）。
--- 结论与协议见 API_Verification_Status.md 第 73 条 / API_Documentation.txt §3.13.9。
--- ===========================================================================
--- 【实机结果 2026-10-05：仍然闪退 —— 这条路不行】按授权者反馈关回去。
--- 想复现再打开（会闪退）；结论见 API_Verification_Status.md 第 17 节 / 第 76 条。
-local MODMISC_LOAD_TIME_PROBE_ENABLED = false
-
-if MODMISC_LOAD_TIME_PROBE_ENABLED and ModMiscLoadTimeSaveProbeLoaded == nil then
-	include("LoadTime_SaveProbe")
-end
 
 -- 跨存档数据存储（UI/ModMiscStore.lua）：把数据编进「配置档的文件名」，
 -- 下一轮从存档列表读回来。**已实机验证**（写一轮 → 杀进程 → 下一轮读回，payload 逐字一致）。
@@ -1404,13 +1344,8 @@ local function ModMiscToolGhostRefresh(delta)
 		ModMiscToolProbeMapConfig()
 	end
 	-- 探针在隐藏时也要跑：它靠“隐藏→显示”的那一刻判定新一轮（内部自己判界面）
-	if ModMiscFrontEndProbeRefresh ~= nil then
-		ModMiscFrontEndProbeRefresh()
-	end
-	-- 前端「普通存档」探针（本轮实验：能不能在前端建立/读取普通存档）
-	if ModMiscFrontEndGameSaveProbeRefresh ~= nil then
-		ModMiscFrontEndGameSaveProbeRefresh()
-	end
+	-- （发布态：前端探针已移除，这里不再有钩子）
+	-- （发布态：前端普通存档探针已移除 —— 那条路实机闪退，结论见第 73 条）
 	-- 【2026-10-06 授权者结论：前端与对局内是两套环境；前端一律不做存储副作用】
 	-- 这里原先会在前端首次刷新时扫一遍存档列表（UI.QuerySaveGameList + 挂 LuaEvents 回调）。
 	-- 那既没用（前端读到的跨存档数据对局内用不上），又给“退出到主界面”的拆卸期留了一个
