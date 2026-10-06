@@ -39,15 +39,27 @@ local EVENT_LIST_MAX = 80
 
 local m_SelectedNode = nil        -- 关系树里选中的节点（发送事件 / 读档 / 删除的目标）
 
--- 自动换图：原档落盘确认后开始倒计时，到点自己重开（授权者 2026-10-05 要求“自动进行”）。
--- 倒计时期间随时可以按「换图」立刻重开（那条路是实机验证过的按钮回调）。
--- 自动那次若没生效（我们的代码还活着），10 秒后再给一次机会，两次都不行就交回手动。
-local SWITCH_AUTO_DELAY = 8
-local SWITCH_AUTO_RETRY_DELAY = 10
-local SWITCH_AUTO_MAX_TRIES = 2
-local m_AutoRestartAt = nil
-local m_AutoRestartTries = 0
-local m_SwitchTickArmed = false
+-- 换图（授权者 2026-10-06 定稿）：**“存原档”和“重开”分开占两次点击**。
+--
+--   ① 点「切换到选中」→ 确认（引擎弹窗；本上下文没有弹窗时退化成“再点一次确认”）。
+--      确认下来的这一下**只做两件事**：写交接单 + 存当前档（`PrepareSwitch`），**绝不重开**
+--      （存原档放到弹窗回调里是安全的：引擎自己的存档菜单也在弹窗回调里调 Network.SaveGame）。
+--   ② 原档在存档列表里**确认落盘后**，再点一次 → **这次点击只调 `Network.RestartGame()`**
+--
+-- 为什么非要分开：实机证明 `Network.RestartGame()` **只有在按钮回调里直接调**才有效
+-- （弹窗回调 / 事件回调 / 按帧回调里调都是“返回了但游戏不重开”，第 42 条），
+-- 而且存档还在写的时候重开既可能被引擎直接忽略、也可能把原档截断（异步排队写，第 19.13 条）。
+-- 所以重开那一次点击的回调里**不做别的事**——这是唯一被实机验证过的调用形态。
+--
+-- 实机 2026-10-06 的“切换失败”根因（Lua.log 可查）：面板这个上下文里 `PopupDialogInGame` 是 nil，
+-- 走的是“再点一次确认”那条退化成路，而它拿**闭包对象**比相等 —— 每次点击都是新闭包，永远不相等，
+-- 于是永远停在“Tap again to confirm”。现在改成用**稳定的键**（目标 id）比。
+local m_RestartReady = nil         -- 原档状态已知（确认落盘 / 两次都没确认）⇒ 下一次点击重开
+local m_RestartUnverified = false  -- 上面那个状态是“**没确认**落盘”（玩家显式选择强切）
+local m_ForceArmed = nil           -- 未确认落盘时玩家又确认过一次（防误触）
+local m_SwitchTargetId = nil       -- 本次切换的目标节点（落盘确认后用它标记“可以重开”）
+local m_SwitchTickArmed = false    -- 按帧回调（轮询落盘确认）是否已挂上
+local m_CheckSaveFrames = 0        -- 距离下一次查存档列表还有几帧（~2 秒查一次）
 local m_EventTypeKey = "GOLD"
 local m_EventDetailEntry = nil
 local m_EventTurnEntry = nil
@@ -55,11 +67,7 @@ local m_EventPlayerID = nil
 local m_OptionIM = nil
 local m_OpenSelectorKey = nil
 
--- 换图 = **两步式**（不依赖引擎事件、不依赖按帧回调、不依赖时钟）：
---   第一次点「换图」：写待接分支 + 存原档（异步）→ 状态行提示“再点一次就切换”
---   第二次点「换图」：在**按钮回调里直接 Network.RestartGame()** —— 完全复刻唯一被实机
---     证明可行的调用方式（Automation 面板那次，第 42 条）。
--- 之前三版把重开挂在 SaveComplete 事件 / 按帧回调状态机上，都出现过“点了不跳转”。
+-- 换图按钮的三段式状态在文件顶部有说明（①确认 ②存原档 ③只重开）。
 
 -- ===========================================================================
 -- 输出
@@ -453,6 +461,42 @@ local function DoSendEvent()
         Locale.Lookup("LOC_MODMISC_SAVEPANEL_EVENT_SENT_DETAIL", tostring(keyOrErr)))
 end
 
+-- ===========================================================================
+-- 确认：**动作永远由按钮这次点击执行，弹窗回调里只改状态**
+-- （弹窗回调里调 Network.RestartGame / LoadGame 这类重调用实机不可靠）
+--
+-- ⚠️ 退化路径（本上下文里 PopupDialogInGame 是 nil）的判据是 **armKey 这个稳定字符串**，
+-- 不能拿闭包比相等：每点一次按钮都会新建一个闭包，`旧闭包 == 新闭包` 永远为假
+-- ⇒ 实机表现就是一直打印“再点一次确认”、怎么点都不动（Lua.log 里连打四行，就是这个 bug）。
+--
+-- 声明位置：必须在**所有调用它的函数之前**（Lua 5.1 的 local 作用域；放晚了，前面的函数
+-- 里调到的其实是全局 nil —— 静态检查 fwdcheck 抓过一次）。
+-- ===========================================================================
+local m_ArmedConfirmKey = nil
+local function AskConfirm(confirmText, onConfirmed, armKey)
+    if PopupDialogInGame ~= nil then
+        local ok = pcall(function()
+            local popup = PopupDialogInGame:new("UnitPanelPopup")
+            -- 弹窗回调里**只改状态**（不能在这里重开：弹窗回调里调 RestartGame 实机无效）
+            popup:ShowOkCancelDialog(confirmText, function() pcall(onConfirmed) end)
+        end)
+        if ok then return true end
+        Log("弹窗不可用，退化成“点两次确认”")
+    end
+    local key = tostring(armKey or confirmText)
+    if m_ArmedConfirmKey == key then
+        m_ArmedConfirmKey = nil
+        pcall(onConfirmed)
+        return true
+    end
+    m_ArmedConfirmKey = key
+    Report(confirmText, Locale.Lookup("LOC_MODMISC_SAVEPANEL_CONFIRM_AGAIN"))
+    return false
+end
+
+-- 载入：第一次点击确认（有弹窗弹窗，没有就“再点一次”），确认下来那一下才真的载入。
+-- 之所以允许确认回调里直接调 Network.LoadGame：引擎自己就是这么干的
+-- （Base/Assets/UI/FrontEnd/LoadGameMenu.lua 的 OnLoadYes —— 弹窗 Yes 回调里调 Network.LoadGame）。
 local function DoLoadSelected()
     if m_SelectedNode == nil then
         Report(Locale.Lookup("LOC_MODMISC_SAVEPANEL_NO_SELECTION"),
@@ -460,15 +504,13 @@ local function DoLoadSelected()
         return
     end
     local node = m_SelectedNode
-    local text = Locale.Lookup("LOC_MODMISC_SAVEPANEL_LOAD_CONFIRM", tostring(node.RawName or node.Id))
-    local ok, err = pcall(function()
-        local popup = PopupDialogInGame:new("UnitPanelPopup")
-        popup:ShowOkCancelDialog(text, function()
+    -- 【实机 2026-10-06】原来这里直接 `PopupDialogInGame:new(...)`，而本上下文里它是 nil
+    -- ⇒ 只打一行 “attempt to index a nil value”，载入永远做不成。统一走 AskConfirm。
+    AskConfirm(Locale.Lookup("LOC_MODMISC_SAVEPANEL_LOAD_CONFIRM", tostring(node.RawName or node.Id)),
+        function()
             local loadOk, loadErr = ModMiscSaveGraph.LoadNode(node.Id)
             if not loadOk then ReportError("LoadNode", loadErr) end
-        end)
-    end)
-    if not ok then ReportError("LoadConfirm", err) end
+        end, "load:" .. tostring(node.Id))
 end
 
 local function RefreshAll(onDone)
@@ -538,82 +580,65 @@ local function DoSave()
         Locale.Lookup("LOC_MODMISC_SAVEPANEL_SAVING_DETAIL"))
 end
 
--- 换图按钮：第一次 = 存原档，第二次 = 直接重开
--- 按帧推进：倒计时显示 + 到点自动重开
--- 前置声明：ArmAutoRestart 要用它把按帧回调挂上（Lua 5.1 必须先声明再使用）
+-- 换图按钮：① 确认 → ② 存原档（不重开）→ ③ 只重开
+-- 按帧推进只干一件事：**轮询存档列表，确认原档真的落盘**（唯一的判据，见第 19.13 条）。
+-- 前置声明：MarkRestartReady / PerformSwitch 都要用它把按帧回调挂上（Lua 5.1 必须先声明再使用）
 local EnsureSwitchTick = nil
 
--- 倒计时：**只在确认落盘后**调用（ArmAutoRestart 必须先于 TickAutoSwitch 声明 ——
--- Lua 5.1 里 local function 不前置声明的话，函数体里的引用会被解析成全局 nil）
-local function ArmAutoRestart(delaySeconds)
-    if m_AutoRestartAt ~= nil then return end       -- 已经排上了
-    local now = os.time()
-    if now == nil then return end
-    m_AutoRestartAt = now + (tonumber(delaySeconds) or SWITCH_AUTO_DELAY)
+-- 原档状态确定（确认落盘 / 两次都没确认）⇒ 标记“可以重开了”。
+-- 注意：这里**只改状态、把提示打在状态行**，绝不在这里重开 —— 按帧回调里调 Network.RestartGame()
+-- 是实机证明“返回了但不重开”的形态之一，重开必须留给玩家那次按钮点击。
+local function MarkRestartReady(reason, unverified)
+    local target = m_SwitchTargetId
+    if target == nil then return end
+    m_RestartReady = target
+    m_RestartUnverified = unverified == true
+    m_ForceArmed = nil
     EnsureSwitchTick()
-    Log("自动换图：原档已确认落盘，倒计时开始（" .. tostring(delaySeconds or SWITCH_AUTO_DELAY) .. " 秒）")
+    Log("换图：进入“可重开”状态（" .. tostring(reason) .. "，目标=" .. tostring(target)
+        .. (m_RestartUnverified and "，**原档未确认落盘**" or "，原档已确认落盘")
+        .. "）——等玩家点一次「切换到选中」，那一次只做重开")
 end
 
--- 换图状态机（**简化后只剩三件事**：等确认 → 确认了倒计时 → 到点重开）
+-- 换图状态机（只剩两件事：轮询确认落盘 → 标记可重开）
 --   为什么要等确认：SaveComplete 认不出是哪一份存档（换图前刚好写了交接单那个小配置档），
 --   之前靠它 + 一个盲倒计时“猜”原档写完了，实机结果就是“面板说存好了、存档列表里却没有”。
---   现在唯一的判据是**存档列表里查得到**；超时只重发一次，再不行就老实说失败。
+--   现在唯一的判据是**存档列表里查得到**；超时只重发一次，再不行就老实说失败，交给玩家显式决定。
 local function TickAutoSwitch(delta)
-    -- 创建分支后的补刷：等档真正落盘再画一次关系树
-    if m_BranchRefreshFrames ~= nil then
-        m_BranchRefreshFrames = m_BranchRefreshFrames - 1
-        if m_BranchRefreshFrames <= 0 then
-            m_BranchRefreshFrames = nil
-            RefreshAll()
-        end
-    end
     local state = ModMiscSaveGraph.GetSaveState ~= nil and ModMiscSaveGraph.GetSaveState() or nil
     if state ~= nil and state.Verified ~= true and state.Failed ~= true then
-        m_SaveWaitFrames = (m_SaveWaitFrames or 0) + 1
         m_CheckSaveFrames = (m_CheckSaveFrames or 0) + 1
+        -- 先写“正在确认”，**再**查列表：查到之后回调里的“已确认 / 可重开”才不会被这一行盖掉
+        SetStatus(Locale.Lookup("LOC_MODMISC_SAVEPANEL_SAVE_VERIFYING",
+            tostring(state.Name or "?"), tostring(math.floor((state.Elapsed or 0)))))
         -- 每 ~2 秒查一次列表（帧率按 30 估）
         if m_CheckSaveFrames >= 60 then
             m_CheckSaveFrames = 0
             ModMiscSaveGraph.VerifySaveNow(function(found)
                 if found then
-                    m_SaveWaitFrames = 0
                     SetStatus(Locale.Lookup("LOC_MODMISC_SAVEPANEL_SAVE_VERIFIED"))
-                    ArmAutoRestart(SWITCH_AUTO_DELAY)
+                    MarkRestartReady("落盘确认回调")
                 end
             end)
         end
-        SetStatus(Locale.Lookup("LOC_MODMISC_SAVEPANEL_SAVE_VERIFYING",
-            tostring(state.Name or "?"), tostring(math.floor((state.Elapsed or 0)))))
-        -- 等太久（40 秒）⇒ 重发一次；再等 40 秒还没有 ⇒ 老实报错，不再盲切
+        -- 等太久（40 秒）⇒ 重发一次；再等 40 秒还没有 ⇒ 老实报错，改由玩家显式决定
         if (state.Elapsed or 0) > 40 then
             if (state.Attempts or 1) < 2 then
-                m_SaveWaitFrames = 0
+                m_CheckSaveFrames = 0
+                Report(Locale.Lookup("LOC_MODMISC_SAVEPANEL_SWITCH_RESAVE", "2"),
+                    Locale.Lookup("LOC_MODMISC_SAVEPANEL_SWITCH_PREPARED_DETAIL"))
                 ModMiscSaveGraph.RetrySave(function(found)
-                    if found then ArmAutoRestart(SWITCH_AUTO_DELAY) end
+                    if found then
+                        SetStatus(Locale.Lookup("LOC_MODMISC_SAVEPANEL_SAVE_VERIFIED"))
+                        MarkRestartReady("重发后落盘确认回调")
+                    end
                 end)
             else
-                Log("换图：原档两次都没能确认落盘，停止自动切换（等玩家手动重试）")
+                Log("换图：原档两次都没能确认落盘；不自动重开，等玩家显式决定")
                 SetStatus(Locale.Lookup("LOC_MODMISC_SAVEPANEL_SAVE_FAILED"))
-                m_SaveWaitFrames = nil
                 ModMiscSaveGraph.MarkSaveFailed()
+                MarkRestartReady("两次都没确认落盘（玩家可显式强切）", true)
             end
-        end
-    elseif m_AutoRestartAt ~= nil then
-        local now = os.time()
-        if now == nil then
-            m_AutoRestartAt = nil
-        elseif now >= m_AutoRestartAt then
-            m_AutoRestartAt = nil
-            Log("自动换图：原档已确认落盘，发出重开")
-            SetStatus(Locale.Lookup("LOC_MODMISC_SAVEPANEL_AUTO_RESTART"))
-            local ok, err = ModMiscSaveGraph.SwitchNow("自动（确认落盘后倒计时结束）")
-            if not ok then
-                Log("自动换图：重开被拒 -> " .. tostring(err) .. "（等玩家手动点）")
-                SetStatus(Locale.Lookup("LOC_MODMISC_SAVEPANEL_AUTO_FAILED"))
-            end
-        else
-            SetStatus(Locale.Lookup("LOC_MODMISC_SAVEPANEL_AUTO_COUNTDOWN",
-                tostring(m_AutoRestartAt - now)))
         end
     end
     ContextPtr:RequestRefresh()
@@ -624,51 +649,33 @@ EnsureSwitchTick = function()
     m_SwitchTickArmed = true
     ContextPtr:SetRefreshHandler(TickAutoSwitch)
     ContextPtr:RequestRefresh()
-    Log("自动换图倒计时回调已挂")
+    Log("落盘确认轮询（按帧回调）已挂上")
 end
 
--- 切换（授权者 2026-10-06 新逻辑）：
---   ① 选中列表里的**逻辑档**；② 点「切换」→ 先保存当前档（并存好“新局算选中档的分支”）；
---   ③ 弹窗让玩家确认；④ 确认后在按钮回调里重开。
---   不再有“盲倒计时自动切换”——确认这件事交回给玩家。
--- 确认框：优先用引擎弹窗；这个上下文没有 PopupDialogInGame 时退化成“再点一次确认”
--- （实机 2026-10-06 报 ModMiscSavePanel.lua:644 attempt to index a nil value —— 就是它）
-local m_ArmedConfirm = nil
-local function AskConfirm(confirmText, onConfirmed)
-    if PopupDialogInGame ~= nil then
-        local ok = pcall(function()
-            local popup = PopupDialogInGame:new("UnitPanelPopup")
-            popup:ShowOkCancelDialog(confirmText, function() pcall(onConfirmed) end)
-        end)
-        if ok then return true end
-        Log("弹窗不可用，退化成“点两次确认”")
-    end
-    if m_ArmedConfirm == onConfirmed then
-        m_ArmedConfirm = nil
-        pcall(onConfirmed)
-        return true
-    end
-    m_ArmedConfirm = onConfirmed
-    Report(confirmText, Locale.Lookup("LOC_MODMISC_SAVEPANEL_CONFIRM_AGAIN"))
-    return false
-end
-
+-- 切换（授权者 2026-10-06 定稿）：**重开单独占一次点击**，见文件顶部说明。
+--   ① 确认（AskConfirm：弹窗或“再点一次”）→ 确认下来这一下**只存原档**（本函数）；
+--   ② 原档确认落盘后再点一次 → 只重开（PerformRestart）。
 local function PerformSwitch(targetId)
     -- 先把上一次没走完的存档状态复位：否则新请求会被“上一笔还在等回执”挡回去，
     -- 表现就是“点切换没反应”（实机 2026-10-06）。
     if ModMiscSaveGraph.ResetSaveState ~= nil then
         ModMiscSaveGraph.ResetSaveState("开始切换")
     end
-    -- ⚠️ 这一步**必须在按钮回调里**跑：早前实机验证过，`Network.RestartGame()` 从弹窗回调 /
-    -- 事件回调 / 按帧回调里调都会“调用返回了但游戏不重开”（授权者 2026-10-06 又遇到“点切换没反应”）。
-    -- 所以确认只负责“上膛”，真正执行留给玩家再点一次按钮 —— 那一次就是按钮回调。
-    m_SaveWaitFrames = 0
-    m_CheckSaveFrames = 59
+    m_SwitchTargetId = tostring(targetId)
+    m_RestartReady = nil
+    m_RestartUnverified = false
+    m_ForceArmed = nil
+    m_CheckSaveFrames = 59            -- 下一帧就去查一次存档列表
+    -- 【实机 2026-10-06 抓到的坑】落盘轮询跑在按帧回调里，而按帧回调只有 EnsureSwitchTick 会挂。
+    -- 早前只有 MarkRestartReady 调它，可 MarkRestartReady 又只在轮询回调里被调到 ⇒ 自锁：
+    -- 轮询根本没开始过，“落盘确认”那几行日志一行都不会出现。现在开切就挂上。
+    EnsureSwitchTick()
     local ok, idOrErr = ModMiscSaveGraph.PrepareSwitch({
-                TargetNodeId = targetId,
+        TargetNodeId = targetId,
         OnVerified = function(found)
             if found then
                 SetStatus(Locale.Lookup("LOC_MODMISC_SAVEPANEL_SAVE_VERIFIED"))
+                MarkRestartReady("落盘确认回调（PrepareSwitch）")
             end
         end,
     })
@@ -678,12 +685,24 @@ local function PerformSwitch(targetId)
     end
     Report(Locale.Lookup("LOC_MODMISC_SAVEPANEL_SWITCH_PREPARED", tostring(idOrErr)),
         Locale.Lookup("LOC_MODMISC_SAVEPANEL_SWITCH_PREPARED_DETAIL"))
-    -- 就在这个按钮回调里重开（原档这一笔已经发出；落盘确认只服务日志与状态行）
-    local switchOk, switchErr = ModMiscSaveGraph.SwitchNow("按钮回调（已确认）")
-    if not switchOk then
-        local forcedOk, forcedErr = ModMiscSaveGraph.SwitchNow({ Force = true })
-        if not forcedOk then ReportError("SwitchNow", forcedErr) end
+end
+
+-- ③ 重开：**这个按钮回调里只做重开这一件事**（唯一被实机证明有效的形态）。
+-- 原档确认落盘才允许切；两次都没确认时，玩家要**再确认一次**才强切（Force）。
+local function PerformRestart(targetId)
+    Report(Locale.Lookup("LOC_MODMISC_SAVEPANEL_SWITCH_NOW"),
+        Locale.Lookup("LOC_MODMISC_SAVEPANEL_SWITCH_NOW_DETAIL"))
+    local ok, err = ModMiscSaveGraph.SwitchNow({
+        Reason = "按钮回调（重开专用）",
+        Force = m_RestartUnverified == true,
+    })
+    if not ok then
+        ReportError("SwitchNow", err)
+        return
     end
+    -- 走到了这里说明调用已返回；真重开了就不会再有日志（SwitchNow 里写了这一句）
+    m_RestartReady = nil
+    m_ForceArmed = nil
 end
 
 local function DoSwitchMap()
@@ -694,78 +713,29 @@ local function DoSwitchMap()
         return
     end
     local targetId = tostring(selected.Id)
-    -- 已经上膛（弹窗确认过 或 上一次点击已提示）⇒ 这次点击**就在按钮回调里执行**
-    if m_SwitchArmed == targetId then
-        m_SwitchArmed = nil
-        PerformSwitch(targetId)
-        return
-    end
-    -- 第一次点击：确认（有弹窗用弹窗，没有就提示“再点一次”）
-    local text = Locale.Lookup("LOC_MODMISC_SAVEPANEL_SWITCH_CONFIRM",
-        tostring(selected.RawName or targetId))
-    AskConfirm(text, function()
-        m_SwitchArmed = targetId
-        Report(Locale.Lookup("LOC_MODMISC_SAVEPANEL_SWITCH_ARMED", tostring(selected.RawName or targetId)),
-            Locale.Lookup("LOC_MODMISC_SAVEPANEL_SWITCH_ARMED"))
-    end)
-end
 
-local function DoSwitchMapLegacy()
-    -- 旧的两步式流程（保留在文件里以便回溯，不再挂按钮）
-    if ModMiscSaveGraph.HasPendingSwitch() then
-        local state = ModMiscSaveGraph.GetSaveState ~= nil and ModMiscSaveGraph.GetSaveState() or nil
-        if state ~= nil and state.Verified ~= true then
-            -- 【实机反馈 2026-10-06】第一次写了档但没确认 ⇒ 之后每次按都只“干等”，再也存不了。
-            -- 现在按一次 = 再试一次：没确认就重发（最多两次）；两次都失败则要求玩家**显式选择**。
-            local attempts = tonumber(state.Attempts) or 1
-            if attempts < 2 and (state.Elapsed == nil or state.Elapsed > 5) then
-                Log("换图：原档还没确认落盘，按玩家点击重发一次（第 " .. tostring(attempts + 1) .. " 次）")
-                m_SaveWaitFrames = 0
-                m_CheckSaveFrames = 59
-                ModMiscSaveGraph.RetrySave(function(found)
-                    if found then ArmAutoRestart(SWITCH_AUTO_DELAY) end
-                end)
-                Report(Locale.Lookup("LOC_MODMISC_SAVEPANEL_SWITCH_RESAVE"),
-                    Locale.Lookup("LOC_MODMISC_SAVEPANEL_SAVE_VERIFYING",
-                        tostring(state.Name or "?"), "0"))
-                return
-            end
-            if m_ForceSwitchArmed then
-                -- 第二次点击 = 玩家明知“没确认落盘”也要切
-                m_ForceSwitchArmed = false
-                Report(Locale.Lookup("LOC_MODMISC_SAVEPANEL_SWITCH_FORCED"),
-                    Locale.Lookup("LOC_MODMISC_SAVEPANEL_SWITCH_FORCED"))
-                local okF, errF = ModMiscSaveGraph.SwitchNow({ Force = true })
-                if not okF then ReportError("SwitchNow(force)", errF) end
-                return
-            end
-            m_ForceSwitchArmed = true
+    -- ③ 原档状态已知（确认落盘 / 两次都没确认）⇒ 这一次点击**只重开**
+    if m_RestartReady == targetId then
+        if m_RestartUnverified and m_ForceArmed ~= targetId then
+            -- 原档没确认落盘：把警告写在状态行，**再点一次**就是玩家的显式选择（这里不重开：
+            -- 重开只能在按钮回调里做；警告本身就已经是“确认”这一步了，不再套一层确认）
+            m_ForceArmed = targetId
             Report(Locale.Lookup("LOC_MODMISC_SAVEPANEL_SWITCH_UNVERIFIED_WARN"),
-                Locale.Lookup("LOC_MODMISC_SAVEPANEL_SWITCH_UNVERIFIED_WARN"))
+                Locale.Lookup("LOC_MODMISC_SAVEPANEL_CONFIRM_AGAIN"))
             return
         end
-        Report(Locale.Lookup("LOC_MODMISC_SAVEPANEL_SWITCH_NOW"),
-            Locale.Lookup("LOC_MODMISC_SAVEPANEL_SWITCH_NOW_DETAIL"))
-        local ok, err = ModMiscSaveGraph.SwitchNow("面板按钮（第二次点击）")
-        if not ok then ReportError("SwitchNow", err) end
+        PerformRestart(targetId)
         return
     end
 
-    -- 第一步：记交接单 + 发存档；**倒计时只在“列表里确认到了”之后才开始**（见 TickAutoSwitch）
-    m_AutoRestartTries = 0
-    m_SaveWaitFrames = 0
-    m_CheckSaveFrames = 59        -- 下一帧就去查一次
-    local ok, idOrErr = ModMiscSaveGraph.PrepareSwitch({
-        OnVerified = function(found)
-            if found then ArmAutoRestart(SWITCH_AUTO_DELAY) end
-        end,
-    })
-    if not ok then
-        ReportError("PrepareSwitch", idOrErr)
-        return
-    end
-    Report(Locale.Lookup("LOC_MODMISC_SAVEPANEL_SWITCH_PREPARED", tostring(idOrErr)),
-        Locale.Lookup("LOC_MODMISC_SAVEPANEL_SWITCH_PREPARED_DETAIL"))
+    -- ① + ② 确认：有弹窗就弹窗，没有就“再点一次确认”。**确认下来这一下只存原档、不重开。**
+    AskConfirm(Locale.Lookup("LOC_MODMISC_SAVEPANEL_SWITCH_CONFIRM",
+            tostring(selected.RawName or targetId)),
+        function()
+            m_RestartReady = nil
+            m_RestartUnverified = false
+            PerformSwitch(targetId)
+        end, "switch:" .. targetId)
 end
 
 -- 收件：把发给本局节点的事件拉进回合事件列表（开局会自动跑一次，这里是手动入口）
@@ -789,20 +759,21 @@ local function DoDeleteSelected()
     end
     local node = m_SelectedNode
     local text = Locale.Lookup("LOC_MODMISC_SAVEPANEL_DELETE_CONFIRM", tostring(node.RawName or node.Id))
-    local ok, err = pcall(function()
-        local popup = PopupDialogInGame:new("UnitPanelPopup")
-        popup:ShowOkCancelDialog(text, function()
-            local delOk, delErr = ModMiscSaveGraph.DeleteNode(node.Id)
-            if not delOk then
-                ReportError("DeleteNode", delErr)
-                return
-            end
-            m_SelectedNode = nil
-            Report(Locale.Lookup("LOC_MODMISC_SAVEPANEL_DELETED", tostring(delErr)), nil)
-            RefreshAll()
-        end)
-    end)
-    if not ok then ReportError("DeleteConfirm", err) end
+    -- 【实机 2026-10-06】这里原来直接 `PopupDialogInGame:new(...)`，而面板这个上下文里
+    -- `PopupDialogInGame` 是 nil ⇒ pcall 接住后只打一行 “attempt to index a nil value”，删除永远做不成。
+    -- 改用统一的 AskConfirm（引擎弹窗优先，退化成“再点一次确认”，判据是稳定的键）。
+    -- 删除放在弹窗回调里是安全的：引擎自己删档也是在确认弹窗的 OnYes 里调 UI.DeleteSavedGame
+    -- （Base/Assets/UI/Menus/SaveGameMenu.lua 的 OnYes）。
+    AskConfirm(text, function()
+        local delOk, delErr = ModMiscSaveGraph.DeleteNode(node.Id)
+        if not delOk then
+            ReportError("DeleteNode", delErr)
+            return
+        end
+        m_SelectedNode = nil
+        Report(Locale.Lookup("LOC_MODMISC_SAVEPANEL_DELETED", tostring(delErr)), nil)
+        RefreshAll()
+    end, "delete:" .. tostring(node.Id))
 end
 
 -- ===========================================================================

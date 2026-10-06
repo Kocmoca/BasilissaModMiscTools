@@ -1987,3 +1987,78 @@ SaveComplete 一到 ⇒ 认为“原档写好” ⇒ 起一个 8 秒（或 +7 �
 * 保存/切换后日志里档名应长这样：`…~20261006-092313-9z~L042`（带秒与尾巴）；
 * 若仍出现“写了但列表里没有”，日志里的 `落盘确认：找 <带秒的档名>；列表 N 条（前几条：…）`
   能直接对上 —— 那时就不是同名问题，而是别的（存储层/引擎行为）。
+
+### 19.24 实机反馈八：**「切换失败」的根因**（2026-10-06，直接从 Lua.log 读出）
+
+授权者那次 Lua.log 的尾部（v1.92 一带的构建）只有这一行，而且**连打四次**，之后再无任何日志：
+
+```
+[SavePanel] Switch to tmgps8rb? The current game will be saved first, then the game restarts onto the new map. | Tap again to confirm
+```
+
+⇒ 点多少次都停在第一步，`PrepareSwitch` 一次都没被调到。四个根因：
+
+#### 根因一：退化确认路径拿**闭包对象**比相等（永远不相等）
+
+`AskConfirm` 在没有 `PopupDialogInGame` 的上下文里走退化分支，记的是 `m_ArmedConfirm = onConfirmed`，
+下一次点击判断 `m_ArmedConfirm == onConfirmed` —— 每点一次按钮都会新建一个闭包，**永远为假**
+⇒ 永远只打印「再点一次确认」，永远走不到真正的动作。
+**修**：判据换成稳定的字符串键 `armKey`（例如 `"switch:" .. targetId`）。
+
+#### 根因二：本上下文里 `PopupDialogInGame` 是 nil —— 所有直接 `PopupDialogInGame:new` 的地方都在空转
+
+同一份日志里 `DoDeleteSelected` 的报错就是它（`attempt to index a nil value`，被 pcall 接住只留一行日志），
+删除永远做不成；载入同理。
+**修**：删除 / 载入 / 切换全部改走统一的 `AskConfirm`。
+
+#### 根因三：落盘轮询**从来没挂上**（自锁）
+
+按帧回调只在 `EnsureSwitchTick()` 里挂，而 `EnsureSwitchTick` 只被 `MarkRestartReady` 调用，
+`MarkRestartReady` 又只在**轮询回调**里被调到 ⇒ 轮询根本不会开始 ——“落盘确认”那几行日志一行都不会出现，
+状态机永远停在第 ② 步。**修**：一开始切换（`PerformSwitch`）就把轮询挂上。
+（`devtools/panel_harness.lua` 现在专门断言这条。）
+
+#### 根因四（认知修正）：引擎自己的重开就是在**弹窗 Yes 回调**里调的
+
+* `Base/Assets/UI/Menus/InGameTopOptionsMenu.lua`：`OnRestartGame` 开确认弹窗 → Yes 回调 `OnReallyRestart` → `Network.RestartGame()`；
+* `Base/Assets/UI/Menus/SaveGameMenu.lua`：`OnYes` → `Network.SaveGame`；
+* `Base/Assets/UI/FrontEnd/LoadGameMenu.lua`：`OnLoadYes` → `Network.LoadGame`。
+
+⇒ 早前“`RestartGame` 只能在按钮回调里调”的说法**过宽**。真正的界线是
+**要由 UI 交互处理器发起**（面板按钮 / 弹窗按钮都算），而**不是** `Events.*` 回调或按帧回调。
+本 mod 仍把重开放在**面板按钮回调**里（Automation 面板那次唯一实测通过的形态），只是理由改成这一条。
+
+#### 新流程（v1.94 → v1.95）：**存原档**与**重开**分开占点击
+
+```
+① 点「切换到选中」→ 确认（引擎弹窗；本上下文没有弹窗 ⇒ 状态行提示“再点一次确认”）
+② 确认下来那一下 = 只做两件事：写交接单 + 存当前档（PrepareSwitch），**不重开**
+   （存原档放在确认回调里是安全的：引擎自己的存档菜单也在弹窗回调里调 Network.SaveGame）
+③ 面板按帧轮询存档列表；查到这份档 ⇒「原档已确认在存档列表里——再点一次「切换到选中」就重开」
+④ 再点一次 → **这次回调里只调 Network.RestartGame()**（顺带移除逻辑占位）
+   两次都没确认落盘 ⇒ 状态行老实报失败；玩家再点一次 = 显式强切（Force，日志写明“原档未确认落盘”）
+```
+
+逻辑分支占位同时改成**随档保存**（`sg_branches`，persave / CustomData；CustomData 没有枚举接口，
+所以**一个键装一张表** `{[id]={P,K,T,M,S,L}}`，增删都改这张表）—— 授权者：逻辑档保留在存档内即可，
+无需设为跨存档数据。
+
+#### 判读（这次实机要看的日志行）
+
+```
+   换图：进入“可重开”状态（落盘确认回调，目标=…，原档已确认落盘）——等玩家点一次「切换到选中」，那一次只做重开
+   换图[3/3]：即将调用 Network.RestartGame()（原因=按钮回调（重开专用）） 环境：anyMultiplayer=… savedGame=… worldBuilder=… isGameHost=… turn=…
+   换图[3/3]：调用已返回 result=…（**若之后还打得出日志，说明引擎没真的重开**）
+```
+
+* 若 ① 之后**始终**没有 `即将调用 Network.SaveGame（switch）`：说明确认那一步还是没走通（看“再点一次确认”）；
+* 若 ③ 之后没有「原档已确认…」而是一直 `落盘确认：找 …`：就是**存档没落盘**（引擎侧问题，不是流程问题）；
+* 若打出「调用已返回」之后**还有日志**：引擎没重开。下一步就改成**单步按钮**（点一次只调 `RestartGame`，
+  什么都不存），并把 `anyMultiplayer / worldBuilder / savedGame` 三个环境值对上引擎自己的门槛
+  （`InGameTopOptionsMenu` 的重开对多人 / worldbuilder 有限制，见该文件 316 行附近）。
+
+#### 桩测试
+
+`devtools/panel_harness.lua`（34 条断言）：把**真面板文件**读进来，用假 `ModMiscSaveGraph` 记录调用，
+模拟“点按钮 / 跑帧”，断言：①确认→存原档；②未确认不许重开；③确认后那次点击只重开、不再存一笔；
+④超时只重发一次；⑤失败后必须显式确认才 Force；⑥载入 / 删除的确认路径能走通；⑦轮询确实挂上了。

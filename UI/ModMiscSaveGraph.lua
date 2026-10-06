@@ -1531,7 +1531,6 @@ function API.ListBranchPlaceholders()
                 Stamp = record.S,
                 Logical = tonumber(record.L),
                 Placeholder = true,
-                Key = key,
             })
         end
     end
@@ -1606,7 +1605,7 @@ function API.PrepareSwitch(options)
         Engine = tostring(opts.Engine or ""),
         PayloadKey = payloadKey,
     })
-    Log("换图[1/2]：交接单已写入（parent=" .. tostring(node.Id) .. "，新局算分支，"
+    Log("换图[2/3]：交接单已写入（这一步只存原档、**不重开**；parent=" .. tostring(node.Id) .. "，新局算分支，"
         .. "起点逻辑回合=" .. tostring(node.Logical)
         .. (payloadKey ~= nil and ("，带载荷 " .. payloadKey) or "，无载荷") .. "）")
 
@@ -1755,11 +1754,16 @@ function API.HasPendingSwitch()
 end
 
 -- 第二步：**在按钮回调里直接重开**（这是唯一被实机证明可行的调用方式）
+-- reason 可以是字符串，也可以是 { Reason = "...", Force = true }。
 function API.SwitchNow(reason)
     -- 【硬门槛】必须先在存档列表里见到这份原档才能重开。
     -- 之前靠 SaveComplete + 倒计时“猜”它写完了，实机证明会猜错（列表里根本没有那份档），
     -- 于是“声称留下了存档、实际没有” —— 现在不确认就不许切。
-    local force = (type(reason) == "table") and reason.Force == true
+    local force, reasonText = false, reason
+    if type(reason) == "table" then
+        force = (reason.Force == true)
+        reasonText = reason.Reason or "(未说明)"
+    end
     if m_SaveState ~= nil and m_SaveState.Verified ~= true and not force then
         local state = API.GetSaveState() or {}
         Log("拒绝切换：原档还没确认落盘（节点 " .. tostring(state.NodeId)
@@ -1776,7 +1780,7 @@ function API.SwitchNow(reason)
 
     local pending = API.GetPendingBranch()
     if pending == nil then
-        Log("换图[2/2] 警告：存储里没有待接分支（关系可能已经消费掉或过期），照样重开")
+        Log("换图[3/3] 警告：存储里没有待接分支（关系可能已经消费掉或过期），照样重开")
     end
 
     -- 把重开那一刻的环境一起打出来：引擎自己的重开是有门槛的
@@ -1787,7 +1791,8 @@ function API.SwitchNow(reason)
         m_SwitchPlaceholderId = nil
     end
 
-    Log("换图[2/2]：即将调用 Network.RestartGame()（原因=" .. tostring(reason) .. "）"
+    Log("换图[3/3]：即将调用 Network.RestartGame()（原因=" .. tostring(reasonText)
+        .. (force and "，Force" or "") .. "）"
         .. " 环境：anyMultiplayer=" .. tostring(TryCall(function() return GameConfiguration.IsAnyMultiplayer() end))
         .. " savedGame=" .. tostring(TryCall(function() return GameConfiguration.IsSavedGame() end))
         .. " worldBuilder=" .. tostring(TryCall(function() return GameConfiguration.IsWorldBuilderEditor() end))
@@ -1796,11 +1801,12 @@ function API.SwitchNow(reason)
 
     local ok, result = pcall(function() return Network.RestartGame() end)
     if not ok then
-        Log("换图[2/2]：调用失败 -> " .. tostring(result))
+        Log("换图[3/3]：调用失败 -> " .. tostring(result))
         return false, tostring(result)
     end
-    Log("换图[2/2]：调用已返回 result=" .. tostring(result)
-        .. "（若之后还打得出日志，说明引擎没真的重开）")
+    Log("换图[3/3]：调用已返回 result=" .. tostring(result)
+        .. "（**若之后还打得出日志，说明引擎没真的重开** —— 那就再点一次「切换到选中」，"
+        .. "那一次回调里只做重开这一件事）")
     return true, result
 end
 

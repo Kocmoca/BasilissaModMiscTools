@@ -1,4 +1,4 @@
-<?xml version="1.0" encoding="utf-8"?>
+﻿<?xml version="1.0" encoding="utf-8"?>
 <GameData>
 	<LocalizedText>
 		<!-- LeftSideBar -->
@@ -655,10 +655,10 @@
 			<Text>按玩家选择继续切换（原档未确认落盘）…</Text>
 		</Replace>
 		<Replace Tag="LOC_MODMISC_SAVEPANEL_SAVE_VERIFIED" Language="zh_Hans_CN">
-			<Text>原档已确认落盘 —— 稍后自动切换（点「换图」可立刻切）</Text>
+			<Text>原档已确认在存档列表里——再点一次「切换到选中」就重开（那一次点击只做重开）。</Text>
 		</Replace>
 		<Replace Tag="LOC_MODMISC_SAVEPANEL_SAVE_FAILED" Language="zh_Hans_CN">
-			<Text>两次都没能确认原档落盘 —— 本次没有切换</Text>
+			<Text>两次都没能确认原档落盘——仍要切换就再点一次「切换到选中」（会再问一次，不安全）。</Text>
 		</Replace>
 		<Replace Tag="LOC_MODMISC_SAVEPANEL_TOOLTIP" Language="zh_Hans_CN">
 			<Text>打开存档关系 / 换图面板</Text>
@@ -674,9 +674,6 @@
 		</Replace>
 		<Replace Tag="LOC_MODMISC_SAVEPANEL_SWITCH_SELECTED" Language="zh_Hans_CN">
 			<Text>切换到选中</Text>
-		</Replace>
-		<Replace Tag="LOC_MODMISC_SAVEPANEL_SWITCH_ARMED" Language="zh_Hans_CN">
-			<Text>已确认。再点一次「切换到选中」就开始保存当前档并重开。</Text>
 		</Replace>
 		<Replace Tag="LOC_MODMISC_SAVEPANEL_BRANCH_CREATED" Language="zh_Hans_CN">
 			<Text>已创建分支档</Text>
@@ -740,16 +737,10 @@
 			<Text>已收到存档回执，正在复查落盘…</Text>
 		</Replace>
 		<Replace Tag="LOC_MODMISC_SAVEPANEL_SWITCH_PREPARED" Language="zh_Hans_CN">
-			<Text>原档 {1_Id} 已写。再点一次「换图」就重启到新地图。</Text>
+			<Text>原档存档请求已发出（节点 {1_Id}）。正在等它出现在存档列表里…</Text>
 		</Replace>
 		<Replace Tag="LOC_MODMISC_SAVEPANEL_SWITCH_PREPARED_DETAIL" Language="zh_Hans_CN">
-			<Text>两步中的第一步已完成：分支关系已记、原档正在写。第二次点击会直接调引擎的重开。</Text>
-		</Replace>
-		<Replace Tag="LOC_MODMISC_SAVEPANEL_SWITCH_WAIT_SAVE" Language="zh_Hans_CN">
-			<Text>原档还在写——稍等一下再点。</Text>
-		</Replace>
-		<Replace Tag="LOC_MODMISC_SAVEPANEL_SWITCH_WAIT_SAVE_DETAIL" Language="zh_Hans_CN">
-			<Text>现在重开可能把存档截断。落盘后状态行会变成「已就绪」。</Text>
+			<Text>三步里的第二步已完成：分支关系已记、原档正在写。这次点击不重开——确认落盘后的下一次点击才只做重开。</Text>
 		</Replace>
 		<Replace Tag="LOC_MODMISC_SAVEPANEL_SWITCH_NOW" Language="zh_Hans_CN">
 			<Text>正在重启到新地图…</Text>
@@ -847,15 +838,6 @@
 		</Replace>
 		<Replace Tag="LOC_MODMISC_TURNEVENT_UNKNOWN" Language="zh_Hans_CN">
 			<Text>来自 {1_From}：{2_Detail}</Text>
-		</Replace>
-		<Replace Tag="LOC_MODMISC_SAVEPANEL_AUTO_COUNTDOWN" Language="zh_Hans_CN">
-			<Text>{1_Seconds} 秒后自动重开（想立刻重开就按「换图」）</Text>
-		</Replace>
-		<Replace Tag="LOC_MODMISC_SAVEPANEL_AUTO_RESTART" Language="zh_Hans_CN">
-			<Text>正在自动重开…</Text>
-		</Replace>
-		<Replace Tag="LOC_MODMISC_SAVEPANEL_AUTO_FAILED" Language="zh_Hans_CN">
-			<Text>自动重开没生效——请按一次「换图」。</Text>
 		</Replace>
 		<Replace Tag="LOC_MODMISC_SAVEPANEL_INTAKE" Language="zh_Hans_CN">
 			<Text>收件</Text>
