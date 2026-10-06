@@ -199,9 +199,15 @@ local function BuildNodeId()
     return stamp .. ToBase36(math.random(0, 1295))
 end
 
+-- 【实机约束 2026-10-06，授权者指出】文明 6 里**同名存档不能直接存**：玩家操作时存档键会变灰，
+-- UI 层的 Network.SaveGame 很可能同样被忽略。所以档名必须**构造上唯一** ——
+-- 时间戳精确到秒，再缀 2 位随机 base36；同一秒内连存两次也不会撞名。
+-- 字段数不变（时间戳还是第 7 段、不含 "~"），老档名照样能解析。
 local function BuildStamp()
-    local ok, text = pcall(function() return os.date("%Y%m%d-%H%M") end)
-    if ok and text ~= nil and tostring(text) ~= "" then return SanitizeToken(text) end
+    local ok, text = pcall(function() return os.date("%Y%m%d-%H%M%S") end)
+    if ok and text ~= nil and tostring(text) ~= "" then
+        return SanitizeToken(text) .. "-" .. ToBase36(math.random(0, 1295))
+    end
     return ToBase36(ReadClock() or 0)
 end
 
@@ -1224,6 +1230,22 @@ local function OnSaveGraphSaveComplete(...)
     local saveResult = ...
     Log("SaveComplete 回执：" .. tostring(saveResult)
         .. "（节点 " .. tostring(pending.Node.Id) .. "）")
+
+    -- 删除本节点**除本次之外**的档：唯一名 ⇒ 每存一次都会留下上一份，所以按节点 id 清一遍。
+    -- （OldEntry 只是“扫描时看到的那一份”，可能不是全部。）
+    if UI ~= nil and UI.DeleteSavedGame ~= nil then
+        local staleCount = 0
+        for _, node in ipairs(m_Nodes) do
+            if node.Id == pending.Node.Id and node.RawName ~= nil
+                and StripExtension(node.RawName) ~= pending.NewName then
+                local delOk = pcall(UI.DeleteSavedGame, node.FileEntry or node)
+                if delOk then staleCount = staleCount + 1 end
+            end
+        end
+        if staleCount > 0 then
+            Log("清理同一节点的陈旧档 " .. tostring(staleCount) .. " 份（一条线只留一份）")
+        end
+    end
 
     -- 原地覆盖：旧档删掉（同名跳过 —— 同一分钟同一回合会取到同一个文件名）
     if pending.OldEntry ~= nil then
