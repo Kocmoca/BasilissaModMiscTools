@@ -167,6 +167,14 @@
                         Style="ButtonControl" FontSize="26" Hidden="1"
                         String="LOC_MODMISC_CREATEGAME_EXIT" />
 
+            <!-- UI 环境连通性（前端 ↔ 对局内）：缓存数据能不能跨“进游戏 / 回主页面”读到 -->
+            <GridButton ID="AutomationContextProbe" Anchor="L,T" Offset="20,434" Size="280,56"
+                        Style="ButtonControl" FontSize="26" Hidden="1"
+                        String="LOC_MODMISC_CTXPROBE_BUTTON" />
+            <Label ID="AutomationContextProbeHint" Anchor="L,T" Offset="310,434" Size="570,56"
+                   FontSize="22" Color="225,225,225,255" VerticalAlignment="Center" Hidden="1"
+                   String="LOC_MODMISC_CTXPROBE_HINT" />
+
             <!-- 【时间线页】引擎设置类键值存储（Options.SetUserOption / UserConfiguration.SetValue）：
                  实机已证：useroption 被引擎拒（“not a registered option”）、userconfig 留不住值。
                  留在这里是为了随时复现结论。 -->

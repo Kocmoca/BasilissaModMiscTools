@@ -24,6 +24,7 @@ include("ModMiscDataProtocol")  -- 通用数据协议（登记表 / 序列化 / 
 include("ModMiscDataRegistry")  -- 登记表：谁是永久、谁用后即焚、走哪条通道
 include("ModMiscAssetStore")  -- 永久资产放置（记录落 CustomData，读档自动重放）
 include("ModMiscCreateGame")  -- 对局内「创建新局 / 换地图」验证（含开局探针的判定逻辑）
+include("ModMiscContextProbe")  -- UI 环境连通性探针（前端 ↔ 对局内）
 print("[ModMiscTool][AutomationTest] panel loading build=" .. tostring(MODMISC_BUILD_TAG))
 
 -- ===========================================================================
@@ -1740,6 +1741,8 @@ local PAGE_TIMELINE_CONTROLS = {
     "AutomationCreateGameMapLabel", "AutomationCreateGameMapButton",
     "AutomationCreateGameProbe", "AutomationCreateGameApplyMap", "AutomationCreateGameArmMarker",
     "AutomationCreateGameSave", "AutomationCreateGameRestart", "AutomationCreateGameExit",
+    -- UI 环境连通性（前端 ↔ 对局内）：缓存数据能不能跨“进游戏 / 回主页面”读到
+    "AutomationContextProbe", "AutomationContextProbeHint",
     -- 引擎设置类键值存储探针（两条通道已实测失败）挪到这一页：留着复现结论用
     "AutomationTestNameStoreLabel", "AutomationTestNameStoreSelfTest", "AutomationTestNameStoreWrite",
     "AutomationTestNameStoreRead", "AutomationTestNameStoreClear",
@@ -1911,6 +1914,15 @@ function OnInit()
         function() SafeCall("ArmMarker", ArmCreateGameMarker) end)
     Controls.AutomationCreateGameSave:RegisterCallback(Mouse.eLClick,
         function() SafeCall("SaveBeforeSwitch", SaveBeforeSwitch) end)
+    Controls.AutomationContextProbe:RegisterCallback(Mouse.eLClick,
+        function() SafeCall("ContextProbe", function()
+            if ModMiscContextProbe == nil then
+                SetError("ContextProbe", "ModMiscContextProbe 模块没加载")
+                return
+            end
+            ModMiscContextProbe.Check("ingame", "Automation 面板手动")
+            SetOutput("环境连通性：已跑一轮（看 Lua.log 的 [CtxProbe] 行）")
+        end) end)
     Controls.AutomationCreateGameRestart:RegisterCallback(Mouse.eLClick,
         function() SafeCall("RestartGameInGame", function()
             RunCreateGameAction("RestartGameInGame", "Network.RestartGame()", function()

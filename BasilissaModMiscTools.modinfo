@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<Mod id="a1b2c3d4-5e6f-7a8b-9c0d-1e2f3a4b5c6d" version="3.00">
+<Mod id="a1b2c3d4-5e6f-7a8b-9c0d-1e2f3a4b5c6d" version="3.02">
     <Properties>
         <Name>Basilissa Mod Misc Tools</Name>
         <Description>LOC_MODMISC_MOD_DESCRIPTION</Description>
@@ -275,6 +275,7 @@
         <File>UI/ModMiscSavePanel.xml</File>
         <File>UI/ModMiscSavePanel.lua</File>
         <File>UI/ModMiscCarrier.lua</File>
+        <File>UI/ModMiscContextProbe.lua</File>
         <File>ModTool_TurnEraAPI.lua</File>
         <File>ModTool_TurnEvents.lua</File>
         <File>ModTool_TurnEventHandlers.lua</File>

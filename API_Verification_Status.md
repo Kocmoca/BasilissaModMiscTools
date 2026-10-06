@@ -2250,3 +2250,49 @@ LoadGameViewStateDone 见过 X 次，引擎回合=…。真重开过的话日志
 3. 新局开局日志：`after-load(… broadcast=a1（写于 N 秒前）)` → `本局认定为**分支**（换图广播）`；
 4. 在新局按「存档」⇒ 新档名应是 `MMT~<新id>~<主线id>~B~…`；
 5. 关系按钮：选中任意一条 → 「选中→主线」/「选中→分支」⇒ 树立即重画、日志 `关系覆盖已写入`。
+
+### 19.27 新测试项：**UI 环境连通性**（前端 ↔ 对局内，授权者 2026-10-06 要求）
+
+要回答的问题：**主页面（前端）缓存的数据，进游戏后读得到吗？退出回主页面后呢？**
+—— 也就是「跨游戏状态的两个 Lua 环境之间到底有没有共享的读写通道」。
+探针：`UI/ModMiscContextProbe.lua`，日志前缀 `[ModMiscTool][CtxProbe]`。
+
+三个通道各测一遍（每个都写清“写/读/结果”）：
+
+| 通道 | 实现 | 说明 |
+|---|---|---|
+| **A 模组配置组名字** | `ModMiscModGroupStore`（`Modding` 组接口） | 引擎数据库里的自由文本 ⇒ **最有希望跨游戏状态的一条** |
+| **B 档名通道** | `ModMiscStore` | **只读不写**：前端写普通存档已实机证否（闪退，第 73 条），不能拿它冒险 |
+| **C 进程内共享表** | `ExposedMembers` / 全局变量 | 两个游戏状态各一份 Lua 状态，多半不共享 —— 写进去再读回来，测出来才作数 |
+
+触发点（自动，不用手点）：
+
+* **前端上下文加载**（= 主页面出现；首次进主页面、退出对局回主页面都会走一次）：
+  `UI/Replacements/Civ6Common.lua` 里 include 那一刻先跑一次，前端刷新回调里再补跑一次
+  （那一刻存储/组接口可能还没就绪；探针自己限制“每个 context 最多两次”）；
+* **进游戏**（`LoadGameViewStateDone`）：`UI/Support_UI.lua` 的 Initialize 里跑一次；
+* 手动：Automation 测试面板「时间线」页 → **环境连通性**按钮（`ModMiscContextProbe.Check`）。
+
+#### 怎么读日志
+
+同一个标记会写进 A 通道，形如 `frontend-前端上下文加载-<os.time>-<随机>`。按时间顺序看：
+
+```
+[CtxProbe] ==== 环境连通性检查：context=frontend 原因=前端上下文加载 本次标记=frontend-…-1234 ====
+[CtxProbe]   A 模组配置组：写入 true
+[CtxProbe]   A 模组配置组：读到 frontend-…-1234       ← 主页面写进去了
+[CtxProbe]   B 档名通道：**只读不写**（前端写档已证否：会闪退）
+[CtxProbe]   B 档名通道：IsReady=… 读到 …
+[CtxProbe]   C 进程内共享表（exposed）：通用=frontend-… ｜…
+（进游戏）
+[CtxProbe] ==== 环境连通性检查：context=ingame 原因=进游戏（加载完成） 本次标记=ingame-…-5678 ====
+[CtxProbe]   A 模组配置组：读到 frontend-…-1234       ← **通了**（前端写的能读到；若是 nil/另一个标记 就是不通）
+[CtxProbe]   C 进程内共享表（exposed）：…frontend 写的=… ← 前端写的那份还在不在，一眼看出上下文是否共享
+（退出回主页面）
+[CtxProbe] ==== 环境连通性检查：context=frontend … ====
+[CtxProbe]   A 模组配置组：读到 ingame-…-5678          ← 反过来也通（对局内写的回到主页面能读）
+```
+
+判读：**A 通道读到的是上一阶段写的标记 ⇒ 该通道跨游戏状态可用**（这也是我们所有跨存档存储的
+基础假设）；读到 `nil（没有这份数据）` ⇒ 该通道在前端/对局内之间不通，得换通道或换写法。
+C 通道的“frontend 写的 / ingame 写的”两栏就是“两边的 Lua 状态是否共享”的直接证据。
