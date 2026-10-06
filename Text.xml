@@ -758,7 +758,7 @@
 			<Text>Engine did NOT restart - the game is still running. Tap "Switch to selected" once more.</Text>
 		</Row>
 		<Row Tag="LOC_MODMISC_SAVEPANEL_RESTART_IGNORED_DETAIL">
-			<Text>Network.RestartGame() returned but this screen is still alive (attempt {1_Count}). The restart is its own tap and does nothing else, so if it still does not take effect the engine is refusing this call in the current state - the log line lists anyMultiplayer / worldBuilder / savedGame.</Text>
+			<Text>Network.RestartGame() returned but this screen is still alive (attempt {1_Count}). The restart is its own tap and does nothing else, and tapping again now retries that restart only (no further save). If it still does not take effect the engine is refusing this call in the current state - the log line lists anyMultiplayer / worldBuilder / savedGame.</Text>
 		</Row>
 		<!-- 存档面板：跨存档事件（目标玩家 / 类型 / 内容 / 接受回合 + 发送与读档） -->
 		<Row Tag="LOC_MODMISC_SAVEPANEL_EVENT_PLAYER">

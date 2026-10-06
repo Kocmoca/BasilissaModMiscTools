@@ -631,6 +631,14 @@ local function TickAutoSwitch(delta)
             SetStatus(Locale.Lookup("LOC_MODMISC_SAVEPANEL_RESTART_IGNORED"))
             SetDetail(Locale.Lookup("LOC_MODMISC_SAVEPANEL_RESTART_IGNORED_DETAIL",
                 tostring(m_RestartWatchdogCount)))
+            -- 状态行让玩家“再点一次”，那一次就必须是**纯重开重试**：原档早就确认落盘了，
+            -- 不该再让他走一遍确认 + 再存一档。所以把“可重开”状态摆回去
+            -- （交接单若已过期，模块会拒绝并让面板回到“重新准备”，见 PerformRestart 的 handoff-lost）
+            if m_SwitchTargetId ~= nil then
+                m_RestartReady = m_SwitchTargetId
+                m_RestartUnverified = false
+                Log("看门狗：把状态摆回“可重开”，下一次点击 = 纯重开重试（不会再存一档）")
+            end
         end
     end
     local state = ModMiscSaveGraph.GetSaveState ~= nil and ModMiscSaveGraph.GetSaveState() or nil
