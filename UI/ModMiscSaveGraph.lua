@@ -671,6 +671,13 @@ local function OnSaveGraphQueryResults(fileList, requestId)
     API.LinkTree()
     Log("扫描完成：列表 " .. tostring(total) .. " 档，其中本 mod 关系档 "
         .. tostring(#m_Nodes) .. " 档")
+    -- 把解析出来的节点逐条打出来：一眼看出“刚建的分支档到底进没进列表”
+    for _, node in ipairs(m_Nodes) do
+        Log("  关系档 " .. tostring(node.Id) .. " kind=" .. tostring(node.Kind)
+            .. " parent=" .. tostring(node.Parent or "-")
+            .. " T" .. tostring(node.Turn) .. " " .. tostring(node.Map)
+            .. " L" .. tostring(node.Logical or "-"))
+    end
 
     local callbacks = m_RefreshCallbacks
     m_RefreshCallbacks = {}
@@ -1282,17 +1289,24 @@ local function SaveNode(node, opts)
 
     -- ① 节点身份：**一个表**走协议的 persave 通道（CustomData），另有 gameplay 侧的
     --    Game:SetProperty 作为交叉校验（两个上下文互不可见，各写一份同一身份）。
-    local identityOk = SaveNodeIdentity({
-        Id = node.Id,
-        Parent = node.Parent or MODMISC_SAVE_ROOT_PARENT,
-        Kind = node.Kind,
-        Stamp = node.Stamp,
-        Offset = node.Offset,
-        Logical = node.Logical,
-    })
-    local propertyOk, propertyErr = WriteNodeProperty(node)
-    Log("节点身份已写入：persave=" .. tostring(identityOk) .. " property=" .. tostring(propertyOk)
-        .. (propertyOk and "" or ("（" .. tostring(propertyErr) .. "）")))
+    -- 【实机教训 2026-10-06】创建分支时**不能**改本局身份：
+    -- 分支档是“另一条线”的记录，不是“我是谁”。上一版把分支的身份写进了本局 ⇒ 之后所有存档
+    -- 都跟着算成分支（授权者反馈“存档保存后被识别为分支了”）。所以加 WriteIdentity=false 开关。
+    if options.WriteIdentity == false then
+        Log("按调用方要求：本次只写档，**不改本局身份**（创建分支档）")
+    else
+        local identityOk = SaveNodeIdentity({
+            Id = node.Id,
+            Parent = node.Parent or MODMISC_SAVE_ROOT_PARENT,
+            Kind = node.Kind,
+            Stamp = node.Stamp,
+            Offset = node.Offset,
+            Logical = node.Logical,
+        })
+        local propertyOk, propertyErr = WriteNodeProperty(node)
+        Log("节点身份已写入：persave=" .. tostring(identityOk) .. " property=" .. tostring(propertyOk)
+            .. (propertyOk and "" or ("（" .. tostring(propertyErr) .. "）")))
+    end
 
     local saveFile = BuildGameSaveFile()
     if saveFile == nil then
@@ -1419,8 +1433,9 @@ function API.CreateBranchNode()
         RawName = nil,
     }
     Log("创建分支：id=" .. tostring(branch.Id) .. " 父=" .. tostring(branch.Parent)
-        .. " 逻辑回合=" .. tostring(branch.Logical))
-    local ok, err = SaveNode(branch, { Reason = "create-branch" })
+        .. " 逻辑回合=" .. tostring(branch.Logical)
+        .. "（**不改本局身份**：本局还是它自己那条线）")
+    local ok, err = SaveNode(branch, { Reason = "create-branch", WriteIdentity = false })
     if not ok then return false, err end
     return true, branch.Id
 end
