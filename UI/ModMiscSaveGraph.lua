@@ -1379,6 +1379,26 @@ local function SaveNode(node, opts)
         .. " Type=" .. tostring(saveFile.Type)
         .. " FileType=" .. tostring(saveFile.FileType)
         .. " Directory=" .. tostring(saveFile.Directory))
+    -- 【实机 2026-10-06】授权者怀疑“旧档的存在阻止了新存档的建立”。
+    -- 保险做法：**挡在路上的同名旧档先删掉**（保证唯一性），再发存档请求；
+    -- 不同名的旧档仍然走老规矩（写成功后再删），这样万一写失败也不会丢档。
+    if UI ~= nil and UI.DeleteSavedGame ~= nil then
+        local removedSame = 0
+        for _, existing in ipairs(m_Nodes) do
+            local existingName = existing.RawName ~= nil and StripExtension(existing.RawName) or nil
+            if existingName ~= nil and existingName == name then
+                local entry = existing.FileEntry or existing
+                local delOk, delErr = pcall(UI.DeleteSavedGame, entry)
+                Log("同名旧档先删除：" .. tostring(existingName)
+                    .. (delOk and " 已删除" or (" 删除失败 -> " .. tostring(delErr))))
+                if delOk then removedSame = removedSame + 1 end
+            end
+        end
+        if removedSame > 0 then
+            Log("为保证唯一性，先删掉 " .. tostring(removedSame) .. " 份同名旧档，再写新档")
+        end
+    end
+
     local ok, err = pcall(Network.SaveGame, saveFile)
     if not ok then
         m_SavePending = nil

@@ -675,6 +675,9 @@
 		<Replace Tag="LOC_MODMISC_SAVEPANEL_SWITCH_SELECTED" Language="zh_Hans_CN">
 			<Text>切换到选中</Text>
 		</Replace>
+		<Replace Tag="LOC_MODMISC_SAVEPANEL_SWITCH_ARMED" Language="zh_Hans_CN">
+			<Text>已确认。再点一次「切换到选中」就开始保存当前档并重开。</Text>
+		</Replace>
 		<Replace Tag="LOC_MODMISC_SAVEPANEL_BRANCH_CREATED" Language="zh_Hans_CN">
 			<Text>已创建分支档</Text>
 		</Replace>

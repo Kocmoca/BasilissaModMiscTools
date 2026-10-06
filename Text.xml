@@ -675,6 +675,9 @@
 		<Row Tag="LOC_MODMISC_SAVEPANEL_SWITCH_SELECTED">
 			<Text>Switch to selected</Text>
 		</Row>
+		<Row Tag="LOC_MODMISC_SAVEPANEL_SWITCH_ARMED">
+			<Text>Confirmed. Tap "Switch to selected" once more to save and restart now.</Text>
+		</Row>
 		<Row Tag="LOC_MODMISC_SAVEPANEL_BRANCH_CREATED">
 			<Text>Branch save created</Text>
 		</Row>

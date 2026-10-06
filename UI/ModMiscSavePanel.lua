@@ -653,6 +653,34 @@ local function AskConfirm(confirmText, onConfirmed)
     return false
 end
 
+local function PerformSwitch(targetId)
+    -- ⚠️ 这一步**必须在按钮回调里**跑：早前实机验证过，`Network.RestartGame()` 从弹窗回调 /
+    -- 事件回调 / 按帧回调里调都会“调用返回了但游戏不重开”（授权者 2026-10-06 又遇到“点切换没反应”）。
+    -- 所以确认只负责“上膛”，真正执行留给玩家再点一次按钮 —— 那一次就是按钮回调。
+    m_SaveWaitFrames = 0
+    m_CheckSaveFrames = 59
+    local ok, idOrErr = ModMiscSaveGraph.PrepareSwitch({
+                TargetNodeId = targetId,
+        OnVerified = function(found)
+            if found then
+                SetStatus(Locale.Lookup("LOC_MODMISC_SAVEPANEL_SAVE_VERIFIED"))
+            end
+        end,
+    })
+    if not ok then
+        ReportError("PrepareSwitch", idOrErr)
+        return
+    end
+    Report(Locale.Lookup("LOC_MODMISC_SAVEPANEL_SWITCH_PREPARED", tostring(idOrErr)),
+        Locale.Lookup("LOC_MODMISC_SAVEPANEL_SWITCH_PREPARED_DETAIL"))
+    -- 就在这个按钮回调里重开（原档这一笔已经发出；落盘确认只服务日志与状态行）
+    local switchOk, switchErr = ModMiscSaveGraph.SwitchNow("按钮回调（已确认）")
+    if not switchOk then
+        local forcedOk, forcedErr = ModMiscSaveGraph.SwitchNow({ Force = true })
+        if not forcedOk then ReportError("SwitchNow", forcedErr) end
+    end
+end
+
 local function DoSwitchMap()
     local selected = m_SelectedNode
     if selected == nil then
@@ -661,32 +689,19 @@ local function DoSwitchMap()
         return
     end
     local targetId = tostring(selected.Id)
-    local text = Locale.Lookup("LOC_MODMISC_SAVEPANEL_SWITCH_CONFIRM", tostring(selected.RawName or targetId))
+    -- 已经上膛（弹窗确认过 或 上一次点击已提示）⇒ 这次点击**就在按钮回调里执行**
+    if m_SwitchArmed == targetId then
+        m_SwitchArmed = nil
+        PerformSwitch(targetId)
+        return
+    end
+    -- 第一次点击：确认（有弹窗用弹窗，没有就提示“再点一次”）
+    local text = Locale.Lookup("LOC_MODMISC_SAVEPANEL_SWITCH_CONFIRM",
+        tostring(selected.RawName or targetId))
     AskConfirm(text, function()
-            -- 玩家确认后才真正“先存当前档 + 重开”
-            m_SaveWaitFrames = 0
-            m_CheckSaveFrames = 59
-            local ok, idOrErr = ModMiscSaveGraph.PrepareSwitch({
-                TargetNodeId = targetId,
-                OnVerified = function(found)
-                    if found then
-                        SetStatus(Locale.Lookup("LOC_MODMISC_SAVEPANEL_SAVE_VERIFIED"))
-                    end
-                end,
-            })
-            if not ok then
-                ReportError("PrepareSwitch", idOrErr)
-                return
-            end
-            Report(Locale.Lookup("LOC_MODMISC_SAVEPANEL_SWITCH_PREPARED", tostring(idOrErr)),
-                Locale.Lookup("LOC_MODMISC_SAVEPANEL_SWITCH_PREPARED_DETAIL"))
-            -- 立刻重开（原档这一笔已经发出；落盘确认只为日志与状态行服务，不再拦玩家）
-            local switchOk, switchErr = ModMiscSaveGraph.SwitchNow("确认弹窗之后")
-            if not switchOk then
-                -- 例子：原档还没确认落盘 —— 允许显式继续（玩家已经确认过一次了）
-                local forcedOk, forcedErr = ModMiscSaveGraph.SwitchNow({ Force = true })
-                if not forcedOk then ReportError("SwitchNow", forcedErr) end
-            end
+        m_SwitchArmed = targetId
+        Report(Locale.Lookup("LOC_MODMISC_SAVEPANEL_SWITCH_ARMED", tostring(selected.RawName or targetId)),
+            Locale.Lookup("LOC_MODMISC_SAVEPANEL_SWITCH_ARMED"))
     end)
 end
 
