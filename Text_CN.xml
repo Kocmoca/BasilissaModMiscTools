@@ -666,6 +666,21 @@
 		<Replace Tag="LOC_MODMISC_SAVEPANEL_SAVE" Language="zh_Hans_CN">
 			<Text>存档</Text>
 		</Replace>
+		<Replace Tag="LOC_MODMISC_SAVEPANEL_CREATE_BRANCH" Language="zh_Hans_CN">
+			<Text>创建分支</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_SAVEPANEL_SWITCH" Language="zh_Hans_CN">
+			<Text>切换到选中</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_SAVEPANEL_BRANCH_CREATED" Language="zh_Hans_CN">
+			<Text>已创建分支档</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_SAVEPANEL_SWITCH_NEED_SELECTION" Language="zh_Hans_CN">
+			<Text>先在列表里选中一个分支档</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_SAVEPANEL_SWITCH_CONFIRM" Language="zh_Hans_CN">
+			<Text>切换到 {1_Target}？会先保存当前存档，然后重开游戏到新地图。</Text>
+		</Replace>
 		<Replace Tag="LOC_MODMISC_SAVEPANEL_SWITCH" Language="zh_Hans_CN">
 			<Text>换图（自动）</Text>
 		</Replace>

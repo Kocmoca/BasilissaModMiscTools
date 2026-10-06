@@ -1391,6 +1391,40 @@ end
 -- 第一、二步之间玩家看到的状态行会明说“原档已存好，再点一次就切换”。
 -- ===========================================================================
 
+-- ===========================================================================
+-- 创建分支档（授权者 2026-10-06 的新逻辑：**创建分支与切换分开**）
+--
+--   「创建分支」= 把当前局存成一个**逻辑分支档**：写一个 B 档 + 记好父子关系，
+--                  **不重开、不切换**，玩家随时可以在列表里看到这条分支线。
+--   「切换」    = 选中某个逻辑档 → 先保存当前档 → 弹窗确认 → 重开（见 PrepareSwitch/SwitchNow）。
+--
+-- 和「存档」的区别：存档走 M/B 自动判定（本局有节点就沿用），创建分支**强制** B，
+-- 且父指向当前节点（没有当前节点时指向主线头）。
+-- ===========================================================================
+function API.CreateBranchNode()
+    if Network == nil or Network.SaveGame == nil then
+        return false, "Network.SaveGame 不可用"
+    end
+    local base = BuildNextNode()          -- 先按常规算一遍（拿 Id/Stamp/Turn/逻辑回合）
+    if base == nil then return false, "节点构造失败" end
+    local parentId = API.GetCurrentNodeId() or API.GetMainlineHeadId()
+    local branch = {
+        Id = base.Id,
+        Parent = parentId or MODMISC_SAVE_ROOT_PARENT,
+        Kind = MODMISC_KIND_BRANCH,       -- 强制分支
+        Stamp = base.Stamp,
+        Turn = base.Turn,
+        Logical = base.Logical,
+        Offset = base.Offset,
+        RawName = nil,
+    }
+    Log("创建分支：id=" .. tostring(branch.Id) .. " 父=" .. tostring(branch.Parent)
+        .. " 逻辑回合=" .. tostring(branch.Logical))
+    local ok, err = SaveNode(branch, { Reason = "create-branch" })
+    if not ok then return false, err end
+    return true, branch.Id
+end
+
 -- 第一步：存原档（供换图用）。返回 (ok, err)
 -- options = { OnSaved = fn, OnChecked = fn }（面板用它在落盘/回执后排自动重开倒计时）
 function API.PrepareSwitch(options)
@@ -1403,6 +1437,20 @@ function API.PrepareSwitch(options)
     end
 
     local node = BuildNextNode()
+    -- 【新逻辑】切换的目标是**选中的逻辑档**（不是“本局当前节点”）：交接单指向它，
+    -- 于是新局算它的分支、回合同步以它的逻辑回合为锚点。
+    local targetId = opts.TargetNodeId
+    if targetId ~= nil then
+        local target = m_NodeById[targetId]
+        node.Parent = tostring(targetId)
+        node.Kind = MODMISC_KIND_BRANCH
+        if target ~= nil and target.Logical ~= nil then
+            node.Logical = target.Logical
+            node.Offset = target.Logical - 1
+        end
+        Log("切换目标：选中的逻辑档 " .. tostring(targetId)
+            .. "（逻辑回合 " .. tostring(node.Logical) .. "）⇒ 新局算它的分支")
+    end
 
     -- 要带过去的数据（可选）：另存成用后即焚的 xmap_*，交接单里只留引用
     local payloadKey = nil
@@ -1417,7 +1465,7 @@ function API.PrepareSwitch(options)
     -- 先写交接单：这是“新局算这条记录的分支”的唯一凭据，必须早于存档落盘。
     -- 生命周期：**用后即焚**（ephemeral/small，TTL 900 秒）——不制造永久数据；
     -- 新局开局会把它固化进本局身份（sgnode，persave）然后删掉它。
-    SetPendingBranch(node.Id, MODMISC_KIND_BRANCH, node.Stamp, node.Logical, {
+    SetPendingBranch(node.Parent or node.Id, MODMISC_KIND_BRANCH, node.Stamp, node.Logical, {
         FromMap = tostring(opts.FromMap or ""),
         ToMap = tostring(opts.ToMap or ""),
         Engine = tostring(opts.Engine or ""),

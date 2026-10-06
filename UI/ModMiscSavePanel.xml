@@ -78,17 +78,23 @@
             <!-- 操作按钮 -->
             <GridButton ID="ModMiscSaveCurrent" Anchor="L,T" Offset="20,612" Size="280,58"
                         Style="ButtonControl" FontSize="25" String="LOC_MODMISC_SAVEPANEL_SAVE" />
+            <!-- 创建分支：把当前局存成一个**逻辑分支档**（只落一个档 + 关系，不重开、不切换） -->
             <GridButton ID="ModMiscSaveSwitchMap" Anchor="L,T" Offset="310,612" Size="280,58"
-                        Style="ButtonControl" FontSize="25" String="LOC_MODMISC_SAVEPANEL_SWITCH" />
+                        Style="ButtonControl" FontSize="24"
+                        String="LOC_MODMISC_SAVEPANEL_SWITCH" />
             <GridButton ID="ModMiscSaveLoadSelected" Anchor="L,T" Offset="600,612" Size="280,58"
                         Style="ButtonControl" FontSize="25" String="LOC_MODMISC_SAVEPANEL_LOAD" />
 
-            <GridButton ID="ModMiscSaveRefresh" Anchor="L,T" Offset="20,678" Size="280,58"
+            <GridButton ID="ModMiscSaveRefresh" Anchor="L,T" Offset="20,678" Size="205,58"
                         Style="ButtonControl" FontSize="25" String="LOC_MODMISC_SAVEPANEL_REFRESH" />
-            <GridButton ID="ModMiscSaveIntake" Anchor="L,T" Offset="310,678" Size="280,58"
+            <GridButton ID="ModMiscSaveIntake" Anchor="L,T" Offset="240,678" Size="205,58"
                         Style="ButtonControl" FontSize="25" String="LOC_MODMISC_SAVEPANEL_INTAKE" />
-            <GridButton ID="ModMiscSaveDelete" Anchor="L,T" Offset="600,678" Size="280,58"
+            <GridButton ID="ModMiscSaveDelete" Anchor="L,T" Offset="460,678" Size="205,58"
                         Style="ButtonControl" FontSize="25" String="LOC_MODMISC_SAVEPANEL_DELETE" />
+            <!-- 创建分支：把当前局存成一个**逻辑分支档**（只落档 + 记关系，不重开、不切换） -->
+            <GridButton ID="ModMiscSaveCreateBranch" Anchor="L,T" Offset="680,678" Size="215,58"
+                        Style="ButtonControl" FontSize="24"
+                        String="LOC_MODMISC_SAVEPANEL_CREATE_BRANCH" />
 
             <Label ID="ModMiscSaveDetail" Anchor="L,T" Offset="20,748" Size="parent-40,140"
                    FontSize="22" Color="225,225,225,255" WrapWidth="860" VerticalAlignment="Top"

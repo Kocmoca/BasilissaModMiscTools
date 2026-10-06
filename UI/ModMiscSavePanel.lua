@@ -494,6 +494,18 @@ end
 -- 按钮动作
 -- ===========================================================================
 
+-- 创建分支（授权者 2026-10-06 新逻辑）：把当前局存成一个**逻辑分支档**，不重开、不切换
+local function DoCreateBranch()
+    local ok, idOrErr = ModMiscSaveGraph.CreateBranchNode()
+    if not ok then
+        ReportError("CreateBranch", idOrErr)
+        return
+    end
+    Report(Locale.Lookup("LOC_MODMISC_SAVEPANEL_BRANCH_CREATED", tostring(idOrErr)),
+        Locale.Lookup("LOC_MODMISC_SAVEPANEL_BRANCH_CREATED"))
+    RefreshAll()
+end
+
 local function DoSave()
     local ok, err = ModMiscSaveGraph.SaveCurrentGame({
         Reason = "manual",
@@ -607,8 +619,53 @@ EnsureSwitchTick = function()
     Log("自动换图倒计时回调已挂")
 end
 
+-- 切换（授权者 2026-10-06 新逻辑）：
+--   ① 选中列表里的**逻辑档**；② 点「切换」→ 先保存当前档（并存好“新局算选中档的分支”）；
+--   ③ 弹窗让玩家确认；④ 确认后在按钮回调里重开。
+--   不再有“盲倒计时自动切换”——确认这件事交回给玩家。
 local function DoSwitchMap()
-    -- 第二步：原档已存好 → 在按钮回调里直接重开
+    local selected = m_SelectedNode
+    if selected == nil then
+        Report(Locale.Lookup("LOC_MODMISC_SAVEPANEL_NO_SELECTION"),
+            Locale.Lookup("LOC_MODMISC_SAVEPANEL_SWITCH_NEED_SELECTION"))
+        return
+    end
+    local targetId = tostring(selected.Id)
+    local text = Locale.Lookup("LOC_MODMISC_SAVEPANEL_SWITCH_CONFIRM", tostring(selected.RawName or targetId))
+    local okPopup, popupErr = pcall(function()
+        local popup = PopupDialogInGame:new("UnitPanelPopup")
+        popup:ShowOkCancelDialog(text, function()
+            -- 玩家确认后才真正“先存当前档 + 重开”
+            m_SaveWaitFrames = 0
+            m_CheckSaveFrames = 59
+            local ok, idOrErr = ModMiscSaveGraph.PrepareSwitch({
+                TargetNodeId = targetId,
+                OnVerified = function(found)
+                    if found then
+                        SetStatus(Locale.Lookup("LOC_MODMISC_SAVEPANEL_SAVE_VERIFIED"))
+                    end
+                end,
+            })
+            if not ok then
+                ReportError("PrepareSwitch", idOrErr)
+                return
+            end
+            Report(Locale.Lookup("LOC_MODMISC_SAVEPANEL_SWITCH_PREPARED", tostring(idOrErr)),
+                Locale.Lookup("LOC_MODMISC_SAVEPANEL_SWITCH_PREPARED_DETAIL"))
+            -- 立刻重开（原档这一笔已经发出；落盘确认只为日志与状态行服务，不再拦玩家）
+            local switchOk, switchErr = ModMiscSaveGraph.SwitchNow("确认弹窗之后")
+            if not switchOk then
+                -- 例子：原档还没确认落盘 —— 允许显式继续（玩家已经在弹窗里确认过一次了）
+                local forcedOk, forcedErr = ModMiscSaveGraph.SwitchNow({ Force = true })
+                if not forcedOk then ReportError("SwitchNow", forcedErr) end
+            end
+        end)
+    end)
+    if not okPopup then ReportError("SwitchConfirm", popupErr) end
+end
+
+local function DoSwitchMapLegacy()
+    -- 旧的两步式流程（保留在文件里以便回溯，不再挂按钮）
     if ModMiscSaveGraph.HasPendingSwitch() then
         local state = ModMiscSaveGraph.GetSaveState ~= nil and ModMiscSaveGraph.GetSaveState() or nil
         if state ~= nil and state.Verified ~= true then
@@ -777,6 +834,8 @@ function OnInit()
         function() SafeCall("DeleteSelected", DoDeleteSelected) end)
     Controls.ModMiscSaveCurrent:RegisterCallback(Mouse.eLClick,
         function() SafeCall("Save", DoSave) end)
+    Controls.ModMiscSaveCreateBranch:RegisterCallback(Mouse.eLClick,
+        function() SafeCall("CreateBranch", DoCreateBranch) end)
     Controls.ModMiscSaveSwitchMap:RegisterCallback(Mouse.eLClick,
         function() SafeCall("SwitchMap", DoSwitchMap) end)
     Controls.ModMiscSaveRefresh:RegisterCallback(Mouse.eLClick,

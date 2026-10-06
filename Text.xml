@@ -666,6 +666,21 @@
 		<Row Tag="LOC_MODMISC_SAVEPANEL_SAVE">
 			<Text>Save</Text>
 		</Row>
+		<Row Tag="LOC_MODMISC_SAVEPANEL_CREATE_BRANCH">
+			<Text>Create branch</Text>
+		</Row>
+		<Row Tag="LOC_MODMISC_SAVEPANEL_SWITCH">
+			<Text>Switch to selected</Text>
+		</Row>
+		<Row Tag="LOC_MODMISC_SAVEPANEL_BRANCH_CREATED">
+			<Text>Branch save created</Text>
+		</Row>
+		<Row Tag="LOC_MODMISC_SAVEPANEL_SWITCH_NEED_SELECTION">
+			<Text>Select a branch save in the list first</Text>
+		</Row>
+		<Row Tag="LOC_MODMISC_SAVEPANEL_SWITCH_CONFIRM">
+			<Text>Switch to {1_Target}? The current game will be saved first, then the game restarts onto the new map.</Text>
+		</Row>
 		<Row Tag="LOC_MODMISC_SAVEPANEL_SWITCH">
 			<Text>Switch map (auto)</Text>
 		</Row>
