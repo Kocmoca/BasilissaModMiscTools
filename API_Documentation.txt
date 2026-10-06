@@ -1568,7 +1568,9 @@ API_Verification_Status.md §18.4/§18.6。
                   Amount = <数量>, AcceptTurn = <接受逻辑回合>, TargetPlayerID = <玩家 id> }
     ModMiscSaveGraph.FetchEventsForNode(nodeId)         收件（返回事件数组 + 信箱键）
     ModMiscSaveGraph.DropEventKeys(keys)                投递后清理
+    ModMiscSaveGraph.GetInheritedNodeIds()              本局要**继承**哪些节点的信箱（见下）
     ModMiscSaveGraph.IntakeEvents(onDone)               收件 → 交给 gameplay 的回合事件列表
+        收件目标 = 本局节点（可能有）+ 继承来的逻辑档 id；继承来的事件会带 InheritedFrom 字段
 
     ExposedMembers.ModMiscToolScript.TurnEvents（gameplay）：
         SetLogicalOffset(offset) / GetLogicalOffset() / GetLogicalTurn()
@@ -1592,15 +1594,27 @@ API_Verification_Status.md §18.4/§18.6。
     默认那套（金币→国库、单位→首都、资源→库存或地图）只是当前测试框架的实现：
     别的 mod 注册更高优先级即可接管，或先 Disable()/ClearHandlers() 再自己来。
 
-**信箱**：跨存档存储键 `ev_<目标节点id>_<序号>`，值
-`type|detail|amount|acceptTurn|fromNode|playerID|civ|stamp`（一个事件一个键，投递即删）。
+**信箱**：跨存档存储键 `ev_<目标节点id>_<序号>`，值是**协议编码的表**
+（`Type/Detail/Amount/AcceptTurn/FromNode/FromPlayerID/FromCiv/Stamp/PayloadKey`；
+大载荷另存 `evb_*`，信箱里只留引用）。一个事件一个键，**投递即删**。
+
+**切到逻辑占位之后的信箱继承（v1.99）**：占位在重开前就被移除，可它的信箱键是
+`ev_<占位id>_*`，而新局的节点 id 是后来才生成的 ⇒ 不处理的话“发给某个逻辑档的事件”
+永远收不到（静默丢失）。所以：
+
+  * `PrepareSwitch` 把占位 id 写进交接单（`InheritNodeId`）；
+  * 新局开局探针固化身份时记进 `identity.InheritIds`（随档走，存档写身份时**不会**被覆盖掉）；
+  * `IntakeEvents` 把“本局节点 + 继承来的 id”都扫一遍，继承来的事件带 `InheritedFrom = <占位id>`；
+  * 换图**之前**那一局不会认领（`GetInheritedNodeIds` 只在“本局还没有身份”时才读交接单），
+    否则那边点一次「收件」就会把占位的信箱提前领走、新局反而收不到。
 
 **发放通道**：金币 = `ChangeGoldBalance`；单位 = `UnitManager.InitUnit` 落在接收方首都（没首都顺延）；
 资源 = 先探 `GetResources():ChangeResourceAmount`，不行就 `WorldBuilderAPI.SetResourceType` 落到首都附近的地块。
 
 **文本提示（其它 mod 可定义）**：
 
-    LuaEvents.ModMiscToolTurnEventFired.Call(type, detail, amount, fromNode, overdue, toPlayerID, result)
+    LuaEvents.ModMiscToolTurnEventFired.Call(type, detail, amount, fromNode, overdue, toPlayerID, result,
+                                             inheritedFrom)   -- 第 8 个参数可空；旧 7 参调用兼容
     LuaEvents.ModMiscToolTurnEventBatch.Call(count, logicalTurn)
     ExposedMembers.ModMiscToolUI.RegisterTurnEventTextResolver(fn)
         fn(eventType, detail, amount, fromNode, overdue, toPlayerID, result) -> 文本或 nil

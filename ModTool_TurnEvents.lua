@@ -22,7 +22,9 @@
 --   这里只用它换算，**绝不改引擎回合**（引擎回合也改不动，见第 47 条）。
 --
 -- 【事件记录】{ Type, Detail, Amount, AcceptTurn(逻辑), FromNode, FromPlayerID,
---              FromCiv, Stamp, Overdue }
+--              FromCiv, Stamp, Overdue, InheritedFrom }
+--   InheritedFrom 换图切到**逻辑占位**时才有：事件原本发给那个占位（它已随切换移除），
+--                 由新局接手送达；UI/别的 mod 可据此写“来自已切换掉的逻辑档 X”
 --   Type      GOLD / UNIT / RESOURCE
 --   Detail    UNIT 事件是单位类型名，RESOURCE 事件是资源类型名，GOLD 为空
 --   AcceptTurn 接受回合（逻辑）：到点或已过点就执行
@@ -161,7 +163,9 @@ function API.AddIncoming(event)
     Log("已入列：" .. tostring(event.Type) .. " " .. tostring(event.Detail or "")
         .. " x" .. tostring(event.Amount or "?")
         .. " 接受回合=" .. tostring(event.AcceptTurn)
-        .. " 来自=" .. tostring(event.FromNode) .. "（现有 " .. tostring(#list) .. " 条）")
+        .. " 来自=" .. tostring(event.FromNode)
+        .. (event.InheritedFrom ~= nil and ("（继承自逻辑档 " .. tostring(event.InheritedFrom) .. "）") or "")
+        .. "（现有 " .. tostring(#list) .. " 条）")
     return true
 end
 
@@ -281,10 +285,13 @@ end
 local function FireEventText(event, result)
     if LuaEvents == nil or LuaEvents.ModMiscToolTurnEventFired == nil then return end
     pcall(function()
+        -- 第 8 个参数是**继承来源**（换图切到逻辑占位时才有）：那条事件本来是发给已被移除的
+        -- 逻辑档的，由新局接手。UI 侧要用就用，签名兼容旧的 7 参调用。
         LuaEvents.ModMiscToolTurnEventFired.Call(
             tostring(event.Type), tostring(event.Detail or ""), tonumber(event.Amount) or 0,
             tostring(event.FromNode or ""), event.Overdue == true,
-            tonumber(event.FromPlayerID) or -1, tostring(result or ""))
+            tonumber(event.FromPlayerID) or -1, tostring(result or ""),
+            event.InheritedFrom ~= nil and tostring(event.InheritedFrom) or nil)
     end)
 end
 

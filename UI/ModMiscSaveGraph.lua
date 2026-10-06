@@ -489,6 +489,9 @@ function API.GetPendingBranch()
         FromMap = fromMap,
         ToMap = toMap,
         PayloadKey = payloadKey,
+        -- 切到**逻辑占位**时才有：占位重开前就被移除了，发给它的信箱（ev_<占位id>_*）
+        -- 得由新局接过去，否则玩家发给逻辑档的事件永远收不到（见 IntakeEvents / GetInheritedNodeIds）
+        InheritNodeId = value.InheritNodeId,
     }
 end
 
@@ -511,6 +514,7 @@ local function SetPendingBranch(parentId, kind, stamp, originLogical, extra)
         ToMap = extra.ToMap,
         Engine = extra.Engine,
         PayloadKey = extra.PayloadKey,
+        InheritNodeId = extra.InheritNodeId,   -- 切到逻辑占位时：新局要继承它的信箱
     })
     return written == true
 end
@@ -1041,13 +1045,39 @@ function API.IntakeEvents(onDone)
         end
 
         local nodeId = API.GetCurrentNodeId()
-        if nodeId == nil then
-            Log("收件跳过：本局还没有节点身份（第一次存档之后才会收到发给它的信箱）")
+        -- 收件目标 = 本局节点（可能有）+ 继承来的逻辑档 id（换图过来的新局）
+        local targets, seenTargets = {}, {}
+        if nodeId ~= nil then
+            seenTargets[tostring(nodeId)] = true
+            targets[#targets + 1] = { Id = tostring(nodeId), Inherited = false }
+        end
+        for _, inheritedId in ipairs(API.GetInheritedNodeIds()) do
+            -- 同一个 id 只收一次（身份和交接单可能都记着它）
+            if not seenTargets[inheritedId] then
+                seenTargets[inheritedId] = true
+                targets[#targets + 1] = { Id = inheritedId, Inherited = true }
+            end
+        end
+        if #targets == 0 then
+            Log("收件跳过：本局还没有节点身份、也没有继承的信箱"
+                .. "（第一次存档之后才会收到发给它的信箱）")
             if onDone ~= nil then pcall(onDone, 0, "no-node") end
             return
         end
 
-        local events, keys = API.FetchEventsForNode(nodeId)
+        local events, keys = {}, {}
+        for _, target in ipairs(targets) do
+            local targetEvents, targetKeys = API.FetchEventsForNode(target.Id)
+            for _, event in ipairs(targetEvents) do
+                -- 继承来的事件打个标：gameplay 侧可以据此写“来自（已切换掉的）逻辑档 X”
+                event.InheritedFrom = target.Inherited and target.Id or nil
+                events[#events + 1] = event
+            end
+            for _, key in ipairs(targetKeys) do keys[#keys + 1] = key end
+        end
+        table.sort(events, function(a, b)
+            return (tonumber(a.AcceptTurn) or 0) < (tonumber(b.AcceptTurn) or 0)
+        end)
         if #events == 0 then
             if onDone ~= nil then pcall(onDone, 0, "empty") end
             return
@@ -1059,12 +1089,45 @@ function API.IntakeEvents(onDone)
             if ok then added = added + 1 end
         end
         API.DropEventKeys(keys)
-        Log("收件完成：节点 " .. tostring(nodeId) .. " 入列 " .. tostring(added) .. " 条"
-            .. "（本局逻辑回合 " .. tostring(logicalTurn) .. "，引擎 " .. tostring(engineTurn)
-            .. "，偏移 +" .. tostring(offset) .. "）")
+        Log("收件完成：本局节点 " .. tostring(nodeId or "（还没身份）")
+            .. "，继承信箱 " .. tostring(#targets - (nodeId ~= nil and 1 or 0)) .. " 个 ⇒ 入列 "
+            .. tostring(added) .. " 条（本局逻辑回合 " .. tostring(logicalTurn)
+            .. "，引擎 " .. tostring(engineTurn) .. "，偏移 +" .. tostring(offset) .. "）")
         if onDone ~= nil then pcall(onDone, added, "ok") end
     end
     Run()
+end
+
+-- ===========================================================================
+-- 信箱继承：切到逻辑占位之后，新局要把发给**那个占位**的信箱也收掉
+--
+--   为什么需要：占位在重开前就被移除（由新局的真存档接手），可它的信箱键是 `ev_<占位id>_*`，
+--   新局的节点 id 是后来才生成的、跟占位 id 不一样 ⇒ 不继承的话，玩家“发给某个逻辑档的事件”
+--   永远收不到（静默丢失，最难查）。所以：
+--     ① 交接单里带上占位 id（InheritNodeId）；
+--     ② 新局固化身份时把它记进 identity.InheritIds（随档走）；
+--     ③ 收件时把“本局节点 + 继承来的 id”都扫一遍。
+--   身份还没固化（开局探针是异步的）时退回读交接单 —— 收件本来就在开局探针之前跑。
+-- ===========================================================================
+function API.GetInheritedNodeIds()
+    local ids, seen = {}, {}
+    local identity = LoadNodeIdentity()
+    if type(identity) == "table" and type(identity.InheritIds) == "table" then
+        for _, id in ipairs(identity.InheritIds) do
+            local key = tostring(id)
+            if key ~= "" and not seen[key] then seen[key] = true; ids[#ids + 1] = key end
+        end
+    end
+    -- 交接单只在“本局还没有身份”时才算继承来源 —— 换图**之前**那一局如果点「收件」，
+    -- 会把占位的信箱提前领走并删掉（API.DropEventKeys），新局就永远收不到了。
+    if API.GetCurrentNodeId() == nil then
+        local pending = API.GetPendingBranch()
+        if pending ~= nil and pending.InheritNodeId ~= nil then
+            local key = tostring(pending.InheritNodeId)
+            if key ~= "" and not seen[key] then seen[key] = true; ids[#ids + 1] = key end
+        end
+    end
+    return ids
 end
 
 -- ===========================================================================
@@ -1345,6 +1408,9 @@ local function SaveNode(node, opts)
     if options.WriteIdentity == false then
         Log("按调用方要求：本次只写档，**不改本局身份**（创建分支档）")
     else
+        -- ⚠️ 这里的身份是**整表覆盖**写的：继承来的信箱列表（InheritIds）必须带上，
+        -- 否则新局第一次存档之后“继承的信箱”就断了（占位的 ev_* 再也收不到）。
+        local previousIdentity = LoadNodeIdentity() or {}
         local identityOk = SaveNodeIdentity({
             Id = node.Id,
             Parent = node.Parent or MODMISC_SAVE_ROOT_PARENT,
@@ -1352,6 +1418,7 @@ local function SaveNode(node, opts)
             Stamp = node.Stamp,
             Offset = node.Offset,
             Logical = node.Logical,
+            InheritIds = previousIdentity.InheritIds,
         })
         local propertyOk, propertyErr = WriteNodeProperty(node)
         Log("节点身份已写入：persave=" .. tostring(identityOk) .. " property=" .. tostring(propertyOk)
@@ -1613,6 +1680,8 @@ function API.PrepareSwitch(options)
         ToMap = tostring(opts.ToMap or ""),
         Engine = tostring(opts.Engine or ""),
         PayloadKey = payloadKey,
+        -- 目标是逻辑占位 ⇒ 新局要把发给它的信箱接过去（占位重开前就被移除）
+        InheritNodeId = m_SwitchPlaceholderId,
     })
     Log("换图[2/3]：交接单已写入（这一步只存原档、**不重开**；新局挂到 parent="
         .. tostring(node.Parent or node.Id) .. " 下面算分支，"
@@ -1888,6 +1957,12 @@ function API.ReportAfterLoad()
             if pending.Logical ~= nil then
                 -- 顺手把本局偏移也固化：逻辑回合 = 引擎回合 + (起点逻辑回合 - 1)
                 identity.Offset = pending.Logical - 1
+            end
+            -- 继承信箱：占位已删，但发给它的 ev_<占位id>_* 还在大通道里，记下来让新局收掉
+            if pending.InheritNodeId ~= nil and tostring(pending.InheritNodeId) ~= "" then
+                identity.InheritIds = { tostring(pending.InheritNodeId) }
+                Log("本局继承信箱：逻辑档 " .. tostring(pending.InheritNodeId)
+                    .. " 的待收事件由本局接收（占位已随切换移除）")
             end
             -- 【授权者 2026-10-06 的约定】逻辑占位在重开前就被移除，“由**真存档**接手” ⇒
             -- 新局的第一档由 mod 自己存掉（见 RunPendingAutoSave）。这里只留一个标记，
