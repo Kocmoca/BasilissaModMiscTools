@@ -2418,3 +2418,50 @@ DiplomacyRework、Norn_UI、ConvinentCarrier 等）。
 * 若**仍然闪退** ⇒ 说明与我们的写无关（重开那一刻我们确实什么都不写了），
   下一步做对照：只留本 mod / 关掉其它 mod（DiplomacyRework、Norn_UI、ConvinentCarrier 等）
   跑同样的“存档 → 换图”两步，看是不是引擎/别的 mod 在重开时的拆卸问题。
+
+### 19.31 实机复测结论（2026-10-06 13:3x）：**换图两条路都不闪退，事件端到端走通**
+
+授权者做了两次测试，**都没有闪退**：
+
+1. **第一次：用原版 UI 重开**（引擎自己的重开菜单）—— 本日志就是这一次；
+2. **第二次：用本 mod 的 UI 重开**（「重开为新分支」）—— 也没有闪退。
+
+#### 第一次日志里的证据链
+
+```
+（面板）换图广播已写入（**5 分钟内有效、读到即删**）：父=tmh0n1pf 逻辑回合=1 地图=Continents
+（面板）分支广播已缓存（本次**不重开**）：等玩家再点一次，那一下只重开
+（引擎）GenerateRandomMap: Map Seed = 176174081           ← 原版 UI 重开，地图重新生成
+（新局）after-load(store=true/ready): current=nil head=tmh0n1pf broadcast=tmh0n1pf（写于 52 秒前）
+（新局）本局认定为**分支**（换图广播）：父=tmh0n1pf kind=B 锚点逻辑回合=1（偏移 +0）
+（新局）after-load 关系树：
+        [M] tmh0n1pf T1 Continents 20261006-133037-ij  <= 本局
+            [B] tmh0p0sc T1 Continents 20261006-133148-zf
+```
+
+⇒ 广播机制**与重开方式无关**：只要重开前写过广播，新局开局就认自己那条线。
+这也说明「重开」不必非得由本 mod 触发 —— 原版菜单重开同样能被正确记账。
+
+事件端到端（同一份日志）：
+
+```
+发件：GOLD 50 x50 → 节点 tmh0n1pf（接受逻辑回合 1）… 结果=true
+（新局）已入列：GOLD 50 x50 接受回合=1 来自=tmh0p0sc（现有 1 条）
+（新局）已触发并由处理器完成：GOLD 50 x50（treasury/id/player0）    ← v3.03 的“到点立即执行”生效
+（新局）结算完成（accept-now）：执行 1 条，剩余 0 条（逻辑回合 1）
+（新局）已投递并清理 1 个信箱键 → 开局收件：1 条（ok）
+```
+
+⇒ 发件 → 跨存档投递 → 新局收件 → **立刻执行到账** → 信箱清理，全链条通过。
+
+#### 顺手修掉日志里反复出现的报错
+
+`Runtime Error: ModMiscSavePanel.lua:788: operator + is not supported for nil + number`（4 次，每次进游戏一次）：
+v3.00 重写面板状态机时把 `m_LoadViewStateCount` 的**声明**删了，它成了隐式全局、第一次自增就 nil+1；
+而它正好是 `OnLoadGameViewStateDone` 的第一行 ⇒ 后面三行（挂面板 / 注册侧栏 / 刷信息行）**全都没跑**。
+现已补回 `local m_LoadViewStateCount = 0` 并把次数写进日志。
+
+同类问题已加进 `devtools/sweep.sh`（第 4b 项）：**UI 目录下用了但没声明的 `m_*` 状态变量**
+（会变成 nil 隐式全局）一律标红 —— 这类错 Lua 不报编译错，实机才炸。
+`panel_harness` 也补了一条回归：直接触发 `LoadGameViewStateDone` / `LocalPlayerTurnBegin`，
+断言回调不报错。

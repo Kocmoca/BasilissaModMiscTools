@@ -49,6 +49,9 @@ local m_SelectedNode = nil        -- 关系树里选中的节点（发送事件 
 --   新局开局读到广播就认定自己是那条线的分支（父/逻辑锚点取自广播），广播随即被消费。
 --   面板这边**不再有任何状态机**：不轮询、不验证落盘、不自动重开、不自动存档。
 local m_RestartAttempted = false   -- 上次调过 RestartGame：还能响应点击 ⇒ 引擎没真重开（见 NoteStillAlive）
+-- 本上下文见过几次 LoadGameViewStateDone（v3.00 重写状态机时漏了声明 ⇒ 实机每次都报
+-- `operator + is not supported for nil + number`，而且 OnLoadGameViewStateDone 后面三行全没跑）
+local m_LoadViewStateCount = 0
 
 local m_EventTypeKey = "GOLD"
 local m_EventDetailEntry = nil
@@ -786,6 +789,7 @@ end
 
 function OnLoadGameViewStateDone()
     m_LoadViewStateCount = m_LoadViewStateCount + 1
+    Log("LoadGameViewStateDone 第 " .. tostring(m_LoadViewStateCount) .. " 次（本上下文）")
     AttachPanelToInGame()
     TryRegisterSidebarButton()
     UpdateInfoLine()
