@@ -1193,8 +1193,11 @@ local function ResolveNewSaveParent()
         return currentId, nil, "current"
     end
     -- 换图重开后的新局：开局探针已经把待接分支固化成“本局来源”
+    -- 注意条件只判 incoming 本身：树根位置的换图（目标占位自己没有父）Parent 是 nil，
+    -- 但它**仍然是接手来的一条分支**（kind=B、有逻辑回合锚点）——
+    -- 早前这里要求 Parent ~= nil，于是这种新局会掉到下面的 root 分支、被当成主线 M。
     local incoming = API.GetIncomingBranch()
-    if incoming ~= nil and incoming.Parent ~= nil then
+    if incoming ~= nil then
         return incoming.Parent, incoming.Kind or MODMISC_KIND_BRANCH, "incoming"
     end
     -- 兜底：存储里的待接分支（理论上开局就该被固化，这里防“探针没跑到”）
@@ -1650,10 +1653,17 @@ function API.PrepareSwitch(options)
         -- 所以关系要挂在**占位所依附的那条线**上（占位的父），而不是占位自己。
         if target ~= nil and target.Placeholder then
             m_SwitchPlaceholderId = tostring(targetId)
+            -- 占位自己就是树根（还没存过任何本 mod 的档就建了分支）⇒ 关系挂到**根**。
+            -- ⚠️ 这里不能留着 node.Parent = 占位 id：占位马上要被移除，留下就是个悬空父
+            -- （树里显示成“父档不在列表”，新局也跟着挂到不存在的节点上）。
             if target.Parent ~= nil then
                 node.Parent = tostring(target.Parent)
                 Log("切换目标是逻辑占位 " .. tostring(targetId) .. " ⇒ 关系挂到它的父 "
                     .. tostring(target.Parent) .. "，占位将在重开前移除")
+            else
+                node.Parent = MODMISC_SAVE_ROOT_PARENT
+                Log("切换目标是**树根位置的**逻辑占位 " .. tostring(targetId)
+                    .. " ⇒ 关系挂到根（占位自己没有父，且它会在重开前被移除）")
             end
         end
         Log("切换目标：选中的逻辑档 " .. tostring(targetId)
@@ -1942,10 +1952,13 @@ function API.ReportAfterLoad()
         -- 然后把存储里那条消费掉：
         --   ① 之后存档不再依赖“存储此刻读不读得到”（这正是分支认不出自己的根因）；
         --   ② 万一玩家之后退回主菜单另开新局，也不会被这条陈旧的 pending 误挂成分支。
-        if currentId == nil and pending ~= nil and pending.Parent ~= nil then
+        -- 条件里的第二个分支：切到**树根位置的逻辑占位**时 pending.Parent 是 nil（根），
+        -- 但那也是一次换图（kind=B + 逻辑锚点 + 信箱继承），必须固化。
+        if currentId == nil and pending ~= nil
+            and (pending.Parent ~= nil or pending.InheritNodeId ~= nil) then
             -- ① 交接单里的**关系**固化进本局身份（sgnode，persave：随档走、新局不继承）
             local identity = LoadNodeIdentity() or {}
-            identity.Parent = pending.Parent
+            identity.Parent = pending.Parent or MODMISC_SAVE_ROOT_PARENT
             identity.Kind = pending.Kind or MODMISC_KIND_BRANCH
             identity.Logical = pending.Logical
             if pending.FromMap ~= nil and pending.FromMap ~= "" then
