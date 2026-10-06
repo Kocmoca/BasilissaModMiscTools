@@ -660,6 +660,12 @@
 		<Replace Tag="LOC_MODMISC_SAVEPANEL_SAVE_FAILED" Language="zh_Hans_CN">
 			<Text>两次都没能确认原档落盘——仍要切换就再点一次「切换到选中」（会再问一次，不安全）。</Text>
 		</Replace>
+		<Replace Tag="LOC_MODMISC_SAVEPANEL_SWITCH_HANDOFF_LOST" Language="zh_Hans_CN">
+			<Text>换图交接单过期了——为免丢掉分支关系，这次切换被取消。再点一次「切换到选中」重新准备。</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_SAVEPANEL_SWITCH_HANDOFF_LOST_DETAIL" Language="zh_Hans_CN">
+			<Text>没有交接单就重开，新局会不知道自己是分支。重新准备会再写一张交接单、并把当前局再存一档。</Text>
+		</Replace>
 		<Replace Tag="LOC_MODMISC_SAVEPANEL_TOOLTIP" Language="zh_Hans_CN">
 			<Text>打开存档关系 / 换图面板</Text>
 		</Replace>

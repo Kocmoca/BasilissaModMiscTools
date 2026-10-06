@@ -720,12 +720,22 @@ end
 local function PerformRestart(targetId)
     Report(Locale.Lookup("LOC_MODMISC_SAVEPANEL_SWITCH_NOW"),
         Locale.Lookup("LOC_MODMISC_SAVEPANEL_SWITCH_NOW_DETAIL"))
-    local ok, err = ModMiscSaveGraph.SwitchNow({
+    local ok, err, code = ModMiscSaveGraph.SwitchNow({
         Reason = "按钮回调（重开专用）",
         Force = m_RestartUnverified == true,
     })
     if not ok then
-        ReportError("SwitchNow", err)
+        if code == "handoff-lost" then
+            -- 交接单过期/被消费：重开会丢关系，所以模块拒绝了。这里把“可重开”状态清掉，
+            -- 玩家下一次点「切换到选中」就是重新准备（重新写交接单 + 存原档）。
+            Report(Locale.Lookup("LOC_MODMISC_SAVEPANEL_SWITCH_HANDOFF_LOST"),
+                Locale.Lookup("LOC_MODMISC_SAVEPANEL_SWITCH_HANDOFF_LOST_DETAIL"))
+            m_RestartReady = nil
+            m_RestartUnverified = false
+            m_ForceArmed = nil
+        else
+            ReportError("SwitchNow", err)
+        end
         return
     end
     -- 调用返回了，但这**不等于**重开了：真重开的话本上下文会被销毁、按帧回调不会再跑。

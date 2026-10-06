@@ -660,6 +660,12 @@
 		<Row Tag="LOC_MODMISC_SAVEPANEL_SAVE_FAILED">
 			<Text>Could not confirm the original save after 2 tries - tap "Switch to selected" if you still want to switch (it will ask once more, unsafe).</Text>
 		</Row>
+		<Row Tag="LOC_MODMISC_SAVEPANEL_SWITCH_HANDOFF_LOST">
+			<Text>Map-switch handoff expired - the switch was cancelled so the branch link is not lost. Tap "Switch to selected" to prepare it again.</Text>
+		</Row>
+		<Row Tag="LOC_MODMISC_SAVEPANEL_SWITCH_HANDOFF_LOST_DETAIL">
+			<Text>Restarting without the handoff would produce a new game that does not know it is a branch. Preparing again writes a fresh handoff and saves the current game once more.</Text>
+		</Row>
 		<Row Tag="LOC_MODMISC_SAVEPANEL_TOOLTIP">
 			<Text>Open the save-tree / map-switch panel</Text>
 		</Row>
