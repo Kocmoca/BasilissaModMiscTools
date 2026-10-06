@@ -631,6 +631,28 @@ end
 --   ① 选中列表里的**逻辑档**；② 点「切换」→ 先保存当前档（并存好“新局算选中档的分支”）；
 --   ③ 弹窗让玩家确认；④ 确认后在按钮回调里重开。
 --   不再有“盲倒计时自动切换”——确认这件事交回给玩家。
+-- 确认框：优先用引擎弹窗；这个上下文没有 PopupDialogInGame 时退化成“再点一次确认”
+-- （实机 2026-10-06 报 ModMiscSavePanel.lua:644 attempt to index a nil value —— 就是它）
+local m_ArmedConfirm = nil
+local function AskConfirm(confirmText, onConfirmed)
+    if PopupDialogInGame ~= nil then
+        local ok = pcall(function()
+            local popup = PopupDialogInGame:new("UnitPanelPopup")
+            popup:ShowOkCancelDialog(confirmText, function() pcall(onConfirmed) end)
+        end)
+        if ok then return true end
+        Log("弹窗不可用，退化成“点两次确认”")
+    end
+    if m_ArmedConfirm == onConfirmed then
+        m_ArmedConfirm = nil
+        pcall(onConfirmed)
+        return true
+    end
+    m_ArmedConfirm = onConfirmed
+    Report(confirmText, Locale.Lookup("LOC_MODMISC_SAVEPANEL_CONFIRM_AGAIN"))
+    return false
+end
+
 local function DoSwitchMap()
     local selected = m_SelectedNode
     if selected == nil then
@@ -640,9 +662,7 @@ local function DoSwitchMap()
     end
     local targetId = tostring(selected.Id)
     local text = Locale.Lookup("LOC_MODMISC_SAVEPANEL_SWITCH_CONFIRM", tostring(selected.RawName or targetId))
-    local okPopup, popupErr = pcall(function()
-        local popup = PopupDialogInGame:new("UnitPanelPopup")
-        popup:ShowOkCancelDialog(text, function()
+    AskConfirm(text, function()
             -- 玩家确认后才真正“先存当前档 + 重开”
             m_SaveWaitFrames = 0
             m_CheckSaveFrames = 59
@@ -663,13 +683,11 @@ local function DoSwitchMap()
             -- 立刻重开（原档这一笔已经发出；落盘确认只为日志与状态行服务，不再拦玩家）
             local switchOk, switchErr = ModMiscSaveGraph.SwitchNow("确认弹窗之后")
             if not switchOk then
-                -- 例子：原档还没确认落盘 —— 允许显式继续（玩家已经在弹窗里确认过一次了）
+                -- 例子：原档还没确认落盘 —— 允许显式继续（玩家已经确认过一次了）
                 local forcedOk, forcedErr = ModMiscSaveGraph.SwitchNow({ Force = true })
                 if not forcedOk then ReportError("SwitchNow", forcedErr) end
             end
-        end)
     end)
-    if not okPopup then ReportError("SwitchConfirm", popupErr) end
 end
 
 local function DoSwitchMapLegacy()

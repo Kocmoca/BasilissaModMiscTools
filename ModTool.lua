@@ -156,7 +156,18 @@ function RefreshUnitData(playerID, unitID)
 	end
 	local plotIndex, iX, iY = GetUnitPlotIndexAndCoordinate(unit)
 	if plotIndex == nil then unitData.removed = true return end
-	local expPoint, promotions = ExposedMembers.ModMiscToolUI.GetExperienceAndPromotionsUI(playerID, unitID)
+	-- 【实机 2026-10-06】UI 侧的 ExposedMembers 是**后发布**的：gameplay 早一步调用就会
+	-- “function expected instead of nil”（ModTool.lua:159）。所以这里防御式调用，拿不到就当没经验。
+	local expPoint, promotions = 0, nil
+	local uiMembers = ExposedMembers ~= nil and ExposedMembers.ModMiscToolUI or nil
+	local expGetter = uiMembers ~= nil and uiMembers.GetExperienceAndPromotionsUI or nil
+	if expGetter ~= nil then
+		local gotOk, gotPoint, gotPromotions = pcall(expGetter, playerID, unitID)
+		if gotOk then
+			expPoint = gotPoint or 0
+			promotions = gotPromotions
+		end
+	end
 	unitData.playerID = playerID
 	unitData.unitID = unitID
 	unitData.iX = iX

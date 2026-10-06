@@ -908,6 +908,7 @@ Support_UI: [TurnEvent] 开局收件：0 条（no-node）
 | 81 | 通道 G：`UserConfiguration.SetValue` 存自定义键 | `[已实机失败]` | 实机：写 4096 B **不报错**，但立刻读回是 `[没有这个键]` ⇒ 值没留下（`GetValue` 对未注册键返回 nil）。与通道 F 同因：引擎只认自己那套键。 |
 | 83 | **通用数据协议 `ModMiscDataProtocol`**（生命周期/类型/通道/审计/GC） | `[已落地·桩测试全绿]` | 三条铁律：没登记不许写 / 永久数据必须写 Owner+Version / 用后即焚真的焚。信封 `MMT1|生命周期|版本|时间|类型|长度|负载`，值编码长度前缀（二进制安全），解码严格、绝不返回半截。`SaveTree` = 头记录指向分片。 |
 | 84 | **数据登记表 `ModMiscDataRegistry`** | `[已落地]` | 现有 9 条数据集全部登记（`sg_head`/`sg_pending`/`ev_*`/`evb_*`/`blob*`/`carrier*`/`panel`/`probe`/`nameprobe`）。加新数据 = 加一行。 |
+| 102 | 三个实机报错（多返回值陷阱 / 跨上下文暴露未发布 / 弹窗上下文缺失） | `[已修]` | `tonumber((DataProtocol.Load(...)))` 括号截断；`ModTool.lua` 对 `ExposedMembers` 暴露函数做防御式调用；面板新增 `AskConfirm`（无弹窗时退化成“再点一次确认”）。 |
 | 101 | **逻辑分支 = 占位记录**（不写真存档） | `[已落地·20 项断言]` | `sg_branch_<id>`（ephemeral/big，6 个短字段）；面板并进关系树并标「（逻辑占位）」；切换确认后**重开前移除占位**，由新局真存档接手；关系挂在占位所依附的线（占位的父）。 |
 | 99 | 创建分支**不改本局身份**（`WriteIdentity=false`） | `[已修·断言]` | 上一版复用 SaveNode ⇒ 把分支身份写进本局，导致之后每次存档都被算成分支。现在分支档只写档、不写身份。 |
 | 100 | 扫描后逐条列出关系档（id/kind/parent/T/map/L） | `[待实机]` | 用来区分“档没进列表”与“进了没渲染”。 |
@@ -1915,3 +1916,16 @@ SaveComplete 一到 ⇒ 认为“原档写好” ⇒ 起一个 8 秒（或 +7 �
   列表里应立刻出现一条带「（逻辑占位）」的 `B` 线，**存档文件数不变**；
 * 选中它 → 「切换到选中」→ 弹窗确认 → 日志 `移除逻辑分支占位：…（由真存档接手）` → 重开；
 * 新局开局日志 `本局接手换图交接：parent=<占位所依附的线> kind=B …`，之后第一次存档即生成真分支档。
+
+### 19.21 实机日志里的三个报错（2026-10-06）
+
+| 日志 | 真因 | 修法 |
+|---|---|---|
+| `Support_UI.lua:180: bad argument #2 to 'tonumber' (integer expected, got string)` | 迁移后 `DataProtocol.Load()` 返回 **(值, 来源)** 两个值，直接写成 `tonumber(DataProtocol.Load(k))` ⇒ 第二个值被当成 `tonumber` 的第二个参数 ✗ | 加一层括号截断返回值：`tonumber((DataProtocol.Load(k)))`；`tostring(...)` 两处同样处理。**并把此模式加进校验**（`grep` 复查：`tonumber(DataProtocol.Load` / `tostring(DataProtocol.Load` / `.. DataProtocol.Load` 应为空） |
+| `ModTool.lua:159: function expected instead of nil` | gameplay 侧调用 `ExposedMembers.ModMiscToolUI.GetExperienceAndPromotionsUI` —— UI 侧的暴露是**后发布**的，gameplay 早一步调用就是 nil ✗ | 改成**防御式调用**：取不到就当没有经验数据（`expPoint=0`），绝不直接当函数用 |
+| `ModMiscSavePanel.lua:644: attempt to index a nil value` | `PopupDialogInGame` 在存档面板这个上下文里可能是 nil ⇒ `PopupDialogInGame:new(...)` 直接索引 nil ✗ | 新增 `AskConfirm(text, onConfirmed)`：有弹窗就用弹窗；没有就退化成**“再点一次确认”**（面板自有状态行提示），切换/载入/删除都走它 |
+
+教训：
+* **多返回值**是 Lua 的常见坑 —— 迁移成“返回 (值, 来源)”这种签名时，凡是把调用塞进另一个函数参数的位置都要加括号；
+* **跨上下文暴露**（`ExposedMembers`）不能用“应该已经发布了”来假设 —— 调用点必须能容忍 nil；
+* UI 能力（弹窗之类）要**探测式使用**，而不是假定每个上下文都有。

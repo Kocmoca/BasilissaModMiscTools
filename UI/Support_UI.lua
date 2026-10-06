@@ -177,7 +177,9 @@ local function HandOffGhostCityStateCount()
     local script = ExposedMembers.ModMiscToolScript
     if script == nil or script.InitializeGhostPlayers == nil then return end
 
-    local savedCount = tonumber(DataProtocol.Load("ghost_citystates"))
+    -- ⚠️ DataProtocol.Load 返回 (值, 来源) 两个值：直接塞 tonumber 会拿到第二个参数 ⇒
+    -- 实机报 “bad argument #2 to 'tonumber' (integer expected, got string)”。多加一层括号截断返回值。
+    local savedCount = tonumber((DataProtocol.Load("ghost_citystates")))
     if savedCount == nil or savedCount <= 0 then
         savedCount = GHOST_FALLBACK_KEEP_CITY_STATES
         print("[ModMiscTool][Ghost] no saved city state count, fallback keep="
@@ -186,7 +188,7 @@ local function HandOffGhostCityStateCount()
         print("[ModMiscTool][Ghost] handing off saved city state count=" .. tostring(savedCount))
     end
     -- 玩家设定的主要文明人数：用来算槽位边界（边界之后的城邦槽位全部变幽灵）
-    local savedMajors = tonumber(DataProtocol.Load("ghost_majorplayers"))
+    local savedMajors = tonumber((DataProtocol.Load("ghost_majorplayers")))
     if savedMajors == nil or savedMajors <= 0 then
         savedMajors = GHOST_FALLBACK_KEEP_MAJOR_PLAYERS
         print("[ModMiscTool][Ghost] no saved major player count, fallback majors="
@@ -491,8 +493,8 @@ function Initialize()
 		end
 
 		ModMiscStore.OnReady(function()
-			LogStoreInGame("扫描完成；selftest=[" .. tostring(DataProtocol.Load("probe_selftest"))
-				.. "] ingame=[" .. tostring(DataProtocol.Load("probe_ingame")) .. "]")
+			LogStoreInGame("扫描完成；selftest=[" .. tostring((DataProtocol.Load("probe_selftest")))
+				.. "] ingame=[" .. tostring((DataProtocol.Load("probe_ingame"))) .. "]")
 
 			if not MODMISC_STORE_INGAME_WRITE_TEST then return end
 			local payload = "ig=1;t=" .. tostring(os.time())

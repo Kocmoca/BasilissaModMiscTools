@@ -666,6 +666,9 @@
 		<Replace Tag="LOC_MODMISC_SAVEPANEL_SAVE" Language="zh_Hans_CN">
 			<Text>存档</Text>
 		</Replace>
+		<Replace Tag="LOC_MODMISC_SAVEPANEL_CONFIRM_AGAIN" Language="zh_Hans_CN">
+			<Text>再点一次确认</Text>
+		</Replace>
 		<Replace Tag="LOC_MODMISC_SAVEPANEL_CREATE_BRANCH" Language="zh_Hans_CN">
 			<Text>创建分支</Text>
 		</Replace>

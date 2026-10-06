@@ -666,6 +666,9 @@
 		<Row Tag="LOC_MODMISC_SAVEPANEL_SAVE">
 			<Text>Save</Text>
 		</Row>
+		<Row Tag="LOC_MODMISC_SAVEPANEL_CONFIRM_AGAIN">
+			<Text>Tap again to confirm</Text>
+		</Row>
 		<Row Tag="LOC_MODMISC_SAVEPANEL_CREATE_BRANCH">
 			<Text>Create branch</Text>
 		</Row>
