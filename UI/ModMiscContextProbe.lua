@@ -27,6 +27,12 @@ ModMiscContextProbe = ModMiscContextProbe or {}
 local API = ModMiscContextProbe
 API.BuildTag = MODMISC_CONTEXT_PROBE_BUILD_TAG
 
+-- 【开关】前端那一侧要不要**写** A 通道（模组配置组）？
+--   授权者 2026-10-06：主界面闪退过一次（引擎 luaL_unref），虽然那次日志里还没有本探针，
+--   但“前端写引擎数据库”是这套里最可疑的一步。要是主界面再闪退，先把这里改 false
+--   （那就只读不写：仍然能看到“进游戏读得到主页面写的东西吗”，只是主页面不参与写）。
+local MODMISC_CTXPROBE_FRONTEND_WRITE = true
+
 local PROBE_KEY = "ctxprobe"        -- A 通道用的键
 local SHARED_KEY = "ModMiscCtxProbe"  -- C 通道：ExposedMembers 里的字段名
 
@@ -55,7 +61,7 @@ end
 -- ===========================================================================
 -- 通道 A：模组配置组名字
 -- ===========================================================================
-local function ChannelModGroup(write, stamp)
+local function ChannelModGroup(write, stamp, context)
     if ModMiscModGroupStore == nil then
         Log("  A 模组配置组：模块没加载")
         return nil
@@ -63,6 +69,10 @@ local function ChannelModGroup(write, stamp)
     if not ModMiscModGroupStore.IsAvailable() then
         Log("  A 模组配置组：**不可用**（Modding 组接口缺失 / 前端没这个 API？）")
         return nil
+    end
+    if write and context == "frontend" and not MODMISC_CTXPROBE_FRONTEND_WRITE then
+        Log("  A 模组配置组：前端写入被开关关掉（MODMISC_CTXPROBE_FRONTEND_WRITE=false）⇒ 只读")
+        write = false
     end
     if write then
         local ok, err = ModMiscModGroupStore.Save(PROBE_KEY, stamp)
@@ -135,7 +145,7 @@ function API.Run(context, reason)
     local stamp = MakeStamp(context, reason)
     Log("==== 环境连通性检查：context=" .. tostring(context)
         .. " 原因=" .. tostring(reason) .. " 本次标记=" .. stamp .. " ====")
-    ChannelModGroup(true, stamp)
+    ChannelModGroup(true, stamp, context)
     ChannelNameStore(false, stamp)
     ChannelShared(true, stamp, context)
     Log("==== 检查结束（把这几行连同上一轮对照看：通道 A 能不能跨环境读到写的那串标记）====")

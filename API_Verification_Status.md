@@ -2296,3 +2296,60 @@ LoadGameViewStateDone 见过 X 次，引擎回合=…。真重开过的话日志
 判读：**A 通道读到的是上一阶段写的标记 ⇒ 该通道跨游戏状态可用**（这也是我们所有跨存档存储的
 基础假设）；读到 `nil（没有这份数据）` ⇒ 该通道在前端/对局内之间不通，得换通道或换写法。
 C 通道的“frontend 写的 / ingame 写的”两栏就是“两边的 Lua 状态是否共享”的直接证据。
+
+### 19.28 实机反馈（2026-10-06 12:0x）：换图成功、事件“收到了但没执行”、回主界面闪退
+
+#### 好消息：v3.00 的新换图方案**实机走通了**
+
+```
+换图广播已写入（**5 分钟内有效、读到即删**）：父=tmgwo9sx 逻辑回合=1 …
+换图[3/3]：即将调用 Network.RestartGame()（原因=面板按钮（重开为新分支））
+   环境：anyMultiplayer=false savedGame=false worldBuilder=false isGameHost=true turn=1
+换图[3/3]：调用已返回 result=true
+（新局）换图广播已消费（开局已认定本局为分支）：父=tmgwo9sx 逻辑回合=1，写于 41 秒前
+（新局）本局认定为**分支**（换图广播）：父=tmgwo9sx kind=B 锚点逻辑回合=1（偏移 +0）
+```
+
+⇒ 「写广播 + 直接重开」在设备上**真的重开了**，新局也**正确认定自己是分支**。旧的“两步式 + 落盘确认”
+可以彻底放下。
+
+#### 事件：收到了，但**没执行**（已修）
+
+日志证据（同一局）：
+
+```
+发件：GOLD 100 x100 → 节点 tmgwo9sx（接受逻辑回合 1）key=ev_tmgwo9sx_… 结果=true
+（新局开局）收件扫描：节点 tmgwo9sx … 命中 1 个键
+已入列：GOLD 100 x100 接受回合=1 来自=tmgwpyce（现有 1 条）
+已投递并清理 1 个信箱键
+收件完成：本局节点 tmgwo9sx 入列 1 条
+```
+
+⇒ **收件链条全对**（信箱读到 → 入列 → 信箱清理）。问题在**执行时机**：
+`ProcessDue` 只在 `Events.LocalPlayerTurnBegin`（每回合开始）跑，而“接受回合 = 当前逻辑回合”的事件
+本该**到点就执行**；玩家在第 1 回合收到、第 1 回合就离开 ⇒ 什么都没发生，看起来像“接收失败”。
+
+**修法**：`AddIncoming` 入列后立刻按“到点”结算一次（`ProcessDue("accept-now")`，它自己跳过还没到点的）。
+没到点的事件照旧留到回合开始 —— 语义不变，只是把“已经到点的”立刻兑现。
+
+#### 回主界面闪退（tombstone）
+
+```
+signal 11 (SIGSEGV) … Cause: null pointer dereference
+#00 pc … libHavokScript2013.2.0_Android_FinalRelease.so (hksi_luaL_unref(lua_State*, int, int)+172)
+pid: com.aspyr.civvi, tid: 12626, name: Thread-7
+```
+
+这是**引擎在拆卸 Lua 状态时崩在工作线程上**（`luaL_unref` 是引擎侧引用计数，不是我们的 Lua 代码）。
+那份日志里**没有** `[CtxProbe]` 行 ⇒ 崩的那次还没有本探针（v3.00/3.01 部署），所以探针不是肇因。
+我们能做的、也已经做的：
+
+* **退出那一刻零副作用**：`Events.ExitToMainMenu` 处理器原来会调 `ClearBranchBroadcast()`
+  （= 删一个模组配置组 = 引擎数据库写）——那是我们**退出瞬间唯一还在动引擎的操作**，现在改成只打一行日志。
+  代价：退出后 5 分钟内新开的一局会被残留广播认成分支（已知漏洞，TTL 兜底）；
+* 探针里加了显式开关 `MODMISC_CTXPROBE_FRONTEND_WRITE`：万一主界面再闪退，
+  把它改 `false` 就变成“前端只读不写”，一步定位是不是前端写引擎数据库的问题。
+
+若再次闪退，建议同时做一次对照：只留本 mod、关掉其它 mod（日志里还有 DiplomacyRework / Norn_UI /
+ConvinentCarrier 等）跑一遍 —— `luaL_unref` 这类拆卸期崩溃在多个 mod 共存时并不罕见，
+要先分清是“我们的退出副作用”还是“别的 mod 的退出副作用”。

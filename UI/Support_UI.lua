@@ -679,14 +679,19 @@ ExposedMembers.ModMiscToolUI.RunCrossSaveProbeUI = RunCrossSaveProbeUI
 		ExposedMembers.ModMiscToolUI.StoreGetBuildTag = function() return ModMiscStore.BuildTag end
 	end
 end
--- 退出到主菜单 = 这一局到此为止：把**换图广播**清掉。
--- 不清的话，之后 5 分钟内新开的一局会被这条广播认成分支（这就是广播方案的漏洞，
--- 退出时清一下是最便宜的补救）。真正的兜底是 5 分钟有效期。
+-- 退出到主菜单：**这里什么都不做**（只记一行日志）。
+--
+-- 【实机 2026-10-06】授权者反馈“点回主界面时闪退”，tombstone 是
+-- `libHavokScript… hksi_luaL_unref`（引擎在拆 Lua 状态时崩在工作线程上）。
+-- 我们原先在这里调 `ClearBranchBroadcast`（= 删一个模组配置组 = 引擎数据库写），
+-- 那是**退出那一刻我们唯一还在动引擎的操作**，所以先把它去掉：
+-- 退出瞬间保证零副作用，别和引擎的拆卸抢。
+--
+-- 代价：退出后 5 分钟内新开的一局会被残留的广播认成分支（这就是广播方案的已知漏洞，
+-- 授权者已接受）。真正的兜底是广播自己的 5 分钟有效期 + 新局读到就删。
 if Events.ExitToMainMenu ~= nil and Events.ExitToMainMenu.Add ~= nil then
 	Events.ExitToMainMenu.Add(function()
-		if ModMiscSaveGraph ~= nil and ModMiscSaveGraph.ClearBranchBroadcast ~= nil then
-			pcall(ModMiscSaveGraph.ClearBranchBroadcast, "退出到主菜单")
-		end
+		print("[ModMiscTool][SaveGraph] 退出到主菜单：本 mod 不做任何存储操作（避免与引擎拆卸抢）")
 	end)
 end
 

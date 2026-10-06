@@ -166,6 +166,18 @@ function API.AddIncoming(event)
         .. " 来自=" .. tostring(event.FromNode)
         .. (event.InheritedFrom ~= nil and ("（继承自逻辑档 " .. tostring(event.InheritedFrom) .. "）") or "")
         .. "（现有 " .. tostring(#list) .. " 条）")
+
+    -- 【实机 2026-10-06 反馈“发送事件后接收失败”】事件确实收到了（日志有“已入列”），
+    -- 但执行只在**下一回合开始**才跑 —— 而“接受回合 = 当前逻辑回合”的事件本该**到点就执行**。
+    -- 玩家在第 1 回合收到、第 1 回合就离开，于是什么都没发生，看起来就像没收。
+    -- 所以入列后立刻按“到点”结算一次（ProcessDue 自己会跳过还没到点的）。
+    local due = tonumber(event.AcceptTurn) or API.GetLogicalTurn()
+    if due <= API.GetLogicalTurn() then
+        local ok, result = pcall(API.ProcessDue, "accept-now")
+        if not ok then
+            Log("入列后立即结算失败 -> " .. tostring(result) .. "（事件仍在队列里，下回合还会试）")
+        end
+    end
     return true
 end
 
