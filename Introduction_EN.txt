@@ -4,14 +4,9 @@ When used alone, this mod does not add any gameplay functionality. Features curr
 1. Vassal System: allows units to build improvements on vassal territory and adds the vassal system button to the left sidebar.
 2. Another Strategic Fort: adds a left-sidebar button to toggle fort icon visibility, and shows the number of garrisoned and ungarrisoned forts in the information panel.
 
-3. Cross-save store (built into this mod, not added by an extension mod): encodes data into
-   the file name of a configuration save and reads it back from the save list on the next launch.
-   Verified on device: write -> kill the process -> read back is byte-identical. Usable from both
-   the front-end and in-game UI. Vanilla offers no working cross-save storage (CustomData is not
-   persisted, configuration saves do not carry it, no io library, Options rejects unregistered
-   keys), so this is the only viable route.
-   API: ExposedMembers.ModMiscToolUI.{SaveData, GetData, GetAllData, RemoveData, RemoveAllData,
-   RefreshData, IsDataReady, OnDataReady}; see API_Verification_Status.md for details.
-
+3. Cross-save store
+4. Place 3D model of specific asset on map
+5. Enable adding player to ongoing game by placing ghost player pre game setup and do not affect your game setup configurations.
+6. Map switching: saves are organized in a mainline/branch relationship tree; restart in-place to generate a new map, and send turn-triggered events between saves.
 Additional note:
 The interfaces are still being organized, with backward compatibility kept in mind where possible. Other mods can access these capabilities through ExposedMembers and API_Documentation.txt. When the related extension mods are not enabled, this mod does not intentionally alter vanilla behavior. UI compatibility issues should be handled inside the isolated UI layer rather than by replacing vanilla UI files.
