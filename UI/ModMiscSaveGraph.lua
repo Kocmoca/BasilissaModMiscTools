@@ -78,7 +78,7 @@ local MODMISC_KIND_BRANCH = "B"
 
 -- 跨存档存储（ModMiscStore，通道 C）里的键
 local MODMISC_IDENTITY_KEY = "sgnode"       -- 本局身份（persave 表）
-local MODMISC_BRANCH_KEY_PREFIX = "sg_branch_"   -- 逻辑分支占位（不是真存档，见 CreateBranchNode）
+local MODMISC_BRANCH_KEY = "sg_branches"   -- 逻辑分支占位表（随档；不是真存档，见 CreateBranchNode）
 local MODMISC_STORE_KEY_MAINLINE_HEAD = "sg_head"
 local MODMISC_STORE_KEY_PENDING = "sg_pending"
 
@@ -1317,8 +1317,9 @@ local function SaveNode(node, opts)
         local now, clockOk = NowOrExpired(m_SavePending.StartedAt)
         local age = now - (m_SavePending.StartedAt or 0)
         -- 【实机反馈 2026-10-06】第一次按切换键写了档但没确认 ⇒ 之后每次按都被这里拦住、再也存不了。
-        -- 所以只在“刚发出去的 MODMISC_SAVE_PENDING_TIMEOUT 秒内”才拦，超时一律自愈放行。
-        if (not clockOk) or age > MODMISC_SAVE_PENDING_TIMEOUT then
+        -- 所以只在“刚发出去的一小段时间内”才拦（8 秒），超时一律自愈放行。
+        local blockWindow = math.min(MODMISC_SAVE_PENDING_TIMEOUT or 8, 8)
+        if (not clockOk) or age > blockWindow then
             Log("警告：上一笔存档等回执已超时 " .. tostring(age) .. " 秒，丢弃该状态继续")
             m_SavePending = nil
             if Events ~= nil and Events.SaveComplete ~= nil then
@@ -1498,9 +1499,13 @@ function API.CreateBranchNode(options)
         S = tostring(base.Stamp or ""),
         L = tonumber(base.Logical),
     }
-    -- **不写真存档**（授权者 2026-10-06：逻辑档只是占位）：只落一条占位记录，
+    -- **不写真存档**（授权者 2026-10-06：逻辑档只是占位）：只记一条占位，
     -- 面板把它当一条 B 线显示；玩家确认切换时才移除它，由新局生成的真存档接手。
-    local ok, err = DataProtocol.Save(MODMISC_BRANCH_KEY_PREFIX .. tostring(base.Id), branch)
+    -- 占位随本局的档走（persave）；CustomData 没有枚举接口 ⇒ 用**一个键装一张表**。
+    local table_ = DataProtocol.Load(MODMISC_BRANCH_KEY, { keep = true })
+    if type(table_) ~= "table" then table_ = {} end
+    table_[tostring(base.Id)] = branch
+    local ok, err = DataProtocol.Save(MODMISC_BRANCH_KEY, table_)
     if not ok then return false, err end
     Log("创建分支占位：id=" .. tostring(base.Id) .. " 父=" .. tostring(branch.P)
         .. " 逻辑回合=" .. tostring(branch.L) .. "（**没有写真存档**，只落占位）")
@@ -1512,12 +1517,12 @@ end
 function API.ListBranchPlaceholders()
     if DataProtocol == nil then return {} end
     local out = {}
-    for _, key in ipairs(DataProtocol.ListMatching(MODMISC_BRANCH_KEY_PREFIX)) do
-        local record = DataProtocol.Load(key, { keep = true })
+    local table_ = DataProtocol.Load(MODMISC_BRANCH_KEY, { keep = true })
+    if type(table_) ~= "table" then return out end
+    for id, record in pairs(table_) do
         if type(record) == "table" then
-            local id = tostring(key):sub(#MODMISC_BRANCH_KEY_PREFIX + 1)
             table.insert(out, {
-                Id = id,
+                Id = tostring(id),
                 Parent = (record.P ~= nil and tostring(record.P) ~= MODMISC_SAVE_ROOT_PARENT)
                     and tostring(record.P) or nil,
                 Kind = record.K or MODMISC_KIND_BRANCH,
@@ -1536,7 +1541,13 @@ end
 function API.RemoveBranchPlaceholder(id)
     if DataProtocol == nil or id == nil then return false end
     Log("移除逻辑分支占位：" .. tostring(id) .. "（由真存档接手）")
-    return DataProtocol.Remove(MODMISC_BRANCH_KEY_PREFIX .. tostring(id)) and true or false
+    local table_ = DataProtocol.Load(MODMISC_BRANCH_KEY, { keep = true })
+    if type(table_) ~= "table" then return false end
+    table_[tostring(id)] = nil
+    local empty = true
+    for _ in pairs(table_) do empty = false break end
+    if empty then return DataProtocol.Remove(MODMISC_BRANCH_KEY) and true or false end
+    return DataProtocol.Save(MODMISC_BRANCH_KEY, table_) == true
 end
 
 -- 第一步：存原档（供换图用）。返回 (ok, err)
@@ -1621,6 +1632,20 @@ end
 -- SaveComplete 认不出是哪一份存档（见上面那次实机教训），所以不要用它判断。
 -- 面板按帧调 VerifySaveNow：查到了 ⇒ 可以切换；超时 ⇒ 重发一次；还不行 ⇒ 老实报错。
 -- ===========================================================================
+
+-- 复位存档/切换状态（面板在开始一次新的切换前调用）：
+-- 上一次没走完的 pending 会把新的存档请求挡回去（“上一笔存档还在等回执”）——
+-- 实机表现为“点切换没反应”。
+function API.ResetSaveState(reason)
+    Log("复位存档状态（" .. tostring(reason or "?") .. "）：pending="
+        .. tostring(m_SavePending ~= nil) .. " state=" .. tostring(m_SaveState ~= nil))
+    if Events ~= nil and Events.SaveComplete ~= nil and OnSaveGraphSaveComplete ~= nil then
+        pcall(function() Events.SaveComplete.Remove(OnSaveGraphSaveComplete) end)
+    end
+    m_SavePending = nil
+    m_SaveState = nil
+    return true
+end
 
 -- 当前存档状态（面板用它显示“正在确认落盘…”）
 function API.GetSaveState()

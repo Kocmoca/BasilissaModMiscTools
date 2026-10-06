@@ -120,11 +120,13 @@ Register({
 
 -- 逻辑分支**占位**（授权者 2026-10-06）：它**不是真存档**，只是“打算从某条线分出去”的占位记录；
 -- 玩家确认切换、新局生成真存档之后，占位就被移除、由真存档接手。
--- 放 big 通道：小通道是排队异步写（写多了赶不上落盘，见 19.13），占位虽小但要可靠。
+--
+-- 【授权者 2026-10-06】“逻辑档保留在存档内即可，无需设为跨存档数据” ⇒ 改成 **persave**：
+-- 它随本局的档走（写进 CustomData，下次读档还在），不需要跨存档。
+-- 注意 CustomData **没有枚举接口**，所以这里用**一个键装一张表**：{ [id] = {P,K,T,M,S,L} }。
 Register({
-    Name = "sg_branch_*", Lifecycle = "ephemeral", Channel = "big",
-    Owner = "存档关系树", Version = 1, Type = "table", TTL = 7 * 24 * 3600,
-    Describe = "逻辑分支占位（表：{P=父, K=类型, T=回合, M=地图, S=戳, L=逻辑回合}）——切换确认后移除",
+    Name = "sg_branches", Lifecycle = "persave", Owner = "存档关系树", Version = 1, Type = "table",
+    Describe = "本局的逻辑分支占位表（{[id]={P=父,K=类型,T=回合,M=地图,S=戳,L=逻辑回合}}）——切换确认后移除该条",
 })
 
 Register({

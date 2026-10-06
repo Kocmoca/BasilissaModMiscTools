@@ -654,6 +654,11 @@ local function AskConfirm(confirmText, onConfirmed)
 end
 
 local function PerformSwitch(targetId)
+    -- 先把上一次没走完的存档状态复位：否则新请求会被“上一笔还在等回执”挡回去，
+    -- 表现就是“点切换没反应”（实机 2026-10-06）。
+    if ModMiscSaveGraph.ResetSaveState ~= nil then
+        ModMiscSaveGraph.ResetSaveState("开始切换")
+    end
     -- ⚠️ 这一步**必须在按钮回调里**跑：早前实机验证过，`Network.RestartGame()` 从弹窗回调 /
     -- 事件回调 / 按帧回调里调都会“调用返回了但游戏不重开”（授权者 2026-10-06 又遇到“点切换没反应”）。
     -- 所以确认只负责“上膛”，真正执行留给玩家再点一次按钮 —— 那一次就是按钮回调。
