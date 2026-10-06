@@ -1567,13 +1567,17 @@ function API.PrepareSwitch(options)
     -- 【新逻辑】切换的目标是**选中的逻辑档**（不是“本局当前节点”）：交接单指向它，
     -- 于是新局算它的分支、回合同步以它的逻辑回合为锚点。
     local targetId = opts.TargetNodeId
+    -- 新局的回合同步**锚点**：默认是本局的逻辑回合；切到某个逻辑档时改成**那个档**的逻辑回合
+    -- （新局要从那条线接着走）。锚点只喂给交接单 —— **不要**拿它覆盖 node.Logical/Offset：
+    -- 那个 node 是“本局这一档”的记录，覆盖了会张冠李戴（本局引擎 42 回合、偏移 0 ⇒ 逻辑 42，
+    -- 却被记成目标档的逻辑 18 / 偏移 17），下次读这一档回来逻辑回合就变成 59 了。
+    local anchorLogical = node.Logical
     if targetId ~= nil then
         local target = m_NodeById[targetId]
         node.Parent = tostring(targetId)
         node.Kind = MODMISC_KIND_BRANCH
         if target ~= nil and target.Logical ~= nil then
-            node.Logical = target.Logical
-            node.Offset = target.Logical - 1
+            anchorLogical = target.Logical
         end
         -- 目标是**逻辑占位**：重开前要把它移除（由新局的真存档接手）——
         -- 所以关系要挂在**占位所依附的那条线**上（占位的父），而不是占位自己。
@@ -1586,7 +1590,9 @@ function API.PrepareSwitch(options)
             end
         end
         Log("切换目标：选中的逻辑档 " .. tostring(targetId)
-            .. "（逻辑回合 " .. tostring(node.Logical) .. "）⇒ 新局算它的分支")
+            .. "（它的逻辑回合 " .. tostring(anchorLogical) .. "，本局这一档记 "
+            .. tostring(node.Turn) .. "/L" .. tostring(node.Logical) .. "）"
+            .. "⇒ 新局挂在它下面、回合同步以它为锚点")
     end
 
     -- 要带过去的数据（可选）：另存成用后即焚的 xmap_*，交接单里只留引用
@@ -1602,14 +1608,15 @@ function API.PrepareSwitch(options)
     -- 先写交接单：这是“新局算这条记录的分支”的唯一凭据，必须早于存档落盘。
     -- 生命周期：**用后即焚**（ephemeral/small，TTL 900 秒）——不制造永久数据；
     -- 新局开局会把它固化进本局身份（sgnode，persave）然后删掉它。
-    SetPendingBranch(node.Parent or node.Id, MODMISC_KIND_BRANCH, node.Stamp, node.Logical, {
+    SetPendingBranch(node.Parent or node.Id, MODMISC_KIND_BRANCH, node.Stamp, anchorLogical, {
         FromMap = tostring(opts.FromMap or ""),
         ToMap = tostring(opts.ToMap or ""),
         Engine = tostring(opts.Engine or ""),
         PayloadKey = payloadKey,
     })
-    Log("换图[2/3]：交接单已写入（这一步只存原档、**不重开**；parent=" .. tostring(node.Id) .. "，新局算分支，"
-        .. "起点逻辑回合=" .. tostring(node.Logical)
+    Log("换图[2/3]：交接单已写入（这一步只存原档、**不重开**；新局挂到 parent="
+        .. tostring(node.Parent or node.Id) .. " 下面算分支，"
+        .. "起点逻辑回合=" .. tostring(anchorLogical)
         .. (payloadKey ~= nil and ("，带载荷 " .. payloadKey) or "，无载荷") .. "）")
 
     local started = SaveNode(node, {
@@ -1677,9 +1684,13 @@ function API.VerifySaveNow(onDone)
         -- 判据用**档名**（我们要的就是这个名字，比“解析出来的 id”更直接）：
         -- 实机反馈“切换写的档在 UI 里看不到、而储存键写的能看到” ⇒ 先把事实打出来，
         -- 别让解析差异把“文件在不在”这件事搅浑。
+        -- ⚠️ 解析出来的节点把原始档名放在 **RawName**（`Name` 一直是 nil）——
+        -- 早前这里比的是 node.Name，于是“档名一致”那条判据**从来没生效过**，
+        -- 一直靠下面的 id 回退在判，日志还写成“档名不同？”（实机 2026-10-06 排查时被这行误导过）。
         local found, foundBy = false, nil
         for _, node in ipairs(nodes) do
-            if node.Name ~= nil and StripExtension(node.Name) == wantedName then
+            local raw = node.RawName or node.Name
+            if raw ~= nil and StripExtension(raw) == wantedName then
                 found, foundBy = true, "档名一致"
                 break
             end
@@ -1690,9 +1701,10 @@ function API.VerifySaveNow(onDone)
             end
         end
         local sample = {}
-        for index, node in ipairs(nodes) do
-            if index > 4 then break end
-            table.insert(sample, tostring(node.Name))
+        for _, node in ipairs(nodes) do
+            if #sample >= 4 then break end
+            local raw = node.RawName or node.Name
+            if raw ~= nil then table.insert(sample, tostring(raw)) end   -- 占位没有档名，跳过
         end
         Log("落盘确认：找 " .. tostring(wantedName) .. "；列表 " .. tostring(#nodes) .. " 条"
             .. (#sample > 0 and ("（前几条：" .. table.concat(sample, " / ") .. "）") or "（空）")
