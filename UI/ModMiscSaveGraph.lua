@@ -1644,6 +1644,19 @@ function API.PrepareSwitch(options)
     local anchorLogical = node.Logical
     if targetId ~= nil then
         local target = m_NodeById[targetId]
+        -- 目标不在节点表里（树还没刷新 / 刚被刷新掉）时，去**占位表**里再找一次：
+        -- 占位本来就不是真存档，只活在随档数据里。找不到就会写出**悬空父**
+        -- （node.Parent = 一个不在树上的 id）—— 这类错已经踩过一次，这里堵住入口。
+        if target == nil then
+            for _, placeholder in ipairs(API.ListBranchPlaceholders()) do
+                if tostring(placeholder.Id) == tostring(targetId) then
+                    target = placeholder
+                    Log("切换目标 " .. tostring(targetId)
+                        .. " 不在节点表里，但占位表里有它 ⇒ 按逻辑占位处理（树可能没刷新）")
+                    break
+                end
+            end
+        end
         node.Parent = tostring(targetId)
         node.Kind = MODMISC_KIND_BRANCH
         if target ~= nil and target.Logical ~= nil then
@@ -1665,6 +1678,11 @@ function API.PrepareSwitch(options)
                 Log("切换目标是**树根位置的**逻辑占位 " .. tostring(targetId)
                     .. " ⇒ 关系挂到根（占位自己没有父，且它会在重开前被移除）")
             end
+        end
+        if target == nil then
+            Log("警告：切换目标 " .. tostring(targetId)
+                .. " 既不在节点表、也不在占位表（树是不是被刷新过？）—— 仍按它写关系，"
+                .. "若这条 id 其实已经不存在，新局会挂到悬空父上")
         end
         Log("切换目标：选中的逻辑档 " .. tostring(targetId)
             .. "（它的逻辑回合 " .. tostring(anchorLogical) .. "，本局这一档记 "
