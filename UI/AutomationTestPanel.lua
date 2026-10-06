@@ -1802,7 +1802,13 @@ function CloseAutomationTestPanel()
     Controls.AutomationTestRoot:SetHide(true)
 end
 
+-- 【发布态 · 2026-10-06 授权者要求】测试面板的**侧栏入口不再注册**（更新发布准备）。
+-- 面板本身、按钮与探针都留着（代码在、随时能用），只是不在游戏里露出来。
+-- 想临时调出来调试：把下面这个开关改成 true（或直接用 ExposedMembers 调 OpenAutomationTestPanel）。
+local MODMISC_AUTOMATION_ENTRY_ENABLED = false
+
 local function TryRegisterAutomationTestButton()
+    if not MODMISC_AUTOMATION_ENTRY_ENABLED then return end
     if m_Registered then return end
     if ExposedMembers == nil or ExposedMembers.ModMiscToolUI == nil then return end
     if ExposedMembers.ModMiscToolUI.RegisterSidebarButton == nil then return end

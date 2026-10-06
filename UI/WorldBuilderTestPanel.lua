@@ -1119,7 +1119,11 @@ function CloseWorldBuilderTestPanel()
     Controls.WorldBuilderTestRoot:SetHide(true)
 end
 
+-- 【发布态 · 2026-10-06 授权者要求】同上：测试面板的侧栏入口不注册；面板代码留着，改 true 可调出来。
+local MODMISC_WB_TEST_ENTRY_ENABLED = false
+
 function TryRegisterWorldBuilderTestButton()
+    if not MODMISC_WB_TEST_ENTRY_ENABLED then return end
     if m_Registered then return end
     if ExposedMembers == nil or ExposedMembers.ModMiscToolUI == nil then return end
     if ExposedMembers.ModMiscToolUI.RegisterSidebarButton == nil then return end

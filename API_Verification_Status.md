@@ -2465,3 +2465,35 @@ v3.00 重写面板状态机时把 `m_LoadViewStateCount` 的**声明**删了，�
 （会变成 nil 隐式全局）一律标红 —— 这类错 Lua 不报编译错，实机才炸。
 `panel_harness` 也补了一条回归：直接触发 `LoadGameViewStateDone` / `LocalPlayerTurnBegin`，
 断言回调不报错。
+
+### 19.32 发布准备（v3.10，2026-10-06 授权者要求）
+
+授权者：实机测试完成，**取消注册两个测试面板入口**，准备更新发布。
+
+#### 1. 两个测试面板的侧栏入口默认不再注册
+
+| 面板 | 开关 | 说明 |
+|---|---|---|
+| Automation 测试面板 | `MODMISC_AUTOMATION_ENTRY_ENABLED = false`（`UI/AutomationTestPanel.lua` 顶部） | 侧栏不再出现入口 |
+| WorldBuilder 测试面板 | `MODMISC_WB_TEST_ENTRY_ENABLED = false`（`UI/WorldBuilderTestPanel.lua` 顶部） | 同上 |
+
+面板本身、按钮、探针代码**全部留着**（改 `true` 即可调出来，或直接调
+`ExposedMembers.ModMiscToolUI` 上暴露的 `OpenAutomationTestPanel` / `OpenWorldBuilderTestPanel`）。
+现在侧栏里本 mod 只登记：**存档/换图面板**（产品入口）与 LeftSideBar 自带的两个工具按钮。
+
+#### 2. 补上模组列表里的简介（发布态最显眼的一处）
+
+modinfo 的 `<Description>` / `<Teaser>` 都引用 `LOC_MODMISC_MOD_DESCRIPTION`，
+而这个键**在 Text.xml / Text_CN.xml 里根本不存在** ⇒ 游戏模组列表里显示的是原始键名。
+已补 EN/CN：
+
+* EN：Save tree & map switch: keep mainline and branch saves in one tree, restart onto a new branch
+  with one button, and send time-triggered events between saves. Adds a side-panel under the left sidebar.
+* CN：存档关系树与换图：主线/分支档收在一棵树里，一键重开为新分支，并可在存档之间发送按回合触发的事件。入口在左侧栏。
+
+**新增校验**（`devtools/sweep.sh` 第 5 项内）：**modinfo 里引用的 LOC 键必须存在**
+（这类漏键只在游戏 UI 上看得见，日志里没有痕迹，所以必须静态查）。
+
+#### 3. 版本
+
+`BasilissaModMiscTools.modinfo` → **3.10**（发布准备版）。

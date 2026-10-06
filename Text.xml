@@ -2,6 +2,10 @@
 <GameData>
 	<BaseGameText>
 		<!-- LeftSideBar -->
+		<!-- 模组列表里的简介（modinfo 的 Description/Teaser 引用的键） -->
+		<Row Tag="LOC_MODMISC_MOD_DESCRIPTION">
+			<Text>Save tree &amp; map switch: keep mainline and branch saves in one tree, restart onto a new branch with one button, and send time-triggered events between saves. Adds a side-panel under the left sidebar.</Text>
+		</Row>
 		<Row Tag="LOC_MODMISC_TOGGLE_SIDEBAR">
 			<Text>Expand Toolbar</Text>
 		</Row>
