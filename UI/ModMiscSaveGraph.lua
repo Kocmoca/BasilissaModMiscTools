@@ -1814,6 +1814,35 @@ function API.SwitchNow(reason)
 end
 
 -- ===========================================================================
+-- 换图后新局：自动存第一档（授权者 2026-10-06：逻辑占位移除后“由真存档接手”）
+--
+--   触发点必须是**回合开始之后**（面板在 LocalPlayerTurnBegin 上叫它）。加载画面里存档
+--   已经实机证否过一次（第 19.8 条），所以不挂 LoadGameViewStateDone。
+--   标记随本局身份走（CustomData），所以只有“刚换图过来的那一局”会被自动存一次；
+--   清标记**先于**发存档请求 ⇒ 新档里不带这个标记，读档回来也不会又存一次。
+-- ===========================================================================
+local m_AutoSaveTried = false
+function API.RunPendingAutoSave(reason)
+    if m_AutoSaveTried then return false, "本局已经自动存过" end
+    local identity = LoadNodeIdentity()
+    if identity == nil or identity.AutoSavePending ~= true then
+        return false, "没有待自动存档的换图"
+    end
+    identity.AutoSavePending = nil          -- 先清（含写回 CustomData），再发存档请求
+    SaveNodeIdentity(identity)
+    m_AutoSaveTried = true
+    Log("换图后新局：按“真存档接手逻辑占位”的约定，自动存本局第一档（触发="
+        .. tostring(reason) .. "）：parent=" .. tostring(identity.Parent)
+        .. " kind=" .. tostring(identity.Kind) .. " 逻辑回合=" .. tostring(identity.Logical))
+    local ok, err = API.SaveCurrentGame({ Reason = "switch-newgame" })
+    if not ok then
+        Log("警告：换图后自动存档没发出去 -> " .. tostring(err) .. "（玩家仍可手动按「存档」）")
+        return false, err
+    end
+    return true, nil
+end
+
+-- ===========================================================================
 -- 开局探针：每次进游戏报一次现状（由 Support_UI.Initialize 调一次）
 -- ===========================================================================
 
@@ -1848,6 +1877,10 @@ function API.ReportAfterLoad()
                 -- 顺手把本局偏移也固化：逻辑回合 = 引擎回合 + (起点逻辑回合 - 1)
                 identity.Offset = pending.Logical - 1
             end
+            -- 【授权者 2026-10-06 的约定】逻辑占位在重开前就被移除，“由**真存档**接手” ⇒
+            -- 新局的第一档由 mod 自己存掉（见 RunPendingAutoSave）。这里只留一个标记，
+            -- 真正落盘等到**本局第一个回合开始**（加载画面里存档已证否，不能在 LoadGameViewStateDone 存）。
+            identity.AutoSavePending = true
             SaveNodeIdentity(identity)
 
             -- ② 交接单里的**数据**取走并交付（TakeMapHandoffPayload 内部读到就删 = 用后即焚）

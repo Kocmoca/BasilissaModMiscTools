@@ -1704,3 +1704,12 @@ API_Verification_Status.md §18.4/§18.6。
   API.CreateBranchNode() / ListBranchPlaceholders() / RemoveBranchPlaceholder(id)
       逻辑分支占位：**随本局的档**（persave / CustomData，一个键装 {[id]={P,K,T,M,S,L}} 的表），
       不是真存档、不跨存档；玩家确认切换后由新局生成的真存档接手
+
+换图后新局的第一档（v1.97）：
+
+  API.RunPendingAutoSave(reason)
+      交接固化时在本局身份里留了 AutoSavePending 标记，面板挂在**本局第一个
+      LocalPlayerTurnBegin** 上调用它：存掉新局的第一档（kind=B，parent=占位所依附的那条线），
+      并发请求前先清标记 ⇒ 新档不带标记、读档回来不会重复存；同一局只自动存一次。
+      没有标记时返回 (false, "没有待自动存档的换图")，所以平常对局完全不受影响。
+      （触发点不能挂 LoadGameViewStateDone：加载画面里存档第 19.8 条已实机证否。）

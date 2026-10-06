@@ -2057,6 +2057,18 @@ SaveComplete 一到 ⇒ 认为“原档写好” ⇒ 起一个 8 秒（或 +7 �
   什么都不存），并把 `anyMultiplayer / worldBuilder / savedGame` 三个环境值对上引擎自己的门槛
   （`InGameTopOptionsMenu` 的重开对多人 / worldbuilder 有限制，见该文件 316 行附近）。
 
+#### 新局第一档由 mod 自动存掉（v1.97）：把“由真存档接手”这句话兑现
+
+逻辑占位在重开前就被移除，所以新局必须**自己产生那份真存档**，否则那条分支线在树上是空的。
+做法：
+
+* 固化交接单时在本局身份（`sgnode`，persave）里留 `AutoSavePending = true`；
+* 面板在**本局第一个 `LocalPlayerTurnBegin`** 上调 `RunPendingAutoSave()` 存掉它 ——
+  触发点不能挂在 `LoadGameViewStateDone`（加载画面里存档第 19.8 条已实机证否）；
+* 清标记**先于**发存档请求 ⇒ 新档里不带标记，读档回来也不会又存一次；同一局只自动存一次；
+* 存出来的这档按 `incoming` 关系算成**选中逻辑档的分支**（`kind=B`、parent=占位所依附的那条线），
+  逻辑回合按固化下来的偏移算（桩测试里：引擎 42 + 偏移 17 = L059）。
+
 #### 重开看门狗（v1.96）：把“引擎没重开”这件事直接写出来
 
 `Network.RestartGame()` 返回 true **不等于**重开了。真重开的话本 UI 上下文会被销毁、按帧回调不会再跑；

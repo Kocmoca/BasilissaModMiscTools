@@ -903,5 +903,18 @@ end
 
 Events.LoadGameViewStateDone.Add(OnLoadGameViewStateDone)
 Events.LocalPlayerTurnBegin.Add(TryRegisterSidebarButton)
+
+-- 换图后新局的**第一档自动存掉**（“真存档接手逻辑占位”，授权者 2026-10-06 的约定）。
+-- 挂在回合开始而不是载入完成：加载画面里存档实机证否过；没有待自动存档标记时它什么都不做。
+local function TryAutoSaveAfterSwitch()
+    if ModMiscSaveGraph == nil or ModMiscSaveGraph.RunPendingAutoSave == nil then return end
+    local ok, done, err = pcall(ModMiscSaveGraph.RunPendingAutoSave, "换图后第一个回合开始")
+    if not ok then
+        Log("换图后自动存档调用失败 -> " .. tostring(done))
+    elseif done ~= true and err ~= nil then
+        Log("换图后未自动存档：" .. tostring(err))
+    end
+end
+Events.LocalPlayerTurnBegin.Add(TryAutoSaveAfterSwitch)
 LuaEvents.ModMiscToolUIReady.Add(TryRegisterSidebarButton)
 ContextPtr:SetInitHandler(OnInit)
