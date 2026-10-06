@@ -78,6 +78,7 @@ local MODMISC_KIND_BRANCH = "B"
 
 -- 跨存档存储（ModMiscStore，通道 C）里的键
 local MODMISC_IDENTITY_KEY = "sgnode"       -- 本局身份（persave 表）
+local MODMISC_BRANCH_KEY_PREFIX = "sg_branch_"   -- 逻辑分支占位（不是真存档，见 CreateBranchNode）
 local MODMISC_STORE_KEY_MAINLINE_HEAD = "sg_head"
 local MODMISC_STORE_KEY_PENDING = "sg_pending"
 
@@ -539,6 +540,8 @@ end
 
 -- 交接载荷的接收方注册：别的功能（或别的 mod）想知道“新地图开局时带过来了什么”，注册一个处理器
 local m_MapHandoffHandlers = {}
+-- 前置声明：扫描/渲染都要用（实体定义在 CreateBranchNode 那一带，Lua 5.1 必须先声明）
+local MergeBranchPlaceholders = nil
 function API.OnMapHandoff(handler)
     if type(handler) ~= "function" then return false end
     table.insert(m_MapHandoffHandlers, handler)
@@ -671,6 +674,8 @@ local function OnSaveGraphQueryResults(fileList, requestId)
     API.LinkTree()
     Log("扫描完成：列表 " .. tostring(total) .. " 档，其中本 mod 关系档 "
         .. tostring(#m_Nodes) .. " 档")
+    MergeBranchPlaceholders()
+
     -- 把解析出来的节点逐条打出来：一眼看出“刚建的分支档到底进没进列表”
     for _, node in ipairs(m_Nodes) do
         Log("  关系档 " .. tostring(node.Id) .. " kind=" .. tostring(node.Kind)
@@ -753,7 +758,27 @@ local function CollectTreeLines(node, depth, lines, visited)
     end
 end
 
+-- 逻辑分支占位并进 m_Nodes（幂等）：不是真存档，但要在树里显示、可被选中
+MergeBranchPlaceholders = function()
+    if DataProtocol == nil then return end
+    for _, placeholder in ipairs(API.ListBranchPlaceholders()) do
+        if m_NodeById[placeholder.Id] == nil then
+            table.insert(m_Nodes, placeholder)
+            m_NodeById[placeholder.Id] = placeholder
+        end
+    end
+    table.sort(m_Nodes, function(a, b) return tostring(a.Id) < tostring(b.Id) end)
+end
+
+-- 占位行加个标记，跟真存档区分开
+local function NodeLabel(node)
+    local label = tostring(node.Id) .. " " .. tostring(node.Kind)
+    if node.Placeholder then label = label .. "（逻辑占位）" end
+    return label
+end
+
 function API.BuildTreeLines()
+    if MergeBranchPlaceholders ~= nil then MergeBranchPlaceholders() end   -- 树里也要能看到占位
     API.LinkTree()
     local lines = {}
     local visited = {}
@@ -1186,6 +1211,8 @@ local m_SavePending = nil
 -- 存档确认状态：SaveComplete 只记日志，**能不能切换以“列表里查得到”为准**
 -- （实机 2026-10-06：面板说存好了、列表里却没有 —— 就是错信了 SaveComplete）
 local m_SaveState = nil
+-- 本次切换的目标如果是“逻辑占位”，记下它：重开前移除、由新局的真存档接手
+local m_SwitchPlaceholderId = nil
 
 local function OnSaveGraphSaveComplete(...)
     if m_SavePending == nil then return end
@@ -1415,29 +1442,59 @@ end
 -- 和「存档」的区别：存档走 M/B 自动判定（本局有节点就沿用），创建分支**强制** B，
 -- 且父指向当前节点（没有当前节点时指向主线头）。
 -- ===========================================================================
-function API.CreateBranchNode()
-    if Network == nil or Network.SaveGame == nil then
-        return false, "Network.SaveGame 不可用"
-    end
-    local base = BuildNextNode()          -- 先按常规算一遍（拿 Id/Stamp/Turn/逻辑回合）
+function API.CreateBranchNode(options)
+    local opts = options or {}
+    if DataProtocol == nil then return false, "数据协议没加载" end
+    local base = BuildNextNode()          -- 复用“算 id/回合/逻辑回合”的那套
     if base == nil then return false, "节点构造失败" end
     local parentId = API.GetCurrentNodeId() or API.GetMainlineHeadId()
     local branch = {
-        Id = base.Id,
-        Parent = parentId or MODMISC_SAVE_ROOT_PARENT,
-        Kind = MODMISC_KIND_BRANCH,       -- 强制分支
-        Stamp = base.Stamp,
-        Turn = base.Turn,
-        Logical = base.Logical,
-        Offset = base.Offset,
-        RawName = nil,
+        P = tostring(parentId or MODMISC_SAVE_ROOT_PARENT),
+        K = MODMISC_KIND_BRANCH,
+        T = tonumber(base.Turn),
+        M = base.Map ~= nil and tostring(base.Map) or nil,
+        S = tostring(base.Stamp or ""),
+        L = tonumber(base.Logical),
     }
-    Log("创建分支：id=" .. tostring(branch.Id) .. " 父=" .. tostring(branch.Parent)
-        .. " 逻辑回合=" .. tostring(branch.Logical)
-        .. "（**不改本局身份**：本局还是它自己那条线）")
-    local ok, err = SaveNode(branch, { Reason = "create-branch", WriteIdentity = false })
+    -- **不写真存档**（授权者 2026-10-06：逻辑档只是占位）：只落一条占位记录，
+    -- 面板把它当一条 B 线显示；玩家确认切换时才移除它，由新局生成的真存档接手。
+    local ok, err = DataProtocol.Save(MODMISC_BRANCH_KEY_PREFIX .. tostring(base.Id), branch)
     if not ok then return false, err end
-    return true, branch.Id
+    Log("创建分支占位：id=" .. tostring(base.Id) .. " 父=" .. tostring(branch.P)
+        .. " 逻辑回合=" .. tostring(branch.L) .. "（**没有写真存档**，只落占位）")
+    if opts.OnCreated ~= nil then pcall(opts.OnCreated, base.Id) end
+    return true, base.Id
+end
+
+-- 占位：列出 / 读 / 删
+function API.ListBranchPlaceholders()
+    if DataProtocol == nil then return {} end
+    local out = {}
+    for _, key in ipairs(DataProtocol.ListMatching(MODMISC_BRANCH_KEY_PREFIX)) do
+        local record = DataProtocol.Load(key, { keep = true })
+        if type(record) == "table" then
+            local id = tostring(key):sub(#MODMISC_BRANCH_KEY_PREFIX + 1)
+            table.insert(out, {
+                Id = id,
+                Parent = (record.P ~= nil and tostring(record.P) ~= MODMISC_SAVE_ROOT_PARENT)
+                    and tostring(record.P) or nil,
+                Kind = record.K or MODMISC_KIND_BRANCH,
+                Turn = tonumber(record.T),
+                Map = record.M,
+                Stamp = record.S,
+                Logical = tonumber(record.L),
+                Placeholder = true,
+                Key = key,
+            })
+        end
+    end
+    return out
+end
+
+function API.RemoveBranchPlaceholder(id)
+    if DataProtocol == nil or id == nil then return false end
+    Log("移除逻辑分支占位：" .. tostring(id) .. "（由真存档接手）")
+    return DataProtocol.Remove(MODMISC_BRANCH_KEY_PREFIX .. tostring(id)) and true or false
 end
 
 -- 第一步：存原档（供换图用）。返回 (ok, err)
@@ -1462,6 +1519,16 @@ function API.PrepareSwitch(options)
         if target ~= nil and target.Logical ~= nil then
             node.Logical = target.Logical
             node.Offset = target.Logical - 1
+        end
+        -- 目标是**逻辑占位**：重开前要把它移除（由新局的真存档接手）——
+        -- 所以关系要挂在**占位所依附的那条线**上（占位的父），而不是占位自己。
+        if target ~= nil and target.Placeholder then
+            m_SwitchPlaceholderId = tostring(targetId)
+            if target.Parent ~= nil then
+                node.Parent = tostring(target.Parent)
+                Log("切换目标是逻辑占位 " .. tostring(targetId) .. " ⇒ 关系挂到它的父 "
+                    .. tostring(target.Parent) .. "，占位将在重开前移除")
+            end
         end
         Log("切换目标：选中的逻辑档 " .. tostring(targetId)
             .. "（逻辑回合 " .. tostring(node.Logical) .. "）⇒ 新局算它的分支")
@@ -1647,6 +1714,12 @@ function API.SwitchNow(reason)
 
     -- 把重开那一刻的环境一起打出来：引擎自己的重开是有门槛的
     -- （InGameTopOptionsMenu.lua:316：not IsAnyMultiplayer()；worldbuilder 里禁用）
+    -- 【授权者 2026-10-06】确认切换后：**先移除逻辑占位**，由新局生成的真存档接手
+    if m_SwitchPlaceholderId ~= nil then
+        API.RemoveBranchPlaceholder(m_SwitchPlaceholderId)
+        m_SwitchPlaceholderId = nil
+    end
+
     Log("换图[2/2]：即将调用 Network.RestartGame()（原因=" .. tostring(reason) .. "）"
         .. " 环境：anyMultiplayer=" .. tostring(TryCall(function() return GameConfiguration.IsAnyMultiplayer() end))
         .. " savedGame=" .. tostring(TryCall(function() return GameConfiguration.IsSavedGame() end))

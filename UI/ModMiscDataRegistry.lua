@@ -118,6 +118,15 @@ Register({
     Describe = "对局内 SetData/GetData 的随档数据（数字/字符串/表都行；本档内持久、新局不继承）",
 })
 
+-- 逻辑分支**占位**（授权者 2026-10-06）：它**不是真存档**，只是“打算从某条线分出去”的占位记录；
+-- 玩家确认切换、新局生成真存档之后，占位就被移除、由真存档接手。
+-- 放 big 通道：小通道是排队异步写（写多了赶不上落盘，见 19.13），占位虽小但要可靠。
+Register({
+    Name = "sg_branch_*", Lifecycle = "ephemeral", Channel = "big",
+    Owner = "存档关系树", Version = 1, Type = "table", TTL = 7 * 24 * 3600,
+    Describe = "逻辑分支占位（表：{P=父, K=类型, T=回合, M=地图, S=戳, L=逻辑回合}）——切换确认后移除",
+})
+
 Register({
     Name = "cg_marker", Lifecycle = "persave", Owner = "创建新局验证", Version = 1, Type = "table",
     Describe = "切换/建局前打的时间戳标记（表：Act/Nonce/At/Fingerprint）——用来判断“这局是不是全新的”",
