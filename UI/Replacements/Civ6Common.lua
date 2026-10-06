@@ -1326,27 +1326,14 @@ if DataProtocol == nil then
 	include("ModMiscDataRegistry")
 end
 
--- 载入自检：进了前端/建局上下文就把过期数据收拾掉（永久/随档的不碰）
+-- 【2026-10-06 授权者结论：前端与对局内是**两套环境**】前端这里**不做任何存储写入**。
+-- 原先这里跑 AutoGC（会删过期键 ⇒ 模组配置组/配置档的写），是前端侧唯一的写路径；
+-- 现在清理只在**对局内**做（Support_UI 的 after-load AutoGC + 协议自己的 TTL 判定）。
+-- 读取仍然允许（下面的 ExposedMembers 导出、ModMiscStore.Refresh 的扫描）。
 if DataProtocol ~= nil and DataProtocol.AutoGC ~= nil and ModMiscToolDataAutoGCDone == nil then
 	ModMiscToolDataAutoGCDone = true
-	pcall(function() DataProtocol.AutoGC("frontend") end)
-end
-
--- ===========================================================================
--- UI 环境连通性探针（UI/ModMiscContextProbe.lua）—— 授权者 2026-10-06 要求的新测试项
---
---   主页面缓存数据 → 进游戏读一次 → 退出回主页面再读一次，看跨游戏状态能不能通。
---   前端这一侧就在**本文件被前端上下文加载时**跑一轮（`ModMiscToolFrontEndContextKind()`
---   已经能认出“我是不是在 FrontEnd/建局上下文”）；对局内那一侧在 Support_UI.Initialize 里跑。
---   结论看 Lua.log 里的 [ModMiscTool][CtxProbe] 行。
--- ===========================================================================
-if ModMiscContextProbe == nil and ModMiscToolIsGameSetupContext() then
-	include("ModMiscContextProbe")
-end
--- include 这一刻就跑一次：前端上下文刚起来时最确定（刷新回调里还会补跑一次，
--- 因为这一刻存储/组接口可能还没就绪 —— 探针自己限制“每个 context 最多两次”）
-if ModMiscContextProbe ~= nil and ModMiscToolIsGameSetupContext() then
-	pcall(ModMiscContextProbe.Run, "frontend", "前端上下文加载")
+	print("[ModMiscTool][DataProtocol] 前端上下文：按“前端零写入”策略**跳过** AutoGC"
+		.. "（过期清理在对局内做）")
 end
 
 -- 前端侧也把同一套接口挂到 ExposedMembers 上（前端 context 里别的 mod 也能直接用）
@@ -1417,10 +1404,6 @@ local function ModMiscToolGhostRefresh(delta)
 		ModMiscToolProbeMapConfig()
 	end
 	-- 探针在隐藏时也要跑：它靠“隐藏→显示”的那一刻判定新一轮（内部自己判界面）
-	if ModMiscContextProbe ~= nil then
-		-- 每次前端上下文起来都跑一次（首次进主页面 / 退出对局回主页面都会走到这里）
-		pcall(ModMiscContextProbe.Run, "frontend", "前端上下文加载")
-	end
 	if ModMiscFrontEndProbeRefresh ~= nil then
 		ModMiscFrontEndProbeRefresh()
 	end
@@ -1428,10 +1411,14 @@ local function ModMiscToolGhostRefresh(delta)
 	if ModMiscFrontEndGameSaveProbeRefresh ~= nil then
 		ModMiscFrontEndGameSaveProbeRefresh()
 	end
-	-- 跨存档存储：每个前端 context 首次刷新时扫一遍存档列表（结果进内存表）
+	-- 【2026-10-06 授权者结论：前端与对局内是两套环境；前端一律不做存储副作用】
+	-- 这里原先会在前端首次刷新时扫一遍存档列表（UI.QuerySaveGameList + 挂 LuaEvents 回调）。
+	-- 那既没用（前端读到的跨存档数据对局内用不上），又给“退出到主界面”的拆卸期留了一个
+	-- 可能在飞的引擎查询 + 已注册回调 —— 正是拆卸期崩溃的常见来源。现在**不扫**，只记一行。
 	if ModMiscStore ~= nil and ModMiscStoreAutoRefreshed == nil then
 		ModMiscStoreAutoRefreshed = true
-		ModMiscStore.Refresh()
+		print("[ModMiscTool][Store] 前端上下文：按“前端零副作用”策略**跳过**存档列表扫描"
+			.. "（要跨存档数据请在对局内看）")
 	end
 	ContextPtr:RequestRefresh()
 end

@@ -11,7 +11,6 @@ include("ModMiscCreateGame") -- 对局内「创建新局 / 换地图」验证（
 include("ModMiscTurnEra") -- 回合数 / 年代 探查与试写（开局探针 + 面板入口）
 include("ModMiscSaveGraph") -- 存档关系树（主线/分支）+ 换图存档（成品功能）
 include("ModMiscCarrier") -- 载体存档：大块数据跨存档（CustomData 随档走）
-include("ModMiscContextProbe") -- UI 环境连通性探针（前端 ↔ 对局内；授权者 2026-10-06 的测试项）
 print("[ModMiscTool] Support_UI loaded build=" .. tostring(MODMISC_BUILD_TAG))
 
 local allUnitPromotions = {}
@@ -536,15 +535,6 @@ function Initialize()
 		end)
 		if not ok then
 			print("[ModMiscTool][TurnEvent] 开局收件失败 -> " .. tostring(err))
-		end
-	end
-
-	-- UI 环境连通性探针（授权者 2026-10-06 的测试项）：进游戏后读一次“主页面缓存的数据”，
-	-- 顺便写下自己的标记 —— 退出回主页面时那一侧会再读一次，两边日志一对就知道通不通。
-	if ModMiscContextProbe ~= nil then
-		local ok, err = pcall(ModMiscContextProbe.Run, "ingame", "进游戏（加载完成）")
-		if not ok then
-			print("[ModMiscTool][CtxProbe] 探针调用失败 -> " .. tostring(err))
 		end
 	end
 

@@ -581,12 +581,6 @@
 		<Replace Tag="LOC_MODMISC_CREATEGAME_EXIT" Language="zh_Hans_CN">
 			<Text>退回主菜单</Text>
 		</Replace>
-		<Replace Tag="LOC_MODMISC_CTXPROBE_BUTTON" Language="zh_Hans_CN">
-			<Text>环境连通性</Text>
-		</Replace>
-		<Replace Tag="LOC_MODMISC_CTXPROBE_HINT" Language="zh_Hans_CN">
-			<Text>主页面缓存数据 → 进游戏读一次 → 退出回主页面再读一次；只有通道 A（模组配置组名字）能跨游戏状态。</Text>
-		</Replace>
 		<Replace Tag="LOC_MODMISC_CREATEGAME_PROBE_HEADER" Language="zh_Hans_CN">
 			<Text>对局内创建游戏探测（日志前缀 [ModMiscTool][CreateGame]）：</Text>
 		</Replace>

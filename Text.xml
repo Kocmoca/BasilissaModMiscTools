@@ -581,12 +581,6 @@
 		<Row Tag="LOC_MODMISC_CREATEGAME_EXIT">
 			<Text>Exit to main menu</Text>
 		</Row>
-		<Row Tag="LOC_MODMISC_CTXPROBE_BUTTON">
-			<Text>UI env connectivity</Text>
-		</Row>
-		<Row Tag="LOC_MODMISC_CTXPROBE_HINT">
-			<Text>Cache data on the main page, then read it in-game and again after returning to the main page: only channel A (mod-group names) can cross game states.</Text>
-		</Row>
 		<Row Tag="LOC_MODMISC_CREATEGAME_PROBE_HEADER">
 			<Text>Create-game probe in game (log prefix [ModMiscTool][CreateGame]):</Text>
 		</Row>
