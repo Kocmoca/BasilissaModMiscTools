@@ -607,6 +607,18 @@ ExposedMembers.ModMiscToolUI.RunCrossSaveProbeUI = RunCrossSaveProbeUI
 		ExposedMembers.ModMiscToolUI.GetPlayerEraType = ModMiscTurnEra.GetPlayerEraType
 	end
 
+	-- 大载荷跨存档通道（模组配置组名字）：**同步写、跨进程 1MB 已验证**。
+	-- 跨重启立刻要读的关键数据用它；代价是数据片会出现在模组界面的配置组下拉框里
+	-- （一个 key = 1 个配置组，所以请把同类数据打包进一个 key，别一个字段一个组）。
+	if ModMiscBigStore ~= nil then
+		ExposedMembers.ModMiscToolUI.BigStore = ModMiscBigStore
+		ExposedMembers.ModMiscToolUI.SaveBigData = ModMiscBigStore.Save
+		ExposedMembers.ModMiscToolUI.LoadBigData = ModMiscBigStore.Load
+		ExposedMembers.ModMiscToolUI.RemoveBigData = ModMiscBigStore.Remove
+		ExposedMembers.ModMiscToolUI.HasBigDataChannel = ModMiscBigStore.HasBigChannel
+		ExposedMembers.ModMiscToolUI.GetBigDataInfo = ModMiscBigStore.GetInfo
+	end
+
 	-- 永久资产放置（API_Documentation.txt 3.10.2 里写的对外名字，实现是 ModMiscAssetStore）
 	if ModMiscAssetStore ~= nil then
 		ExposedMembers.ModMiscToolUI.PlaceAssetPersistent = ModMiscAssetStore.PlaceAndRecord
@@ -657,6 +669,11 @@ ExposedMembers.ModMiscToolUI.RunCrossSaveProbeUI = RunCrossSaveProbeUI
 	-- 用法：RefreshData() → OnDataReady 回调里 GetData(key)；
 	--       SaveData(key, value) 异步落盘（内部先写新档、SaveComplete 后删旧档）。
 	-- 数据在 UI 层（前端与对局内 UI 都能用）；gameplay 侧拿不到，需要就经 ExposedMembers 转。
+	--
+	-- ⚠️【选型铁律 · 第 91 条 / 事故 19.13】**这个通道是排队异步写**：SaveData 只是“请求写入”，
+	-- 磁盘稍后；写完紧接着换图/重开就可能读不到（实机：一次写 11 个键，重开后一个都没落盘）。
+	-- **跨重启立刻要读的关键数据一律用下面的大通道**（SaveBigData/LoadBigData，同步写、跨进程已验证）；
+	-- small 只适合“一个档一个键、写完不马上重开”的小数据（sg_head、probe_* 这类）。
 	if ModMiscStore ~= nil then
 		ExposedMembers.ModMiscToolUI.SaveData = ModMiscStore.Save
 		ExposedMembers.ModMiscToolUI.GetData = ModMiscStore.Get

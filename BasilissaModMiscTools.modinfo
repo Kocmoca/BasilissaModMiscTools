@@ -150,9 +150,10 @@
             </Properties>
             <File>UI/LeftSideBar.xml</File>
         </AddUserInterfaces>
-        <!-- Automation 调试面板：**本轮重新注册**（2026-10-05，验证「对局内创建新局 / 换地图」；
-             授权者指定把测试入口加在这个面板里）。验证完要收起来时，把这段注释掉即可：
-             它的实验项目早就收尾，留着不影响对局，只是左侧栏多一个入口。 -->
+        <!-- Automation 调试面板（「对局内创建新局 / 换地图」测试入口）：**已收起来**
+             （2026-10-07 授权者要求 —— 不能留着）。面板代码与侧栏开关
+             （UI/AutomationTestPanel.lua 的 MODMISC_AUTOMATION_ENTRY_ENABLED）都保留，
+             要再用时把下面这段 AddUserInterfaces 恢复、并把那个开关改 true 即可。
         <AddUserInterfaces id="AutomationTestPanel">
             <Properties>
                 <Context>InGame</Context>
@@ -160,6 +161,7 @@
             </Properties>
             <File>UI/AutomationTestPanel.xml</File>
         </AddUserInterfaces>
+        -->
         <!-- WorldBuilder 测试面板：**默认不注册**（发布版收起来；调试幽灵池时很实用）。
              它带玩家列表，能直接看出哪些槽位是幽灵；功能同时也通过 API 暴露给其它 mod
              （ExposedMembers.ModMiscToolScript.* 与 ExposedMembers.ModMiscToolUI.*）。
@@ -172,8 +174,11 @@
             <File>UI/WorldBuilderTestPanel.xml</File>
         </AddUserInterfaces>
         -->
-        <!-- 存档与换图（成品面板）：默认注册 —— 这是给玩家用的功能入口，
-             不是调试面板。存档关系与换图流程见 UI/ModMiscSaveGraph.lua。 -->
+        <!-- 存档与换图（成品面板）：**面板照旧注册，但侧栏入口默认不注册**
+             （2026-10-09 授权者要求 —— 玩家不该再从侧栏进这个面板）。
+             开关注释见 UI/ModMiscSavePanel.lua 的 MODMISC_SAVEPANEL_ENTRY_ENABLED；
+             别的 mod 用 ExposedMembers.ModMiscToolUI.OpenSavePanel() 打开它。
+             存档关系与换图流程见 UI/ModMiscSaveGraph.lua。 -->
         <AddUserInterfaces id="ModMiscSavePanel">
             <Properties>
                 <Context>InGame</Context>

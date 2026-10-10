@@ -1,7 +1,9 @@
 -- ===========================================================================
 -- Mod Misc Tool: 存档与换图（成品面板，UI 层）
 --
--- 入口：左侧栏按钮（与其它面板同一套 ExposedMembers.ModMiscToolUI.RegisterSidebarButton）。
+-- 入口：**侧栏按钮默认不注册**（2026-10-09 授权者要求，见 MODMISC_SAVEPANEL_ENTRY_ENABLED）；
+--       面板仍随 mod 载入，可由别的 mod 用 ExposedMembers.ModMiscToolUI.OpenSavePanel() 打开，
+--       换图/存档的原语（ModMiscSaveGraph）也照旧对外的。
 --
 -- 做三件事：
 --   1. 「存档」：按固定格式给当前局存一档，主线 / 分支由 mod 自动判（见 ModMiscSaveGraph）；
@@ -728,7 +730,16 @@ function CloseModMiscSavePanel()
     Controls.ModMiscSaveRoot:SetHide(true)
 end
 
+-- 【发布态 · 2026-10-09 授权者要求】「存档与换图」的**侧栏入口不再注册**：
+-- 它是给玩家用的功能面板，但玩家不该再从侧栏进 —— 换图/存档由需要的 mod（例如
+-- After Victory: Exoplanet Homeland 的星际开拓面板）自己调 ModMiscSaveGraph 的原语完成。
+-- 面板本身、按钮与 AddUserInterfaces 注册都留着：
+--   * 想临时调出来调试：把下面这个开关改成 true；
+--   * 别的 mod 要打开它：ExposedMembers.ModMiscToolUI.OpenSavePanel()。
+local MODMISC_SAVEPANEL_ENTRY_ENABLED = false
+
 local function TryRegisterSidebarButton()
+    if not MODMISC_SAVEPANEL_ENTRY_ENABLED then return end
     if m_Registered then return end
     if ExposedMembers == nil or ExposedMembers.ModMiscToolUI == nil then return end
     if ExposedMembers.ModMiscToolUI.RegisterSidebarButton == nil then return end
@@ -801,3 +812,19 @@ Events.LocalPlayerTurnBegin.Add(TryRegisterSidebarButton)
 
 LuaEvents.ModMiscToolUIReady.Add(TryRegisterSidebarButton)
 ContextPtr:SetInitHandler(OnInit)
+
+-- ===========================================================================
+-- 对外接口：侧栏入口默认不注册（见上方 MODMISC_SAVEPANEL_ENTRY_ENABLED）。
+-- 面板功能一个没少，别的 mod 仍可直接打开/关闭它：
+--   ExposedMembers.ModMiscToolUI.OpenSavePanel()  /  CloseSavePanel()
+-- 换图/存档的原语仍然是 ModMiscSaveGraph（ExposedMembers.ModMiscToolUI.SaveGraph.*），
+-- 调用方 mod 不需要打开本面板也能完整走完「存档 → 写广播 → 重开」。
+-- ===========================================================================
+if ExposedMembers ~= nil then
+    ExposedMembers.ModMiscToolUI = ExposedMembers.ModMiscToolUI or {}
+    ExposedMembers.ModMiscToolUI.OpenSavePanel = OpenModMiscSavePanel
+    ExposedMembers.ModMiscToolUI.CloseSavePanel = CloseModMiscSavePanel
+    ExposedMembers.ModMiscToolUI.IsSavePanelEntryEnabled = function()
+        return MODMISC_SAVEPANEL_ENTRY_ENABLED == true
+    end
+end

@@ -1266,24 +1266,52 @@ gameplay 侧要换图，走 `ExposedMembers.ModMiscToolScript.WorldBuilderAPI.Se
     ModMiscSaveGraph.Refresh(onDone)                    扫存档列表（只收 MMT~ 前缀）
     ModMiscSaveGraph.GetNodes() / BuildTreeLines() / DescribeTree()
     ModMiscSaveGraph.GetCurrentNodeId() / GetMainlineHeadId() / GetPendingBranch()
-    ModMiscSaveGraph.SaveCurrentGame({ Reason=…, OnSaved=…) })      存一档（自动判主/分）
-    ModMiscSaveGraph.SwitchMap()                        换图：存原档 → 记关系 → 重开
+    ModMiscSaveGraph.SaveCurrentGame{ Reason=…, OnSaved=…, OnChecked=… }   存一档（自动判主/分；
+                                                        OnSaved=SaveComplete 回执，OnChecked=落盘复查）
+    ModMiscSaveGraph.BroadcastBranchSwitch{ Parent=… }  写换图广播（一次引擎数据库写）
+    ModMiscSaveGraph.SwitchToNewBranch{ Restart=…, Broadcast=… }
+                                                        换图；Restart=true+Broadcast=false = 只重开
+    ModMiscSaveGraph.RestartNow(reason)                 只重开（诊断）
+    ModMiscSaveGraph.LoadNode(nodeId)                   载入某条关系档
+    ModMiscSaveGraph.ClearBranchBroadcast(reason)       撤销换图广播
     ModMiscSaveGraph.ReportAfterLoad()                  开局探针（Support_UI 调一次）
 
 #### 3.13.5 其它 mod 可用（`ExposedMembers.ModMiscToolUI.*`）
 
     DescribeSaveGraph()                 只读现状
     GetSaveGraphTree()                  关系树（深度优先的 { { Node, Depth }, … }）
-    SaveGameWithRelation(options)       按本格式存一档并记关系
-    SwitchMap()                         换图（存原档 → 重开）
+    SaveGameWithRelation(options)       按本格式存一档并记关系（options.OnChecked(found,node) 报落盘复查）
+    HasMainlineSave()                   有没有主线存档（换图的前置门槛）
+    SwitchToNewBranch(options)          换图：{Restart=true,Broadcast=false} = 复用广播 + 重开
+    RestartNow(reason) / BroadcastBranchSwitch(options) / ClearBranchBroadcast(reason)
+    SetCurrentRelation / SetNodeRelation / ClearNodeRelation / ListRelationOverrides
     BuildRelationSaveName(node) / ParseRelationSaveName(rawName)   档名编解码
     SaveGraph                           整个模块表
+    OpenSavePanel() / CloseSavePanel()  打开 / 关闭「存档与换图」面板（见 3.13.6）
+    SaveBigData(key, text) / LoadBigData(key) / RemoveBigData(key)
+                                        大通道（模组配置组名字，**同步写**、跨进程 1 MB 已验证）
+    HasBigDataChannel() / GetBigDataInfo()
+                                        大通道可用性与现状（有多少条我们的配置组）
+
+    ⚠️【选型】跨重启/换图**立刻要读**的数据一律 SaveBigData；
+    SaveData（small 通道）是**排队异步写**，写完紧接着重开可能一个都没落盘
+    （实机事故见 API_Verification_Status.md §19.13 与 §19.35 —— 后者正是外部 mod 用错通道
+    导致“分支地图识别失败”）。一个 key = 一个配置组，同类数据请**打包进一个 key**，
+    别一个字段建一个组（玩家在模组界面的配置组下拉框里看得见）。
 
 #### 3.13.6 面板入口
 
-左侧栏「存档与换图」：信息行（本局 / 主线头 / 待接分支）+ 关系树列表（点条目看详情）+
-「存档」/「换图（先存原档）」/「刷新列表」。日志前缀 `[ModMiscTool][SaveGraph]` 与
+「存档与换图」面板：信息行（本局 / 主线头 / 待接分支）+ 关系树列表（点条目看详情）+
+「存档」/「重开为新分支」/「刷新列表」。日志前缀 `[ModMiscTool][SaveGraph]` 与
 `[ModMiscTool][SavePanel]`。
+
+**侧栏入口默认不注册**（2026-10-09 授权者要求）：玩家不该再从左侧栏进这个面板，
+换图 / 存档由需要的 mod 直接调上表的原语完成（After Victory: Exoplanet Homeland 就是这么用的）。
+面板代码与 AddUserInterfaces 注册都保留：
+
+  * 临时调出来调试：`UI/ModMiscSavePanel.lua` 的 `MODMISC_SAVEPANEL_ENTRY_ENABLED` 改 true；
+  * 别的 mod 要打开它：`ExposedMembers.ModMiscToolUI.OpenSavePanel()`；
+  * 查询入口是否注册：`ExposedMembers.ModMiscToolUI.IsSavePanelEntryEnabled()`。
 
 ------------------------------------------------------------------------------
 ### 3.13.7 大表格怎么跨存档（分片 blob / 载体存档）

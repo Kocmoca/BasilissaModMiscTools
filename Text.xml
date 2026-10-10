@@ -4,7 +4,7 @@
 		<!-- LeftSideBar -->
 		<!-- 模组列表里的简介（modinfo 的 Description/Teaser 引用的键） -->
 		<Row Tag="LOC_MODMISC_MOD_DESCRIPTION">
-			<Text>Save tree &amp; map switch: keep mainline and branch saves in one tree, restart onto a new branch with one button, and send time-triggered events between saves. Adds a side-panel under the left sidebar.</Text>
+			<Text>Save tree &amp; map switch: keep mainline and branch saves in one tree, restart onto a new branch with one button, and send time-triggered events between saves. The save/map-switch panel no longer takes a sidebar entry of its own; gameplay mods drive it through its API.</Text>
 		</Row>
 		<Row Tag="LOC_MODMISC_TOGGLE_SIDEBAR">
 			<Text>Expand Toolbar</Text>

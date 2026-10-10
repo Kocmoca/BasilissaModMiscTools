@@ -2555,3 +2555,42 @@ bash devs/BasilissaModMiscTools/Tools/sweep.sh      # 一条命令跑完全部�
   与其结论一并移除（结论留在本文档）；补上模组列表里缺失的简介 LOC。
 * 校验：`devs/BasilissaModMiscTools/Tools/sweep.sh` 全绿（12 个桩测试 / LOC 279-279 /
   modinfo 52 个文件）。
+
+### 19.35 事故复现：外 mod（Exoplanet Homeland）用 **small 通道**存关键数据 ⇒ 换图后分支识别失败（2026-10-09）
+
+授权者实测「分支地图识别似乎失败了」。日志把原因钉在同一处 —— §19.13 那条铁律被跨 mod 复现了一遍。
+
+#### 现象链（`Lua.log`）
+
+```
+[Store] 已请求写入 [av_eh_registry] = [home=tmmjteil;exo=;pend=;pp=;…]      ← 开拓那一下连写 11 个小键
+[Store] 已请求写入 [av_eh_lead_0] … [av_eh_know_3] …
+[SaveGraph] 换图[3/3]：即将调用 Network.RestartGame()
+—— 新会话 ——
+[Store] 扫描完成：存储档 **3 份** → 去重后 **3 个键**      ← 没有任何 av_eh_*（11 个键一个都没落盘）
+[AV_EH][UI] 注册表读取：home=nil exo=nil pend=nil pp=nil    ← 系外行星那张图认不出自己
+```
+
+同一批写入里只有**最后一个**（`sg_head`，写在 SaveComplete 之后）落了盘；前面 11 个是在
+一次 `Network.SaveGame`（开拓用的 MMT 存档）还在飞的时候发的 ⇒ **全被引擎丢掉**，
+而 `ModMiscStore.Save` 只会回一句「已请求写入」，看不出真假。
+
+#### 结论（写进选型规则，和第 91 条同一句话）
+
+* **跨 mod 也要守这条**：`ExposedMembers.ModMiscToolUI.SaveData`（small）**禁止**用于
+  “跨重启立刻要读”的数据；它的对外文档与暴露点都加了醒目警告。
+* 关键数据走大通道：本次给外部 mod 暴露了门面接口
+  `SaveBigData / LoadBigData / RemoveBigData / HasBigDataChannel / GetBigDataInfo`
+  （`ModMiscBigStore`，模组配置组名字，**同步写**）。
+  一个 key = 一个配置组，所以同类数据要**打包进一个 key**（Exoplanet Homeland 收敛成
+  4 个键：`av_eh_registry / av_eh_leaders / av_eh_knowledge / av_eh_landings`）。
+* Exoplanet Homeland 侧同时加了「写完读回校验」（大通道是同步的，校验才有意义），
+  小通道只留作**兼容读取**旧数据。
+
+#### 顺带记录的第二个实机报错（不是本 mod 的 bug，但值得留档）
+
+新局里 Exoplanet Homeland 的面板在**文件作用域**调 `RegisterTurnEventTextResolver` 时报
+`Support_UI.lua:409: function expected instead of nil` —— 重开后的短暂窗口里
+`ExposedMembers.ModMiscToolUI.*` 可能还挂着**上一局上下文**的函数对象，调用它就会炸；
+而文件作用域一抛错，该文件后面的 `ExposeUIAPI()` 就不再执行。修法在调用方：跨上下文一律
+`pcall`，文件作用域那一段整块 `pcall`。

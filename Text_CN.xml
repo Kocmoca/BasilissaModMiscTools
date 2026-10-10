@@ -3,7 +3,7 @@
 	<LocalizedText>
 		<!-- LeftSideBar -->
 		<Replace Tag="LOC_MODMISC_MOD_DESCRIPTION" Language="zh_Hans_CN">
-			<Text>存档关系树与换图：主线/分支档收在一棵树里，一键重开为新分支，并可在存档之间发送按回合触发的事件。入口在左侧栏。</Text>
+			<Text>存档关系树与换图：主线/分支档收在一棵树里，一键重开为新分支，并可在存档之间发送按回合触发的事件。「存档与换图」面板不再占用左侧栏入口，改由需要的 mod 通过接口调用。</Text>
 		</Replace>
 		<Replace Tag="LOC_MODMISC_TOGGLE_SIDEBAR" Language="zh_Hans_CN">
 			<Text>展开工具栏</Text>
