@@ -176,6 +176,9 @@
 		<Row Tag="LOC_MODMISC_WB_TEST_LEADER">
 			<Text>Leader</Text>
 		</Row>
+		<Row Tag="LOC_MODMISC_WB_TEST_GHOST_KILL_MODE">
+			<Text>Ghost kill mode (damage+kill / kill only)</Text>
+		</Row>
 		<Row Tag="LOC_MODMISC_WB_TEST_REMOVE">
 			<Text>Remove Player</Text>
 		</Row>

@@ -733,6 +733,21 @@ local function RecycleGhostPlayer()
     SetResult("MovePlayerOffMap", playerID)
 end
 
+-- 幽灵搬移删除方式切换（排障，2026-10-13）：
+--   true  = SetDamage(100) + Kill（授权者定的唯一路线，默认）
+--   false = 仅 Kill（旧行为）—— 用来复现/排除 teardown 期的
+--           GameCore::AI::BehaviorTree::Manager::Reset() 闪退
+local function ToggleGhostKillMode()
+    local script = ExposedMembers ~= nil and ExposedMembers.ModMiscToolScript or nil
+    if script == nil or script.SetGhostDamageBeforeKill == nil then
+        SetOutput("ModMiscToolScript.SetGhostDamageBeforeKill 不可用")
+        return
+    end
+    local current = script.GetGhostDamageBeforeKill ~= nil and script.GetGhostDamageBeforeKill()
+    local now = script.SetGhostDamageBeforeKill(current ~= true)
+    SetOutput("幽灵搬移删除方式：" .. (now and "SetDamage(100) + Kill（默认）" or "仅 Kill（旧行为）"))
+end
+
 local function RemovePlayer()
     local playerID = GetSelectedPlayerID()
     if playerID == nil or Players[playerID] == nil then
@@ -1166,6 +1181,10 @@ function OnInit()
     Controls.WorldBuilderTestRecycleGhost:RegisterCallback(Mouse.eLClick,
         OnAction("MovePlayerOffMap", RecycleGhostPlayer))
     Controls.WorldBuilderTestRemove:RegisterCallback(Mouse.eLClick, OnAction("RemovePlayer", RemovePlayer))
+    if Controls.WorldBuilderTestGhostKillMode ~= nil then
+        Controls.WorldBuilderTestGhostKillMode:RegisterCallback(Mouse.eLClick,
+            OnAction("GhostKillMode", ToggleGhostKillMode))
+    end
     Controls.WorldBuilderTestCreateGhost:RegisterCallback(Mouse.eLClick,
         OnAction("CreateGhostPlayer", CreateGhostPlayerSlot))
     Controls.WorldBuilderTestConvertCityState:RegisterCallback(Mouse.eLClick,

@@ -209,6 +209,30 @@ local function PlayerSlotHasPlayer(playerID)
 	return false
 end
 
+-- ===========================================================================
+-- 幽灵搬移时“怎么删掉地图上的单位”（排障开关，2026-10-13）
+--
+-- 默认 true = 授权者定的唯一路线：`SetDamage(100)` 让引擎记账，再 `UnitManager.Kill`
+--            （少了打伤害这一步，引擎不知道单位已经死了 ⇒ 拆局/重设 AI 时爆悬空引用）。
+-- false    = 本功能上线前的旧行为：只 `UnitManager.Kill`。
+-- 【为什么留这个开关】2026-10-13 凌晨仍在崩的 teardown 闪退
+--   （`GameCore::AI::BehaviorTree::Manager::Reset()` -> `je_free`）出现在“幽灵搬移改成
+--   伤害+删除”之后，而幽灵搬的正是 **AI 玩家**的单位 ⇒ 需要一条“换回旧行为再复现”的旁路，
+--   一次就能排除/坐实。世界建造测试面板里有对应按钮。
+-- ===========================================================================
+local m_GhostDamageBeforeKill = true
+
+function SetGhostDamageBeforeKill(enabled)
+	m_GhostDamageBeforeKill = (enabled ~= false)
+	print("[ModMiscTool][Ghost] 幽灵搬移删除方式：" .. (m_GhostDamageBeforeKill
+		and "SetDamage(100) + Kill（默认）" or "仅 Kill（旧行为）"))
+	return m_GhostDamageBeforeKill
+end
+
+function GetGhostDamageBeforeKill()
+	return m_GhostDamageBeforeKill
+end
+
 function MovePlayerOffMap(playerID)
 	local player = Players[playerID]
 	if player == nil then return false end
@@ -278,11 +302,11 @@ function MovePlayerOffMap(playerID)
 		-- AI / 引擎侧还留着它 ⇒ 拆局或重设 AI 时爆悬空引用
 		-- （实机 tombstone：GameCore::AI::BehaviorTree::Manager::Reset() -> je_free）。
 		-- 幽灵搬的正是 **AI 玩家**的单位，最该守这条；同款写法见本 mod 的 DamageToUnit。
-		if unit:GetDamage() < 100 then
+		if m_GhostDamageBeforeKill and unit:GetDamage() < 100 then
 			unit:SetDamage(100)
-			UnitManager.Kill(unit, false)
-			killedCount = killedCount + 1
 		end
+		UnitManager.Kill(unit, false)
+		killedCount = killedCount + 1
 	end
 
 	print("[ModMiscTool][Ghost] player " .. tostring(playerID) .. " moved off-map"

@@ -64,6 +64,11 @@
             <GridButton ID="WorldBuilderTestRemove" Anchor="L,T" Offset="600,448" Size="280,60"
                         Style="ButtonControl" FontSize="26" String="LOC_MODMISC_WB_TEST_REMOVE" />
 
+            <!-- 排障（2026-10-13）：幽灵搬移删除单位的方式切换
+                 true = SetDamage(100) + Kill（授权者定的唯一路线）/ false = 仅 Kill（旧行为） -->
+            <GridButton ID="WorldBuilderTestGhostKillMode" Anchor="L,T" Offset="890,448" Size="280,60"
+                        Style="ButtonControl" FontSize="22" String="LOC_MODMISC_WB_TEST_GHOST_KILL_MODE" />
+
             <GridButton ID="WorldBuilderTestApply" Anchor="L,T" Offset="20,520" Size="280,60"
                         Style="ButtonControl" FontSize="26" String="LOC_MODMISC_WB_TEST_APPLY" />
             <GridButton ID="WorldBuilderTestCreateCity" Anchor="L,T" Offset="310,520" Size="280,60"

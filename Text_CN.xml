@@ -175,6 +175,9 @@
 		<Replace Tag="LOC_MODMISC_WB_TEST_LEADER" Language="zh_Hans_CN">
 			<Text>领袖</Text>
 		</Replace>
+		<Replace Tag="LOC_MODMISC_WB_TEST_GHOST_KILL_MODE" Language="zh_Hans_CN">
+			<Text>幽灵删除方式（伤害+删 / 仅删）</Text>
+		</Replace>
 		<Replace Tag="LOC_MODMISC_WB_TEST_REMOVE" Language="zh_Hans_CN">
 			<Text>删除玩家</Text>
 		</Replace>
