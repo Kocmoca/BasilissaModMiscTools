@@ -273,8 +273,16 @@ function MovePlayerOffMap(playerID)
 	--    [已验证失败] 反过来先 Kill 再 InitUnit：中间有“零单位”瞬间，玩家被判灭亡直接死掉。
 	local killedCount = 0
 	for _, unit in ipairs(onMapUnits) do
-		UnitManager.Kill(unit, false)
-		killedCount = killedCount + 1
+		-- 【授权者 2026-10-12 定的唯一路线】伤害 >= 100 ⇒ 返回；否则 SetDamage(100) 再 Kill。
+		-- 少了打伤害这一步，引擎不知道单位已经死了（只是从 Lua 视野里消失），
+		-- AI / 引擎侧还留着它 ⇒ 拆局或重设 AI 时爆悬空引用
+		-- （实机 tombstone：GameCore::AI::BehaviorTree::Manager::Reset() -> je_free）。
+		-- 幽灵搬的正是 **AI 玩家**的单位，最该守这条；同款写法见本 mod 的 DamageToUnit。
+		if unit:GetDamage() < 100 then
+			unit:SetDamage(100)
+			UnitManager.Kill(unit, false)
+			killedCount = killedCount + 1
+		end
 	end
 
 	print("[ModMiscTool][Ghost] player " .. tostring(playerID) .. " moved off-map"

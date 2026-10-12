@@ -683,6 +683,11 @@ function RespawnUnit(unit, newX, newY, newOwnerID)
 	local oldUnitType = GameInfo.Units[unit:GetType()].UnitType
 	local oldUnitMltFormation = unit:GetMilitaryFormation()
 	local oldUnitDamage = unit:GetDamage()
+	-- 【同一条路线】换单位也是“移除旧单位”：伤害 >= 100 直接跳过，否则 SetDamage(100) 再 Kill
+	-- （oldUnitDamage 已先读出来，不受影响）。说明见 ModTool_GhostPlayers.lua。
+	if unit:GetDamage() < 100 then
+		unit:SetDamage(100)
+	end
 	UnitManager.Kill(unit)
 	local newUnit = UnitManager.InitUnit(newOwnerID, oldUnitType, newX, newY)
 	if newUnit == nil then return end
