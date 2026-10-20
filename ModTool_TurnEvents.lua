@@ -53,6 +53,9 @@
 local MODMISC_TURNEVENTS_BUILD_TAG = "2026-10-05-A"
 local MODMISC_TURNEVENTS_KEY = "turnevents"
 local MODMISC_TURNEVENTS_OFFSET_KEY = "turnevents_offset"
+-- 外部时钟（共享星历）接管后：锁也要随档保存，否则读档时收件会先用旧身份偏移
+-- 把事件当成“过期”重排到几百回合后（实机 2026-10-19：39 → 908）。
+local MODMISC_TURNEVENTS_OFFSET_LOCK_KEY = "turnevents_offset_lock"
 
 local function Log(message)
     print("[ModMiscTool][TurnEvent] " .. tostring(message))
@@ -92,12 +95,38 @@ end
 -- 逻辑回合
 -- ===========================================================================
 
-function API.SetLogicalOffset(offset)
+-- 【2026-10-19】外部时钟接管（Exoplanet Homeland 的共享星历）：
+-- 一旦用 `SetLogicalOffset(offset, true)` 加锁，普通调用（本 mod 的收件 / 换图广播）
+-- 不能再改偏移，否则它们会把共享星历对齐好的 offset 覆盖回旧的分支偏移。
+local m_LogicalOffsetLocked = false
+
+local function IsOffsetLocked()
+    if m_LogicalOffsetLocked then return true end
+    if ReadKey(MODMISC_TURNEVENTS_OFFSET_LOCK_KEY) == true then
+        m_LogicalOffsetLocked = true
+        return true
+    end
+    return false
+end
+
+function API.SetLogicalOffset(offset, lock)
+    if lock ~= true and IsOffsetLocked() then
+        return false
+    end
     local value = tonumber(offset) or 0
     WriteKey(MODMISC_TURNEVENTS_OFFSET_KEY, value)
+    if lock == true then
+        m_LogicalOffsetLocked = true
+        WriteKey(MODMISC_TURNEVENTS_OFFSET_LOCK_KEY, true)
+    end
     Log("逻辑回合偏移已设为 " .. tostring(value)
-        .. "（引擎第 1 回合 = 逻辑第 " .. tostring(value + 1) .. " 回合）")
+        .. "（引擎第 1 回合 = 逻辑第 " .. tostring(value + 1) .. " 回合"
+        .. (lock == true and "；已由外部时钟加锁" or "") .. "）")
     return true
+end
+
+function API.IsLogicalOffsetLocked()
+    return IsOffsetLocked()
 end
 
 function API.GetLogicalOffset()
@@ -152,6 +181,7 @@ function API.AddIncoming(event)
     local currentTurn = API.GetLogicalTurn()
     local accept = tonumber(event.AcceptTurn) or currentTurn
     if accept < currentTurn then
+        event.OriginalAcceptTurn = event.OriginalAcceptTurn or accept
         event.Overdue = true
         event.AcceptTurn = currentTurn + 1
         Log("事件已过期（接受回合 " .. tostring(accept) .. " < 当前逻辑回合 "
@@ -179,6 +209,37 @@ function API.AddIncoming(event)
         end
     end
     return true
+end
+
+-- 重排已入列的事件（共享星历修复用）：把匹配的事件接受回合改成 newTurn。
+-- 只改队列里的排期，不触发执行；调用方可在下一回合 begin 由 ProcessDue 触发。
+function API.RescheduleEvent(eventType, detail, amount, fromNode, newTurn)
+    local target = tonumber(newTurn)
+    if target == nil or eventType == nil then return 0 end
+    local list = GetList()
+    local changed = 0
+    for _, event in ipairs(list) do
+        local matched = (event.Type == eventType)
+        if matched and detail ~= nil and event.Detail ~= nil
+            and tostring(event.Detail) ~= tostring(detail) then matched = false end
+        if matched and amount ~= nil and event.Amount ~= nil
+            and tonumber(event.Amount) ~= tonumber(amount) then matched = false end
+        if matched and fromNode ~= nil and event.FromNode ~= nil
+            and tostring(event.FromNode) ~= tostring(fromNode) then matched = false end
+        if matched then
+            event.RescheduledFrom = event.RescheduledFrom or event.AcceptTurn
+            event.AcceptTurn = target
+            event.Overdue = nil
+            changed = changed + 1
+        end
+    end
+    if changed > 0 then
+        SaveList(list)
+        Log("重排事件：" .. tostring(eventType) .. " " .. tostring(detail or "")
+            .. " x" .. tostring(amount or "?") .. " -> 接受回合 " .. tostring(target)
+            .. "（" .. tostring(changed) .. " 条）")
+    end
+    return changed
 end
 
 -- ===========================================================================

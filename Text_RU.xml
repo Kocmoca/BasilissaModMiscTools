@@ -1,0 +1,889 @@
+<?xml version="1.0" encoding="utf-8"?>
+<GameData>
+	<LocalizedText>
+		<Replace Tag="LOC_MODMISC_MOD_DESCRIPTION" Language="ru_RU">
+			<Text>Дерево сохранений и переключение карт: основная линия и ветки в одном дереве, перезапуск на новую ветку одной кнопкой и события по ходам между сохранениями. Панель сохранений больше не занимает отдельный слот в боковой панели — моды вызывают её через API.</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_RELOAD_PROMPT" Language="ru_RU">
+			<Text>Функции загружены. Сохранение нужно пересохранить и загрузить заново. Нажмите «ОК», чтобы сделать это автоматически.</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_TOGGLE_SIDEBAR" Language="ru_RU">
+			<Text>Развернуть панель</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_COLLAPSE_SIDEBAR" Language="ru_RU">
+			<Text>Свернуть панель</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_HIDE_SIDEBAR" Language="ru_RU">
+			<Text>Скрыть панель</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_HIDE_SIDEBAR_TOOLTIP" Language="ru_RU">
+			<Text>Скрыть панель и сделать боковую кнопку прозрачной</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_CANCEL_HIDE_SIDEBAR" Language="ru_RU">
+			<Text>Отменить скрытие панели</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_CANCEL_HIDE_SIDEBAR_TOOLTIP" Language="ru_RU">
+			<Text>Снова показать панель</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_SIDEBAR_TITLE" Language="ru_RU">
+			<Text>Инструменты мода</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_SIDEBAR_PAGE_UP" Language="ru_RU">
+			<Text>Предыдущая страница</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_SIDEBAR_PAGE_DOWN" Language="ru_RU">
+			<Text>Следующая страница</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_SIDEBAR_PAGE_UP_TOOLTIP" Language="ru_RU">
+			<Text>Показать предыдущие кнопки панели</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_SIDEBAR_PAGE_DOWN_TOOLTIP" Language="ru_RU">
+			<Text>Показать следующие кнопки панели</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_PRESET_BUTTON" Language="ru_RU">
+			<Text>Информация об игре</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_PRESET_TOOLTIP" Language="ru_RU">
+			<Text>Показать доходы, ресурсы и информацию об игре</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_BUTTON_PLACEHOLDER" Language="ru_RU">
+			<Text>Кнопка</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_INFO_TITLE" Language="ru_RU">
+			<Text>Обзор империи</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_YIELDS" Language="ru_RU">
+			<Text>Доходы</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_YIELD_SCIENCE" Language="ru_RU">
+			<Text>Наука</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_YIELD_CULTURE" Language="ru_RU">
+			<Text>Культура</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_YIELD_GOLD" Language="ru_RU">
+			<Text>Золото</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_YIELD_FAITH" Language="ru_RU">
+			<Text>Вера</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_YIELD_PRODUCTION" Language="ru_RU">
+			<Text>Производство</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_YIELD_TOURISM" Language="ru_RU">
+			<Text>Туризм</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_YIELD_SCIENCE_TOOLTIP" Language="ru_RU">
+			<Text>Наука за ход</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_YIELD_CULTURE_TOOLTIP" Language="ru_RU">
+			<Text>Культура за ход</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_YIELD_GOLD_TOOLTIP" Language="ru_RU">
+			<Text>Золото за ход</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_YIELD_FAITH_TOOLTIP" Language="ru_RU">
+			<Text>Вера за ход</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_YIELD_PRODUCTION_TOOLTIP" Language="ru_RU">
+			<Text>Производство за ход</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_YIELD_TOURISM_TOOLTIP" Language="ru_RU">
+			<Text>Туризм за ход</Text>
+		</Replace>
+		<Replace Tag="LOC_EXTENSIVEUNIT_PANEL_TITLE" Language="ru_RU">
+			<Text>Панель расширенных операций юнита</Text>
+		</Replace>
+		<Replace Tag="LOC_EXTENSIVEUNIT_NO_UNIT" Language="ru_RU">
+			<Text>Юнит не выбран</Text>
+		</Replace>
+		<Replace Tag="LOC_EXTENSIVEUNIT_NO_CASES" Language="ru_RU">
+			<Text>Нет доступных вариантов строительства</Text>
+		</Replace>
+		<Replace Tag="LOC_EXTENSIVEUNIT_TOGGLE_TOOLTIP" Language="ru_RU">
+			<Text>Меню расширенных операций юнита</Text>
+		</Replace>
+		<Replace Tag="LOC_EXTENSIVEUNIT_CASE_NAME" Language="ru_RU">
+			<Text>Вариант строительства</Text>
+		</Replace>
+		<Replace Tag="LOC_EXTENSIVEUNIT_CASE_DESC" Language="ru_RU">
+			<Text>Описание строительства</Text>
+		</Replace>
+		<Replace Tag="LOC_EXTENSIVEUNIT_EXT_BUTTON" Language="ru_RU">
+			<Text>Расширение</Text>
+		</Replace>
+		<Replace Tag="LOC_EXTENSIVEUNIT_EXT_DESC" Language="ru_RU">
+			<Text>Пользовательское расширение</Text>
+		</Replace>
+		<Replace Tag="LOC_CASE_FARM_DESC" Language="ru_RU">
+			<Text>Построить ферму на выбранной клетке.</Text>
+		</Replace>
+		<Replace Tag="LOC_CASE_MINE_DESC" Language="ru_RU">
+			<Text>Построить шахту на выбранной клетке.</Text>
+		</Replace>
+		<Replace Tag="LOC_CASE_LUMBER_MILL_DESC" Language="ru_RU">
+			<Text>Построить лесопилку на выбранной клетке.</Text>
+		</Replace>
+		<Replace Tag="LOC_CASE_FORT_DESC" Language="ru_RU">
+			<Text>Построить форт на выбранной клетке.</Text>
+		</Replace>
+		<Replace Tag="LOC_CASE_ROAD_DESC" Language="ru_RU">
+			<Text>Построить древнюю дорогу к выбранной клетке (дальность: 1).</Text>
+		</Replace>
+		<Replace Tag="LOC_CASE_REMOVE_FEATURE_DESC" Language="ru_RU">
+			<Text>Убрать лес с выбранной клетки.</Text>
+		</Replace>
+		<Replace Tag="LOC_CASE_REPAIR_DESC" Language="ru_RU">
+			<Text>Восстановить разграбленное улучшение на выбранной клетке.</Text>
+		</Replace>
+		<Replace Tag="LOC_ABILITY_INCREASE_BUILD_CHARGE_NAME" Language="ru_RU">
+			<Text>Увеличить заряды строительства</Text>
+		</Replace>
+		<Replace Tag="LOC_ABILITY_INCREASE_BUILD_CHARGE_DESCRIPTION" Language="ru_RU">
+			<Text>Увеличивает заряды строительства этого юнита на 1.</Text>
+		</Replace>
+		<Replace Tag="LOC_ABILITY_DECREASE_BUILD_CHARGE_NAME" Language="ru_RU">
+			<Text>Уменьшить заряды строительства</Text>
+		</Replace>
+		<Replace Tag="LOC_ABILITY_DECREASE_BUILD_CHARGE_DESCRIPTION" Language="ru_RU">
+			<Text>Уменьшает заряды строительства этого юнита на 1.</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_WB_TEST_TITLE" Language="ru_RU">
+			<Text>Тест API WorldBuilder</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_WB_TEST_TOOLTIP" Language="ru_RU">
+			<Text>Открыть панель тестирования API WorldBuilder</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_WB_TEST_PLAYER" Language="ru_RU">
+			<Text>Игрок</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_WB_TEST_CIV" Language="ru_RU">
+			<Text>Цивилизация</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_WB_TEST_LEADER" Language="ru_RU">
+			<Text>Лидер</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_WB_TEST_GHOST_KILL_MODE" Language="ru_RU">
+			<Text>Режим уничтожения призрака (урон+убийство / только убийство)</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_WB_TEST_REMOVE" Language="ru_RU">
+			<Text>Удалить игрока</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_WB_TEST_APPLY" Language="ru_RU">
+			<Text>Задать цивилизацию / лидера</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_WB_TEST_SET_ERA" Language="ru_RU">
+			<Text>Установить древнюю эру</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_WB_TEST_GOLD" Language="ru_RU">
+			<Text>Задать золото 1000</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_WB_TEST_FAITH" Language="ru_RU">
+			<Text>Задать веру 1000</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_WB_TEST_REVEAL" Language="ru_RU">
+			<Text>Открыть всё</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_WB_TEST_CLEAR_START" Language="ru_RU">
+			<Text>Очистить стартовую позицию</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_WB_TEST_READY" Language="ru_RU">
+			<Text>Интерфейсы WorldBuilder готовы.</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_WB_TEST_PLAYER_INFO" Language="ru_RU">
+			<Text>Игрок {1_ID}: {2_Info}</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_WB_TEST_INITIALIZED" Language="ru_RU">
+			<Text>инициализирован</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_WB_TEST_NOT_INITIALIZED" Language="ru_RU">
+			<Text>не инициализирован</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_WB_TEST_RESULT" Language="ru_RU">
+			<Text>{1_Test}: {2_Result}</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_WB_TEST_ERROR" Language="ru_RU">
+			<Text>{1_Test} ошибка: {2_Error}</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_WB_TEST_CREATE_CITY" Language="ru_RU">
+			<Text>Создать город (выберите клетку)</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_WB_TEST_CREATE_UNIT" Language="ru_RU">
+			<Text>Создать юнит (выберите клетку)</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_WB_TEST_PLACE_SETTLER" Language="ru_RU">
+			<Text>Разместить поселенца (выберите клетку)</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_WB_TEST_PICK_PLOT" Language="ru_RU">
+			<Text>{1_Action}: выберите подсвеченную клетку на карте.</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_WB_TEST_PLAYER_NOT_READY" Language="ru_RU">
+			<Text>Игрок ещё не готов; попробуйте через мгновение.</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_WB_TEST_GHOST_RECYCLE_BLOCKED" Language="ru_RU">
+			<Text>Нельзя превратить игрока {1_PlayerID} в призрака: у него уже есть город, а удаление всех городов убивает игрока (поселенец не спасёт).</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_WB_TEST_MESSAGES" Language="ru_RU">
+			<Text>Сообщения</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_WB_TEST_NO_PLOT" Language="ru_RU">
+			<Text>Вокруг якоря не найдено подходящей клетки.</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_WB_TEST_PLAYER_TYPE" Language="ru_RU">
+			<Text>Тип игрока</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_WB_TEST_TYPE_MAJOR" Language="ru_RU">
+			<Text>Основная цивилизация</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_WB_TEST_TYPE_CITY_STATE" Language="ru_RU">
+			<Text>Город-государство</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_WB_TEST_PLACE_RANGE" Language="ru_RU">
+			<Text>Дальность размещения</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_WB_TEST_RANGE_VALUE" Language="ru_RU">
+			<Text>{1_Range} клеток</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_WB_TEST_ACTIVATE_GHOST" Language="ru_RU">
+			<Text>Активировать призрачного игрока</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_WB_TEST_RECYCLE_GHOST" Language="ru_RU">
+			<Text>Вернуть за пределы карты</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_WB_TEST_GHOST" Language="ru_RU">
+			<Text>призрак</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_WB_TEST_GHOST_KIND_MAJOR" Language="ru_RU">
+			<Text>призрак основной цивилизации</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_WB_TEST_GHOST_KIND_CITY_STATE" Language="ru_RU">
+			<Text>призрак города-государства</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_WB_TEST_GHOST_LINE" Language="ru_RU">
+			<Text>{1_Kind}: пул {2_Pool} (свободно {3_Free}, занято {4_Used}) · объявлено {5_Plan}</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_WB_TEST_GHOST_PLAN_NONE" Language="ru_RU">
+			<Text>нет (ни один мод не объявил)</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_WB_TEST_GHOST_PLAN_UNLIMITED" Language="ru_RU">
+			<Text>без ограничений (старое сохранение)</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_WB_TEST_GHOST_CHOICE" Language="ru_RU">
+			<Text>выбор игрока: основные {1_Major} / города-государства {2_CityState}</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_WB_TEST_NO_GHOST" Language="ru_RU">
+			<Text>Нет доступного призрачного игрока (начните новую игру с включённым модом).</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_WB_TEST_GHOST_ACTIVATED" Language="ru_RU">
+			<Text>Призрачный игрок {1_PlayerID} активирован как {2_Civ}.</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_WB_TEST_CREATE_GHOST" Language="ru_RU">
+			<Text>Создать призрачный слот</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_WB_TEST_GHOST_CREATED" Language="ru_RU">
+			<Text>Слот призрака создан во время выполнения: игрок {1_PlayerID}.</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_WB_TEST_GHOST_CREATE_FAILED" Language="ru_RU">
+			<Text>Не удалось создать слот призрака: {1_Reason}</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_WB_TEST_CONVERT_CITY_STATE" Language="ru_RU">
+			<Text>Преобразовать в город-государство</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_WB_TEST_CONVERT_ALL_CITY_STATE" Language="ru_RU">
+			<Text>Преобразовать ВСЕХ основных призраков в города-государства</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_WB_TEST_CONVERT_ALL_RESULT" Language="ru_RU">
+			<Text>Преобразование всех основных призраков: преобразовано {1_Converted}, не удалось {2_Failed}, пропущено {3_Skipped}. Изменения идентичности вступят в силу на следующем ходу (перезагрузка не нужна).</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_WB_TEST_RESTORE_MET_GHOSTS" Language="ru_RU">
+			<Text>Вернуть встреченных призраков в основные цивилизации</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_WB_TEST_RESTORE_MET_GHOSTS_RESULT" Language="ru_RU">
+			<Text>Встреченные призраки возвращены в основные цивилизации: восстановлено {1_Restored}, уже основные {2_Skipped}, не удалось {3_Failed}. (После этого сохраните и перезагрузите.)</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_WB_TEST_REPAIR_CITY_STATE" Language="ru_RU">
+			<Text>Исправить идентичности городов-государств</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_WB_TEST_REPAIR_CITY_STATE_RESULT" Language="ru_RU">
+			<Text>Проверка идентичности городов-государств: корректно {1_Ok}, исправлено {2_Repaired}, не удалось {3_Failed}. (Официальной панели городов-государств нужна цивилизация уровня города-государства и лидер малого архетипа.)</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_WB_TEST_DIPLO_GHOST_CHECK" Language="ru_RU">
+			<Text>Проверка подавления дипломатии</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_WB_TEST_DIPLO_GHOST_CHECK_RESULT" Language="ru_RU">
+			<Text>Проверка подавления призраков: основные {1_Major}, города-государства {2_CityState}, всё ещё подавлены {3_Suppressed}.</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_WB_TEST_DIPLO_GHOST_CHECK_LINE" Language="ru_RU">
+			<Text>#{1_ID} [{2_Pool}] подавлен={3_Suppressed} доступен={4_Available} естьГород={5_HasCity}</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_WB_TEST_PLAYER_STATS" Language="ru_RU">
+			<Text>Слоты игроков</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_WB_TEST_PLAYER_STATS_RESULT" Language="ru_RU">
+			<Text>Слоты: {1_Summary}</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_AUTOMATION_TEST_TITLE" Language="ru_RU">
+			<Text>Тест API автоматизации</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_AUTOMATION_TEST_TOOLTIP" Language="ru_RU">
+			<Text>Открыть панель тестирования API автоматизации</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_AUTOMATION_TEST_PLAYER" Language="ru_RU">
+			<Text>Игрок</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_AUTOMATION_TEST_TURNS" Language="ru_RU">
+			<Text>Ходы автопроигрывания</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_AUTOMATION_TEST_TURNS_UNLIMITED" Language="ru_RU">
+			<Text>Без ограничения</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_AUTOMATION_TEST_REPLAY_ASSETS" Language="ru_RU">
+			<Text>Воспроизвести ресурсы</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_AUTOMATION_TEST_REPLAY_ASSETS_DONE" Language="ru_RU">
+			<Text>Воспроизведено {1_Placed}/{2_Total} постоянных размещений ресурсов</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_AUTOMATION_TEST_RESTORE_UI" Language="ru_RU">
+			<Text>Восстановить интерфейс</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_AUTOMATION_TEST_STORE_WRITE" Language="ru_RU">
+			<Text>Запись хранилища</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_AUTOMATION_TEST_STORE_READ" Language="ru_RU">
+			<Text>Чтение хранилища</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_AUTOMATION_TEST_STORE_CLEAR" Language="ru_RU">
+			<Text>Очистка хранилища</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_AUTOMATION_TEST_STORE_WRITTEN" Language="ru_RU">
+			<Text>Запись в хранилище между сохранениями: {1_Detail}</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_AUTOMATION_TEST_STORE_WRITE_SUMMARY" Language="ru_RU">
+			<Text>Хранилище между сохранениями: записано {1_Key} (подробности — в «Сообщениях» выше)</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_AUTOMATION_TEST_STORE_HEADER" Language="ru_RU">
+			<Text>Хранилище между сохранениями (ключей: {1_Count}):</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_AUTOMATION_TEST_STORE_SUMMARY" Language="ru_RU">
+			<Text>Хранилище между сохранениями: действие «{1_Action}» выполнено, ключей {2_Count} (подробности — в «Сообщениях» выше)</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_AUTOMATION_TEST_MODGROUP_LABEL" Language="ru_RU">
+			<Text>Хранилище групп модов (данные попадают в имена загрузки модов; размер до 1 МБ; после теста нажмите «Очистить»)</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_AUTOMATION_TEST_MODGROUP_SELFTEST" Language="ru_RU">
+			<Text>Самотест ModGroup</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_AUTOMATION_TEST_MODGROUP_WRITE" Language="ru_RU">
+			<Text>Запись ModGroup</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_AUTOMATION_TEST_MODGROUP_READ" Language="ru_RU">
+			<Text>Чтение ModGroup</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_AUTOMATION_TEST_MODGROUP_INFO" Language="ru_RU">
+			<Text>Информация ModGroup</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_AUTOMATION_TEST_MODGROUP_CLEAR" Language="ru_RU">
+			<Text>Очистка ModGroup</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_AUTOMATION_TEST_MODGROUP_INFO_TEXT" Language="ru_RU">
+			<Text>Хранилище групп модов: {1_Detail}</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_AUTOMATION_TEST_MODGROUP_INFO_SUMMARY" Language="ru_RU">
+			<Text>Хранилище групп модов: доступно={1_Available} групп={2_Total} наших={3_Ours}</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_AUTOMATION_TEST_MODGROUP_SELFTEST_TEXT" Language="ru_RU">
+			<Text>Самотест групп модов: {1_Detail}</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_AUTOMATION_TEST_MODGROUP_SELFTEST_SUMMARY" Language="ru_RU">
+			<Text>Самотест групп модов: наибольший обмен {1_Size} Б, очищено групп: {2_Count}</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_AUTOMATION_TEST_MODGROUP_WRITTEN" Language="ru_RU">
+			<Text>Запись в хранилище групп модов: {1_Detail}</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_AUTOMATION_TEST_MODGROUP_WRITE_SUMMARY" Language="ru_RU">
+			<Text>Хранилище групп модов: записано {1_Size} в {2_Chunks} групп; значение сохранено для проверки после перезапуска</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_AUTOMATION_TEST_MODGROUP_READ_TEXT" Language="ru_RU">
+			<Text>Чтение хранилища групп модов: {1_Detail}</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_AUTOMATION_TEST_MODGROUP_READ_SUMMARY" Language="ru_RU">
+			<Text>Хранилище групп модов: прочитано {1_Key} -&gt; {2_Bytes} байт</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_AUTOMATION_TEST_MODGROUP_CLEARED" Language="ru_RU">
+			<Text>Очистка хранилища групп модов: {1_Detail}</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_AUTOMATION_TEST_MODGROUP_CLEAR_SUMMARY" Language="ru_RU">
+			<Text>Хранилище групп модов: очищено групп: {1_Count}</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_AUTOMATION_TEST_MODGROUP_NAMECEIL" Language="ru_RU">
+			<Text>Предел имени</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_AUTOMATION_TEST_MODGROUP_NAMECEIL_TEXT" Language="ru_RU">
+			<Text>Предел имени группы модов: {1_Detail}</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_AUTOMATION_TEST_MODGROUP_NAMECEIL_SUMMARY" Language="ru_RU">
+			<Text>Предел имени: наибольшее допустимое имя {1_NameLen} символов (данные {2_Payload} Б)</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_AUTOMATION_TEST_MODGROUP_CHUNK_LABEL" Language="ru_RU">
+			<Text>Фрагмент {1_Size}</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_AUTOMATION_TEST_NAMESTORE_SELFTEST" Language="ru_RU">
+			<Text>Самотест хранилища настроек</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_AUTOMATION_TEST_NAMESTORE_SELFTEST_TEXT" Language="ru_RU">
+			<Text>Самотест хранилища настроек: {1_Detail}</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_AUTOMATION_TEST_NAMESTORE_SELFTEST_SUMMARY" Language="ru_RU">
+			<Text>Самотест хранилища настроек: {1_Result} (наибольший обмен по каналам)</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_AUTOMATION_TEST_NAMESTORE_READ" Language="ru_RU">
+			<Text>Чтение хранилища настроек</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_AUTOMATION_TEST_NAMESTORE_READ_TEXT" Language="ru_RU">
+			<Text>Чтение хранилища настроек: {1_Detail}</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_AUTOMATION_TEST_NAMESTORE_READ_SUMMARY" Language="ru_RU">
+			<Text>Чтение хранилища настроек (используйте после перезапуска приложения, чтобы проверить сохранность)</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_AUTOMATION_TEST_NAMESTORE_CLEAR" Language="ru_RU">
+			<Text>Очистка хранилища настроек</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_AUTOMATION_TEST_NAMESTORE_CLEARED_TEXT" Language="ru_RU">
+			<Text>Очистка хранилища настроек: {1_Detail}</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_AUTOMATION_TEST_NAMESTORE_CLEAR_SUMMARY" Language="ru_RU">
+			<Text>Хранилище настроек: пробные ключи очищены</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_AUTOMATION_TEST_DATA_LABEL" Language="ru_RU">
+			<Text>Протокол данных (реестр / аудит / GC; для удаления постоянных данных нужно два нажатия)</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_AUTOMATION_TEST_DATA_REGISTERED" Language="ru_RU">
+			<Text>Реестр</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_AUTOMATION_TEST_DATA_AUDIT" Language="ru_RU">
+			<Text>Аудит</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_AUTOMATION_TEST_DATA_GC" Language="ru_RU">
+			<Text>GC</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_AUTOMATION_TEST_DATA_PURGE" Language="ru_RU">
+			<Text>Удалить постоянные</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_AUTOMATION_TEST_DATA_REGISTERED_TEXT" Language="ru_RU">
+			<Text>Реестр данных: {1_Detail}</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_AUTOMATION_TEST_DATA_REGISTERED_SUMMARY" Language="ru_RU">
+			<Text>Реестр данных: наборов {1_Count}</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_AUTOMATION_TEST_DATA_AUDIT_TEXT" Language="ru_RU">
+			<Text>Аудит данных: {1_Detail}</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_AUTOMATION_TEST_DATA_AUDIT_SUMMARY" Language="ru_RU">
+			<Text>Аудит данных: зарегистрировано {1_Count}, на диске {2_Present}, сирот {3_Orphans}</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_AUTOMATION_TEST_DATA_GC_TEXT" Language="ru_RU">
+			<Text>Сборка мусора данных: {1_Detail}</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_AUTOMATION_TEST_DATA_GC_SUMMARY" Language="ru_RU">
+			<Text>Сборка мусора данных: удалено просроченных {1_Removed}, частей-сирот {2_Orphans}</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_AUTOMATION_TEST_DATA_PURGE_ARMED" Language="ru_RU">
+			<Text>Удаление постоянных: заряжено — нажмите ещё раз в течение 5 секунд для подтверждения</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_AUTOMATION_TEST_DATA_PURGED_TEXT" Language="ru_RU">
+			<Text>Удаление постоянных: {1_Detail}</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_AUTOMATION_TEST_DATA_PURGED_SUMMARY" Language="ru_RU">
+			<Text>Удаление постоянных: удалено наборов {1_Count}</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_AUTOMATION_TEST_NAMESTORE_LABEL" Language="ru_RU">
+			<Text>Хранилище настроек (невидимо игроку) — проверено: useroption отклоняется движком, userconfig не сохраняет значения</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_AUTOMATION_TEST_NAMESTORE_WRITE" Language="ru_RU">
+			<Text>Запись хранилища настроек (сохранить)</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_AUTOMATION_TEST_NAMESTORE_WRITTEN_TEXT" Language="ru_RU">
+			<Text>Запись хранилища настроек: {1_Detail}</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_AUTOMATION_TEST_NAMESTORE_WRITTEN_SUMMARY" Language="ru_RU">
+			<Text>Хранилище настроек: записано {1_Size} в {2_Channels} каналов; значение сохранено для проверки после перезапуска</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_AUTOMATION_TEST_VIEW_PLAYER" Language="ru_RU">
+			<Text>Просмотреть выбранного игрока</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_AUTOMATION_TEST_VIEW_OBSERVER" Language="ru_RU">
+			<Text>Режим наблюдателя</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_AUTOMATION_TEST_STOP_VIEW" Language="ru_RU">
+			<Text>Остановить / вернуться к локальному</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_AUTOMATION_TEST_LOOK_CAPITAL" Language="ru_RU">
+			<Text>Посмотреть на выбранную столицу</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_AUTOMATION_TEST_ASSET_TYPE" Language="ru_RU">
+			<Text>Тип ресурса</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_AUTOMATION_TEST_ASSET_INDEX" Language="ru_RU">
+			<Text>Ресурс</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_AUTOMATION_TEST_ASSET_PLACE" Language="ru_RU">
+			<Text>Разместить ресурс (выберите клетку)</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_AUTOMATION_TEST_ASSET_CLEAR_PLOT" Language="ru_RU">
+			<Text>Очистить ресурс на клетке</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_AUTOMATION_TEST_ASSET_CLEAR_ALL" Language="ru_RU">
+			<Text>Очистить все ресурсы</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_AUTOMATION_TEST_MESSAGES" Language="ru_RU">
+			<Text>Сообщения</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_AUTOMATION_TEST_OBSERVER" Language="ru_RU">
+			<Text>Наблюдатель</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_AUTOMATION_TEST_NO_PLAYER" Language="ru_RU">
+			<Text>Нет игрока</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_AUTOMATION_TEST_RESULT" Language="ru_RU">
+			<Text>{1_Test}: {2_Result}</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_AUTOMATION_TEST_ERROR" Language="ru_RU">
+			<Text>{1_Test} ошибка: {2_Error}</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_AUTOMATION_TEST_NO_OPTIONS" Language="ru_RU">
+			<Text>Для этого селектора нет доступных вариантов.</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_AUTOMATION_TEST_NO_PLOT" Language="ru_RU">
+			<Text>Вокруг якоря не найдено подходящей клетки.</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_AUTOMATION_TEST_PICK_PLOT" Language="ru_RU">
+			<Text>{1_Action}: выберите подсвеченную клетку на карте.</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_AUTOMATION_TEST_PICK_ASSET_PLOT" Language="ru_RU">
+			<Text>Выберите клетку для размещения выбранного ресурса.</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_AUTOMATION_TEST_PICK_CLEAR_PLOT" Language="ru_RU">
+			<Text>Выберите клетку для очистки ресурсов.</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_AUTOMATION_TEST_ASSET_NOT_SELECTED" Language="ru_RU">
+			<Text>Выберите ресурс...</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_AUTOMATION_TEST_ASSET_CITY" Language="ru_RU">
+			<Text>Город</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_AUTOMATION_TEST_ASSET_DISTRICT_BASE" Language="ru_RU">
+			<Text>Основа района</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_AUTOMATION_TEST_ASSET_BUILDING" Language="ru_RU">
+			<Text>Здание</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_AUTOMATION_TEST_ASSET_LANDMARK" Language="ru_RU">
+			<Text>Достопримечательность</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_AUTOMATION_TEST_ASSET_UNIT" Language="ru_RU">
+			<Text>Юнит</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_AUTOMATION_TEST_READY" Language="ru_RU">
+			<Text>Панель тестирования автоматизации готова.</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_CREATEGAME_MAP_TARGET" Language="ru_RU">
+			<Text>Целевая карта</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_CREATEGAME_MAP_NOT_SELECTED" Language="ru_RU">
+			<Text>Целевая карта не выбрана</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_CREATEGAME_PROBE" Language="ru_RU">
+			<Text>Проверить API создания игры</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_CREATEGAME_APPLY_MAP" Language="ru_RU">
+			<Text>Применить конфигурацию карты</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_CREATEGAME_ARM_MARKER" Language="ru_RU">
+			<Text>Зарядить маркер</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_CREATEGAME_SAVE" Language="ru_RU">
+			<Text>Сохранить перед переключением</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_CREATEGAME_RESTART" Language="ru_RU">
+			<Text>RestartGame</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_CREATEGAME_EXIT" Language="ru_RU">
+			<Text>Выйти в главное меню</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_CREATEGAME_PROBE_HEADER" Language="ru_RU">
+			<Text>Проверка создания игры в игре (префикс лога [ModMiscTool][CreateGame]):</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_CREATEGAME_PROBE_SHORT" Language="ru_RU">
+			<Text>Проверка создания игры завершена</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_CREATEGAME_PROBE_MAPS" Language="ru_RU">
+			<Text>скрипты карт: {1_Count} (источник: {2_Source})</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_CREATEGAME_APPLY_OK" Language="ru_RU">
+			<Text>Конфигурация карты применена (чтение совпадает с целью)</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_CREATEGAME_APPLY_FAIL" Language="ru_RU">
+			<Text>Конфигурация карты НЕ применена (чтение всё ещё старое значение)</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_CREATEGAME_APPLY_SHORT_OK" Language="ru_RU">
+			<Text>конфигурация карты применена</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_CREATEGAME_APPLY_SHORT_FAIL" Language="ru_RU">
+			<Text>конфигурация карты не удалась</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_CREATEGAME_ARMED" Language="ru_RU">
+			<Text>Маркер записан (снимок перед переключением):</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_CREATEGAME_ARMED_SHORT" Language="ru_RU">
+			<Text>маркер записан</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_CREATEGAME_SAVE_ISSUED" Language="ru_RU">
+			<Text>Запрошено сохранение: {1_Name} (ожидание SaveComplete)</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_CREATEGAME_SAVE_ISSUED_SHORT" Language="ru_RU">
+			<Text>сохранение запрошено</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_CREATEGAME_SAVE_DONE" Language="ru_RU">
+			<Text>SaveComplete: {1_Result}</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_CREATEGAME_SAVE_DONE_SHORT" Language="ru_RU">
+			<Text>сохранение завершено</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_CREATEGAME_CALLING" Language="ru_RU">
+			<Text>Вызов {1_Action} ... (если лог здесь обрывается, движок умер)</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_CREATEGAME_CALLING_SHORT" Language="ru_RU">
+			<Text>вызов {1_Action}</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_CREATEGAME_RETURNED" Language="ru_RU">
+			<Text>{1_Action} вернулся (без сбоя):</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_CREATEGAME_RETURNED_SHORT" Language="ru_RU">
+			<Text>{1_Action} вернулся</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_AUTOMATION_TEST_TAB_MAIN" Language="ru_RU">
+			<Text>Основное</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_AUTOMATION_TEST_TAB_TIMELINE" Language="ru_RU">
+			<Text>Перезапуск и таймлайн</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_SAVEPANEL_TITLE" Language="ru_RU">
+			<Text>Сохранения и переключение карт</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_SAVEPANEL_TOOLTIP" Language="ru_RU">
+			<Text>Открыть панель дерева сохранений / переключения карт</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_SAVEPANEL_SAVE" Language="ru_RU">
+			<Text>Сохранить</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_SAVEPANEL_CONFIRM_AGAIN" Language="ru_RU">
+			<Text>Нажмите ещё раз для подтверждения</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_SAVEPANEL_SWITCH_SELECTED" Language="ru_RU">
+			<Text>Перезапустить как новую ветку</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_SAVEPANEL_SWITCH_NEED_SELECTION" Language="ru_RU">
+			<Text>Сначала выберите сохранение ветки в списке</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_SAVEPANEL_SWITCH_CONFIRM" Language="ru_RU">
+			<Text>Перезапустить как новую ветку? Игра перезапустится сейчас, а новая игра будет записана как ветка этой линии. Сохранение автоматически не записывается.</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_SAVEPANEL_SWITCH_REFUSED" Language="ru_RU">
+			<Text>Нельзя переключиться: {1_Reason}</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_SAVEPANEL_SWITCH_SENT" Language="ru_RU">
+			<Text>Broadcast переключения карты отправлен — игра перезапускается сейчас (сохранение не записывалось).</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_SAVEPANEL_SWITCH_CACHED" Language="ru_RU">
+			<Text>Информация о ветке закэширована (переключение ещё не выполнено). Нажмите «Перезапустить как новую ветку» ещё раз — это нажатие только перезапускает.</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_SAVEPANEL_SWITCH_CACHED_DETAIL" Language="ru_RU">
+			<Text>Почему два нажатия: запись broadcast ветки — это запись в базу движка, а перезапуск сразу после неё однажды уронил движок (luaL_unref при завершении). Пауза даёт записи осесть.</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_SAVEPANEL_SWITCH_SENT_DETAIL" Language="ru_RU">
+			<Text>Новая игра при загрузке определит себя как ветку этой линии. Broadcast живёт 5 минут и удаляется сразу после чтения.</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_SAVEPANEL_THIS_MAINLINE" Language="ru_RU">
+			<Text>Это сохранение -&gt; основная линия</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_SAVEPANEL_THIS_BRANCH" Language="ru_RU">
+			<Text>Это сохранение -&gt; ветка</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_SAVEPANEL_SEL_MAINLINE" Language="ru_RU">
+			<Text>Выбрано -&gt; О</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_SAVEPANEL_SEL_BRANCH" Language="ru_RU">
+			<Text>Выбрано -&gt; В</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_SAVEPANEL_RELATION_SET" Language="ru_RU">
+			<Text>Связь обновлена ({1_Scope}) — дерево перерисовывается; это сохранение несёт её в своём имени со следующего сохранения.</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_SAVEPANEL_BROADCAST" Language="ru_RU">
+			<Text>Broadcast ветки от {1_Parent} ({2_Age} с назад)</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_SAVEPANEL_SWITCH" Language="ru_RU">
+			<Text>Переключить карту (авто)</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_SAVEPANEL_REFRESH" Language="ru_RU">
+			<Text>Обновить список</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_SAVEPANEL_INFO" Language="ru_RU">
+			<Text>Эта игра: {1_Current}   |   Источник: {2_Incoming}   |   Логический ход: {3_Logical}   |   Голова основной линии: {4_Head}   |   Ожидает: {5_Pending}</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_SAVEPANEL_NONE" Language="ru_RU">
+			<Text>нет</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_SAVEPANEL_CURRENT" Language="ru_RU">
+			<Text>эта игра</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_SAVEPANEL_ORPHAN" Language="ru_RU">
+			<Text>родителя нет в списке</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_SAVEPANEL_EMPTY" Language="ru_RU">
+			<Text>(управляемых сохранений пока нет)</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_SAVEPANEL_SCANNED" Language="ru_RU">
+			<Text>Найдено управляемых сохранений: {1_Count}</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_SAVEPANEL_READY" Language="ru_RU">
+			<Text>Панель сохранений готова.</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_SAVEPANEL_SAVING" Language="ru_RU">
+			<Text>Сохранение...</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_SAVEPANEL_SAVING_DETAIL" Language="ru_RU">
+			<Text>Ожидание загрузки хранилища между сохранениями, затем запись сохранения. Результат появится при получении SaveComplete.</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_SAVEPANEL_SAVED" Language="ru_RU">
+			<Text>Сохранён узел {1_Id} ({2_State})</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_SAVEPANEL_SAVED_ON_DISK" Language="ru_RU">
+			<Text>подтверждён на диске</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_SAVEPANEL_SAVED_UNCONFIRMED" Language="ru_RU">
+			<Text>ещё не виден в списке</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_SAVEPANEL_NODE_DETAIL" Language="ru_RU">
+			<Text>узел {1_Id} | родитель {2_Parent} | тип {3_Kind} | ход движка {4_Turn} | логический ход {5_Logical} | карта {6_Map} | метка {7_Stamp}
+{8_Raw}</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_SAVEPANEL_ERROR" Language="ru_RU">
+			<Text>{1_Action} не удалось: {2_Detail}</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_SAVEPANEL_SAVED_ACKED" Language="ru_RU">
+			<Text>SaveComplete получен, проверяем список...</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_SAVEPANEL_RESTART_IGNORED" Language="ru_RU">
+			<Text>Движок НЕ перезапустился — игра всё ещё работает.</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_SAVEPANEL_RESTART_IGNORED_DETAIL" Language="ru_RU">
+			<Text>Network.RestartGame() вернулся, но этот экран всё ещё жив, значит движок отказал в перезапуске в этом состоянии. Нажатие любой кнопки сообщит об этом снова; строка лога перечисляет anyMultiplayer / worldBuilder / savedGame.</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_SAVEPANEL_EVENT_PLAYER" Language="ru_RU">
+			<Text>Целевой игрок</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_SAVEPANEL_EVENT_PLAYER_NONE" Language="ru_RU">
+			<Text>игрок не выбран</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_SAVEPANEL_EVENT_TYPE" Language="ru_RU">
+			<Text>Тип события</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_SAVEPANEL_EVENT_DETAIL" Language="ru_RU">
+			<Text>Содержимое</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_SAVEPANEL_EVENT_DETAIL_NONE" Language="ru_RU">
+			<Text>содержимое не выбрано</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_SAVEPANEL_EVENT_TURN" Language="ru_RU">
+			<Text>Ход принятия</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_SAVEPANEL_EVENT_TURN_NONE" Language="ru_RU">
+			<Text>ход принятия не выбран</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_SAVEPANEL_TURN_NOW" Language="ru_RU">
+			<Text>логический ход {1_Turn}</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_SAVEPANEL_TURN_PLUS" Language="ru_RU">
+			<Text>логический ход {1_Turn} (+{2_Offset})</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_SAVEPANEL_EVENT_SEND" Language="ru_RU">
+			<Text>Отправить событие выбранному</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_SAVEPANEL_LOAD" Language="ru_RU">
+			<Text>Загрузить выбранное</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_SAVEPANEL_NO_SELECTION" Language="ru_RU">
+			<Text>Сохранение не выбрано</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_SAVEPANEL_NO_SELECTION_DETAIL" Language="ru_RU">
+			<Text>Сначала нажмите на сохранение в дереве выше — и «отправить событие», и «загрузить» действуют на выбранное.</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_SAVEPANEL_SELECTED" Language="ru_RU">
+			<Text>Выбрано: {1_Id} (логический ход {2_Logical})</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_SAVEPANEL_SELECTED_MARK" Language="ru_RU">
+			<Text>выбрано</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_SAVEPANEL_LOGICAL" Language="ru_RU">
+			<Text>{1_Logical} (движок {2_Engine}, +{3_Offset})</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_SAVEPANEL_EVENT_SENT" Language="ru_RU">
+			<Text>Событие отправлено {1_Target}: {2_Type} {3_Detail}, ход принятия {4_Turn}</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_SAVEPANEL_EVENT_SENT_DETAIL" Language="ru_RU">
+			<Text>ключ почтового ящика {1_Key}</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_SAVEPANEL_LOAD_CONFIRM" Language="ru_RU">
+			<Text>Загрузить это сохранение? Текущая игра будет заменена.
+{1_Name}</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_SAVEPANEL_NO_OPTIONS" Language="ru_RU">
+			<Text>Нет доступных вариантов</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_TURNEVENT_TYPE_GOLD" Language="ru_RU">
+			<Text>Золото</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_TURNEVENT_TYPE_UNIT" Language="ru_RU">
+			<Text>Юнит</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_TURNEVENT_TYPE_RESOURCE" Language="ru_RU">
+			<Text>Ресурс</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_TURNEVENT_TITLE" Language="ru_RU">
+			<Text>Событие между сохранениями</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_TURNEVENT_GOLD" Language="ru_RU">
+			<Text>От {1_From}: {3_Amount} золота (обработчик {4_Result})</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_TURNEVENT_UNIT" Language="ru_RU">
+			<Text>От {1_From}: юнит {2_Detail} (обработчик {4_Result})</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_TURNEVENT_RESOURCE" Language="ru_RU">
+			<Text>От {1_From}: ресурс {2_Detail} x{3_Amount} (обработчик {4_Result})</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_TURNEVENT_OVERDUE_SUFFIX" Language="ru_RU">
+			<Text>  (просрочено — доставлено в этом ходу)</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_TURNEVENT_UNKNOWN" Language="ru_RU">
+			<Text>От {1_From}: {2_Detail}</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_SAVEPANEL_INTAKE" Language="ru_RU">
+			<Text>Забрать события</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_SAVEPANEL_INTAKE_DONE" Language="ru_RU">
+			<Text>События получены: {1_Count} ({2_How})</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_SAVEPANEL_INTAKE_DETAIL" Language="ru_RU">
+			<Text>События, адресованные узлу сохранения этой игры, перемещаются в список событий ходов; они срабатывают в свой ход принятия (просроченные — на следующем ходу).</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_SAVEPANEL_DELETE" Language="ru_RU">
+			<Text>Удалить выбранное</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_SAVEPANEL_DELETE_CONFIRM" Language="ru_RU">
+			<Text>Удалить это сохранение? {1_Name}</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_SAVEPANEL_DELETED" Language="ru_RU">
+			<Text>Удалено {1_Name}</Text>
+		</Replace>
+	</LocalizedText>
+</GameData>

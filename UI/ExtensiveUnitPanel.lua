@@ -1,4 +1,4 @@
--- ExtensiveUnitPanel: 扩展建造操作面板
+-- ExtensiveUnitPanel: 单位扩展操作面板
 -- 在 StandardActionsStack 添加按钮，点击后打开最大 1200x900（按屏幕自适应）的面板
 -- BuildRange > 0 时在地图显示选择按钮（Norn 模式）
 -- 2列网格布局，每行放置2个entry
@@ -801,12 +801,22 @@ end
 -- ===========================================================================
 
 function RegisterCustomButton(icon, name, description, callback, visibleFunc)
+    m_RegisteredCustomButtons = m_RegisteredCustomButtons or {}
     table.insert(m_RegisteredCustomButtons, {
         icon = icon, name = name, description = description, callback = callback,
         visibleFunc = visibleFunc,
     })
     if m_bIsPanelOpen then RefreshPanelContent() end
 end
+
+-- 立即暴露给其它 UI 脚本：避免它们在本 mod Initialize 之前拿到上一局上下文
+-- 残留的旧函数对象，调用时报 “attempt to index a nil value”。
+if not ExposedMembers.ModMiscToolUI then
+    ExposedMembers.ModMiscToolUI = {}
+end
+ExposedMembers.ModMiscToolUI.RegisterExtensiveUnitCustomButton = RegisterCustomButton
+ExposedMembers.ModMiscToolUI.OpenExtensiveUnitPanel = OpenPanel
+ExposedMembers.ModMiscToolUI.CloseExtensiveUnitPanel = ClosePanel
 
 -- Phone-only: resize the unit-panel entry button in its owning UI context.
 -- ButtonAdjust_PHONE.lua calls this through ExposedMembers so the control
@@ -845,3 +855,9 @@ function ResizeExtensiveUnitButtonForPhone()
 
     return true
 end
+
+-- 同样把手机端调整函数在加载期暴露，避免 Initialize 之前调用到上一局残留对象。
+if not ExposedMembers.ModMiscToolUI then
+    ExposedMembers.ModMiscToolUI = {}
+end
+ExposedMembers.ModMiscToolUI.ResizeExtensiveUnitButtonForPhone = ResizeExtensiveUnitButtonForPhone

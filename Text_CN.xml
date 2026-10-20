@@ -1,9 +1,12 @@
-﻿<?xml version="1.0" encoding="utf-8"?>
+<?xml version="1.0" encoding="utf-8"?>
 <GameData>
 	<LocalizedText>
 		<!-- LeftSideBar -->
 		<Replace Tag="LOC_MODMISC_MOD_DESCRIPTION" Language="zh_Hans_CN">
 			<Text>存档关系树与换图：主线/分支档收在一棵树里，一键重开为新分支，并可在存档之间发送按回合触发的事件。「存档与换图」面板不再占用左侧栏入口，改由需要的 mod 通过接口调用。</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_RELOAD_PROMPT" Language="zh_Hans_CN">
+			<Text>功能加载完成，需要重新保存并读取存档。点击「确认」自动进行。</Text>
 		</Replace>
 		<Replace Tag="LOC_MODMISC_TOGGLE_SIDEBAR" Language="zh_Hans_CN">
 			<Text>展开工具栏</Text>
@@ -98,7 +101,7 @@
 
 		<!-- ExtensiveUnitPanel -->
 		<Replace Tag="LOC_EXTENSIVEUNIT_PANEL_TITLE" Language="zh_Hans_CN">
-			<Text>扩展单位建造</Text>
+			<Text>单位扩展操作面板</Text>
 		</Replace>
 		<Replace Tag="LOC_EXTENSIVEUNIT_NO_UNIT" Language="zh_Hans_CN">
 			<Text>未选择单位</Text>
@@ -107,7 +110,7 @@
 			<Text>无可用的建造方案</Text>
 		</Replace>
 		<Replace Tag="LOC_EXTENSIVEUNIT_TOGGLE_TOOLTIP" Language="zh_Hans_CN">
-			<Text>扩展单位建造菜单</Text>
+			<Text>单位扩展操作菜单</Text>
 		</Replace>
 		<Replace Tag="LOC_EXTENSIVEUNIT_CASE_NAME" Language="zh_Hans_CN">
 			<Text>建造方案</Text>
@@ -233,12 +236,7 @@
 			<Text>玩家尚未就绪，请稍后再试。</Text>
 		</Replace>
 		<!-- 创建游戏界面的选项 -->
-		<Replace Tag="LOC_MODMISC_OPTION_DUPLICATE_CITY_STATES_NAME" Language="zh_Hans_CN">
-			<Text>复制城邦以提供更多自定义玩家槽位</Text>
-		</Replace>
-		<Replace Tag="LOC_MODMISC_OPTION_DUPLICATE_CITY_STATES_DESC" Language="zh_Hans_CN">
-			<Text>把数据库里的每个城邦各复制一份（名称、类别、加成完全相同），让引擎能创建多得多的城邦玩家；多出来的城邦会留在地图外，作为可供其它 mod 使用的玩家槽位。关闭后数据库保持原版状态。</Text>
-		</Replace>
+
 		<Replace Tag="LOC_MODMISC_WB_TEST_GHOST_RECYCLE_BLOCKED" Language="zh_Hans_CN">
 			<Text>无法把玩家 {1_PlayerID} 回收成幽灵：它已经有城市，而移除全部城市会让玩家死亡（开拓者也救不回来）。</Text>
 		</Replace>
@@ -272,6 +270,24 @@
 		<Replace Tag="LOC_MODMISC_WB_TEST_GHOST" Language="zh_Hans_CN">
 			<Text>幽灵</Text>
 		</Replace>
+		<Replace Tag="LOC_MODMISC_WB_TEST_GHOST_KIND_MAJOR" Language="zh_Hans_CN">
+			<Text>主流幽灵</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_WB_TEST_GHOST_KIND_CITY_STATE" Language="zh_Hans_CN">
+			<Text>城邦幽灵</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_WB_TEST_GHOST_LINE" Language="zh_Hans_CN">
+			<Text>{1_Kind}：池 {2_Pool}（可用 {3_Free}、已用 {4_Used}）· 申报 {5_Plan}</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_WB_TEST_GHOST_PLAN_NONE" Language="zh_Hans_CN">
+			<Text>无（没有 mod 申报）</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_WB_TEST_GHOST_PLAN_UNLIMITED" Language="zh_Hans_CN">
+			<Text>不限额（老档）</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_WB_TEST_GHOST_CHOICE" Language="zh_Hans_CN">
+			<Text>玩家选择：主流 {1_Major} / 城邦 {2_CityState}</Text>
+		</Replace>
 		<Replace Tag="LOC_MODMISC_WB_TEST_NO_GHOST" Language="zh_Hans_CN">
 			<Text>没有可用的幽灵玩家（请在本 mod 启用的情况下开新局）。</Text>
 		</Replace>
@@ -289,6 +305,33 @@
 		</Replace>
 		<Replace Tag="LOC_MODMISC_WB_TEST_CONVERT_CITY_STATE" Language="zh_Hans_CN">
 			<Text>城邦化选中玩家</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_WB_TEST_CONVERT_ALL_CITY_STATE" Language="zh_Hans_CN">
+			<Text>主流幽灵全部城邦化</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_WB_TEST_CONVERT_ALL_RESULT" Language="zh_Hans_CN">
+			<Text>批量城邦化：成功 {1_Converted}、失败 {2_Failed}、跳过 {3_Skipped}；身份改动下一回合生效（无需读档）。</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_WB_TEST_RESTORE_MET_GHOSTS" Language="zh_Hans_CN">
+			<Text>见面的幽灵转回主流</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_WB_TEST_RESTORE_MET_GHOSTS_RESULT" Language="zh_Hans_CN">
+			<Text>见面幽灵转回主流：恢复 {1_Restored}、本来就是主流 {2_Skipped}、失败 {3_Failed}。（改完请按流程存档并重新读取）</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_WB_TEST_REPAIR_CITY_STATE" Language="zh_Hans_CN">
+			<Text>修复城邦身份</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_WB_TEST_REPAIR_CITY_STATE_RESULT" Language="zh_Hans_CN">
+			<Text>城邦身份自检：合规 {1_Ok}、修复 {2_Repaired}、失败 {3_Failed}。（官方城邦面板要求“文明级 + 小文明原型领袖”）</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_WB_TEST_DIPLO_GHOST_CHECK" Language="zh_Hans_CN">
+			<Text>外交压制自检</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_WB_TEST_DIPLO_GHOST_CHECK_RESULT" Language="zh_Hans_CN">
+			<Text>幽灵压制自检：主流 {1_Major} 个、城邦 {2_CityState} 个，其中仍被压制 {3_Suppressed} 个。</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_WB_TEST_DIPLO_GHOST_CHECK_LINE" Language="zh_Hans_CN">
+			<Text>#{1_ID}【{2_Pool}】压制={3_Suppressed} 可用={4_Available} 有城市={5_HasCity}</Text>
 		</Replace>
 		<Replace Tag="LOC_MODMISC_WB_TEST_PLAYER_STATS" Language="zh_Hans_CN">
 			<Text>玩家槽位统计</Text>

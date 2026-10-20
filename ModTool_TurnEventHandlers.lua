@@ -128,9 +128,21 @@ local function HandleUnit(event)
 
     local playerID = player:GetID()
     local x, y = capital:GetX(), capital:GetY()
-    local ok, err = pcall(UnitManager.InitUnit, playerID, tostring(unitType), x, y)
-    if not ok then return "failed", tostring(err) end
+    -- 跨地图搬运的完整单位状态（晋升 / 编队 / 伤害 / 经验）由发件方放在大载荷里。
+    -- 解析不出来（普通 UNIT 事件 / 别的 mod 的载荷）就当没有，行为与以前一致。
+    local unitState = nil
+    if event.PayloadText ~= nil and tostring(event.PayloadText) ~= ""
+        and DecodeUnitState ~= nil then
+        local decodedOk, decoded = pcall(DecodeUnitState, event.PayloadText)
+        if decodedOk then unitState = decoded end
+    end
+    local ok, newUnit = pcall(UnitManager.InitUnit, playerID, tostring(unitType), x, y)
+    if not ok then return "failed", tostring(newUnit) end
+    if newUnit ~= nil and unitState ~= nil and ApplyUnitState ~= nil then
+        pcall(ApplyUnitState, newUnit, unitState)
+    end
     return "handled", "capital@" .. tostring(x) .. "," .. tostring(y) .. "/player" .. tostring(playerID)
+        .. (unitState ~= nil and "/state" or "")
 end
 
 local function HandleResource(event)

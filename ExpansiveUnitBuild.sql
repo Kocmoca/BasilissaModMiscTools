@@ -1,6 +1,6 @@
 -- =============================================================================
--- Basilissa Mod Misc Tools - 扩展单位建造系统数据库架构
--- Extended Unit Build System Database Schema
+-- Basilissa Mod Misc Tools - 单位扩展操作系统数据库架构
+-- Unit Extended Operations System Database Schema
 -- 参照 ExtensiveWMD/WMD_Weapon.sql 的规范（单引号列名、CHECK、索引、外键动作）
 -- =============================================================================
 

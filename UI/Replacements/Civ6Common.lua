@@ -867,24 +867,131 @@ end
 
 -- 构建标记：前端与 gameplay 是不同 context，各自带一份字面量
 -- A…E 见历史；F：存储探针；G：封装成模块；H：键值清单+遗留档清理；I：暴露接口；J：修外来查询污染
--- （ModTool.lua 那份 gameplay 的标记未动）
-local MODMISC_HOOK_BUILD_TAG = "2026-10-05-A"
+-- K：城邦幽灵也要 mod 申报（申报表/闸门/池计划）；L：高级选项改开关后立即重算申报
+-- M：撤高级选项；**本工具只接受申报**，数量由声明方（Vassal System）给，新增动态申报接口
+-- RELEASE：2026-10-15 发布态（调试面板侧栏入口关闭；城邦面板加固补丁 + 界面自愈随发）
+local MODMISC_HOOK_BUILD_TAG = "2026-10-15-RELEASE"
 local GHOST_CITY_STATE_CUSTOM_DATA_KEY = "ModMiscToolCityStateCount"
 local GHOST_MAJOR_PLAYER_CUSTOM_DATA_KEY = "ModMiscToolMajorPlayerCount"
 
--- 幽灵池的槽位预算：MAX_PLAYERS(64) 减去野蛮人与自由城市两个固定槽位。
--- 主要文明和城邦抢的是同一批槽位，所以给城邦预留 GHOST_RESERVED_MINOR_SLOTS 个，
--- 剩下的才给主要文明 —— 免得“主要文明拉满”把城邦挤没（城邦数量会被挤到 0）。
--- 两个常量都可以按实测结果调整。
-local GHOST_SLOT_BUDGET = 62
-local GHOST_RESERVED_MINOR_SLOTS = 36
+-- ===========================================================================
+-- 【2026-10-15 授权者】本工具**只负责接受申报**，幽灵数量由其它 mod 决定
+--
+-- 申报渠道（本工具自己**不申报任何数量**，只汇总声明方的值）：
+--   ① 数据通道（默认）：声明方在自己的 FrontEndActions → UpdateDatabase 里往
+--      ModMiscGhostDemand 表插行（表由本框架建；范例 Vassal System/Vassal_GhostDemand.sql）。
+--   ② 动态通道（ExposedMembers，给能在前端跑代码的 mod）：RegisterGhostDemand /
+--      RegisterCityStateGhostDemand（一次性）、RegisterGhostDemandProvider（每次刷新调一次，
+--      返回 主流数, 城邦数；契约：必须便宜）。
+--   没人申报 ⇒ 该类幽灵为 0（这是硬规则，见下方“幽灵玩家需求申报”一节）。
+--
+-- 数量策略属于**声明方**：默认 Vassal System 按地图尺寸声明 4..24（见 §2.8b），
+-- 要改数量改那边的 SQL，不用动本文件。
+-- 本工具只做两件事：汇总申报值 + 用两个既有闸门夹住：
+--   * 幽灵总预算：该尺寸能多要多少城邦槽位（GHOST_CITY_STATE_BY_MAP_SIZE）；
+--   * 槽位余量：MaxPlayers − 玩家自选主流 − 玩家自选城邦 − 城邦幽灵（防开局被挤爆）。
+-- ⚠️ 申报方别把数量开太大：引擎在地图生成阶段要给这些玩家找出生点，塞不下会开局失败。
+-- ===========================================================================
 
--- 【策略】扩容后优先填充城邦：不再抬高主要文明数量。
--- 原因：主要文明幽灵会参与外交，且城邦化改造（改领袖/文明）本身有风险；
--- 只抬 CITY_STATE_COUNT 时引擎会给到 36 个城邦（数据库城邦文明条数上限），
--- 玩家保留自己选的 6 个，其余 30 个进幽灵池 —— 全程零外交副作用。
--- 需要重新开启时把这里改成 true（配合 ModTool_GhostPlayers.lua 的城邦化开关）。
-local GHOST_RAISE_MAJOR_CAP = false
+-- 【策略】重建幽灵池：**主流与城邦两类都只有 mod 申报需求时才产生**。
+-- 复制城邦文明已废弃，城邦侧用数据库原有的 36 个城邦文明。
+local GHOST_RAISE_MAJOR_CAP = true
+local m_GhostNextCityStateTarget = nil
+local m_GhostPlanApplied = false
+local m_GhostPlanMajorTarget = nil
+local m_GhostPlanCityTarget = nil
+-- 这份计划是按哪一组申报需求算的（主流/城邦各一个数）；申报一变就要重算
+local m_GhostPlanDemandKey = nil
+-- 上次由**我们**抬上去的城邦数 / 参与玩家数（nil = 当前没抬过），以及那之前玩家自己
+-- 选的数量。分开记是因为这两个设置都会被本 hook 改写：算幽灵预算必须用“玩家自己选的数”，
+-- 用被抬过的值当基数会层层加码；撤销申报（计划归零）时也要把玩家自己的选择还回去。
+local m_GhostAppliedCityCount = nil
+local m_GhostPlanCityPlayerChoice = nil
+local m_GhostAppliedMajorCount = nil
+local m_GhostPlanMajorPlayerChoice = nil
+
+-- 玩家自己选的城邦数：若当前值正是我们上次抬上去的那个，就沿用当时记下的选择值。
+local function ModMiscToolGetPlayerCityStateChoice()
+	local current = GameConfiguration.GetValue("CITY_STATE_COUNT") or 0
+	if m_GhostAppliedCityCount ~= nil and current == m_GhostAppliedCityCount
+		and m_GhostPlanCityPlayerChoice ~= nil then
+		return m_GhostPlanCityPlayerChoice
+	end
+	return current
+end
+
+-- 玩家自己选的主要文明人数（不含隐藏槽位）：判定同上（参与人数也会被本 hook 抬）。
+local function ModMiscToolGetPlayerMajorChoice(participatingCount, hiddenCount)
+	if m_GhostAppliedMajorCount ~= nil and participatingCount == m_GhostAppliedMajorCount
+		and m_GhostPlanMajorPlayerChoice ~= nil then
+		return m_GhostPlanMajorPlayerChoice
+	end
+	return participatingCount - (hiddenCount or 0)
+end
+
+-- ===========================================================================
+-- 幽灵玩家需求申报（前端 setup 上下文）
+--
+-- 其它 mod 在 FrontEndActions 里调用：
+--   ModMiscToolRegisterGhostDemand(source, count)            申报**主流**幽灵槽位
+--   ModMiscToolRegisterCityStateGhostDemand(source, count)   申报**城邦**幽灵槽位
+-- Mod Misc Tool 汇总后再决定抬多少主要文明数量 / 城邦数量。
+--
+-- 【硬规则】两类幽灵都必须申报才产生：没申报 ⇒ 该类幽灵数为 0。
+--   城邦侧因此连城邦槽位都不会多要（CITY_STATE_COUNT 保持玩家自己的选择），
+--   进游戏后的城邦幽灵 pass 自然也搬不出玩家来。
+-- ===========================================================================
+ModMiscToolGhostDemands = ModMiscToolGhostDemands or {}
+ModMiscToolCityStateGhostDemands = ModMiscToolCityStateGhostDemands or {}
+
+-- 两张申报表共用同一套登记/汇总逻辑（同一功能不重复实现）
+local function ModMiscToolRegisterDemand(registry, source, count)
+	local key = tostring(source or "anonymous")
+	registry[key] = math.max(0, math.floor(tonumber(count) or 0))
+end
+
+local function ModMiscToolGetDemandTotal(registry)
+	local total = 0
+	for _, count in pairs(registry) do
+		total = total + (tonumber(count) or 0)
+	end
+	return total
+end
+
+function ModMiscToolRegisterGhostDemand(source, count)
+	ModMiscToolRegisterDemand(ModMiscToolGhostDemands, source, count)
+end
+
+function ModMiscToolRegisterCityStateGhostDemand(source, count)
+	ModMiscToolRegisterDemand(ModMiscToolCityStateGhostDemands, source, count)
+end
+
+function ModMiscToolGetGhostDemandTotal()
+	return ModMiscToolGetDemandTotal(ModMiscToolGhostDemands)
+end
+
+function ModMiscToolGetCityStateGhostDemandTotal()
+	return ModMiscToolGetDemandTotal(ModMiscToolCityStateGhostDemands)
+end
+
+-- 当前申报汇总（主流/城邦各一个数）：用来判断“这份幽灵计划还算不算数”。
+-- 必须定义在**所有**调用点之前（Lua 5.1 里后定义的 local 在函数体里会解析成全局 nil）。
+local function ModMiscToolGhostDemandKey()
+	return tostring(ModMiscToolGetGhostDemandTotal()) .. "/"
+		.. tostring(ModMiscToolGetCityStateGhostDemandTotal())
+end
+
+if ExposedMembers ~= nil then
+	if ExposedMembers.ModMiscToolUI == nil then
+		ExposedMembers.ModMiscToolUI = {}
+	end
+	ExposedMembers.ModMiscToolUI.RegisterGhostDemand = ModMiscToolRegisterGhostDemand
+	ExposedMembers.ModMiscToolUI.RegisterCityStateGhostDemand =
+		ModMiscToolRegisterCityStateGhostDemand
+	ExposedMembers.ModMiscToolUI.GetGhostDemandTotal = ModMiscToolGetGhostDemandTotal
+	ExposedMembers.ModMiscToolUI.GetCityStateGhostDemandTotal =
+		ModMiscToolGetCityStateGhostDemandTotal
+end
 
 local function ModMiscToolIsGameSetupContext()
 	return MapSize_ValueChanged ~= nil
@@ -972,21 +1079,6 @@ local GHOST_MAP_SIZE_TEXT_BY_KEY = {
 	MAPSIZE_HUGE     = "MAPSIZE_HUGE",
 }
 
--- 把各种形态的“地图尺寸”值规范成 MAPSIZE_XXX：
---   * 字符串且含 "MAPSIZE_" → 直接用
---   * 表（GameSetupLogic 里是 p.Value.Domain / p.Value.Value）→ 取 .Value / .MapSizeType
---   * 其它 → 认不出，返回 nil
-local function ModMiscToolNormalizeMapSizeKey(value)
-	if value == nil then return nil end
-	if type(value) == "table" then
-		value = value.Value or value.MapSizeType or value.MapSize
-	end
-	if value == nil then return nil end
-	local text = tostring(value)
-	if string.find(text, "MAPSIZE_") ~= nil then return text end
-	return nil
-end
-
 -- 返回：key, 诊断信息（认不出时给出原始哈希与六个候选哈希，便于事后比对）
 local function ModMiscToolGetMapSizeKey()
 	-- ① 字符串来源
@@ -1016,7 +1108,6 @@ local function ModMiscToolGetMapSizeKey()
 	if not ok or raw == nil then
 		return nil, "GetMapSize 取不到"
 	end
-
 	if DB == nil or DB.MakeHash == nil then
 		return nil, "raw=" .. tostring(raw) .. "（DB.MakeHash 不可用，无法比对）"
 	end
@@ -1136,6 +1227,124 @@ local function ModMiscToolDumpMapSizeDiagnostics()
 	end
 end
 
+-- 计算“旧策略下会多出来的城邦幽灵总数”，再按申报需求和地图上限拆成主流/城邦两部分。
+-- 【硬规则】两类幽灵**各自都要有申报**才分到数量：没申报的那一类就是 0。
+-- cityStateChoice：**玩家自己选**的城邦数（不是本 hook 抬上去的值），由调用方传入。
+local function ModMiscToolGetGhostSplit(cityStateChoice, majorChoice)
+	local current = cityStateChoice
+	local maxCityStates = MapConfiguration.GetMaxMinorPlayers()
+	if current == nil or maxCityStates == nil or current <= 0 or maxCityStates <= 0 then
+		return 0, 0, 0
+	end
+	if current >= maxCityStates then return 0, 0, 0 end
+
+	local mapSizeKey = ModMiscToolGetMapSizeKey()
+	-- 这张表只负责“幽灵总预算”（该尺寸下最多能多要多少城邦槽位），不区分幽灵类型。
+	local target = GHOST_CITY_STATE_BY_MAP_SIZE[mapSizeKey]
+	if target == nil then target = GHOST_CITY_STATE_DEFAULT end
+	if target > maxCityStates then target = maxCityStates end
+	if target > GHOST_CITY_STATE_HARD_LIMIT then target = GHOST_CITY_STATE_HARD_LIMIT end
+	if target < current then target = current end
+
+	local totalGhosts = target - current
+	local declaredMajorGhosts = ModMiscToolGetGhostDemandTotal()
+	local declaredCityStateGhosts = ModMiscToolGetCityStateGhostDemandTotal()
+	-- 主流幽灵：申报多少就是多少（申报值来自声明方，见 ModMiscToolRefreshGhostDemandProviders），
+	-- 这里只受“幽灵总预算”限制 —— 没有第二套上限/拉满逻辑。
+	local majorGhosts = 0
+	if declaredMajorGhosts > 0 then
+		majorGhosts = math.min(declaredMajorGhosts, totalGhosts)
+	end
+	-- 城邦幽灵同样必须申报：没申报 ⇒ 0（前端不多要城邦槽位，局内也就没有城邦幽灵可搬）。
+	local cityStateGhosts = 0
+	if declaredCityStateGhosts > 0 then
+		cityStateGhosts = math.min(declaredCityStateGhosts, totalGhosts - majorGhosts)
+	end
+
+	-- “总槽位”闸：主流幽灵 + 城邦幽灵 + 玩家自选的两项不能超过引擎的 MaxPlayers，
+	-- 否则开局会被挤爆（申报值不大，这道闸只在极端配置下才夹到人）。
+	local maxMajorPlayers = MapConfiguration.GetMaxMajorPlayers() or 62
+	local slotRoom = maxMajorPlayers - (majorChoice or 0) - current - cityStateGhosts
+	if slotRoom < 0 then slotRoom = 0 end
+	local slotNote = "槽位余量=" .. tostring(slotRoom)
+	if majorGhosts > slotRoom then
+		majorGhosts = slotRoom
+		slotNote = slotNote .. " ⇒ 主流幽灵夹到 " .. tostring(majorGhosts)
+	end
+	print("[ModMiscTool][Ghost][MajorPlan] 地图=" .. tostring(mapSizeKey)
+		.. " 申报=" .. tostring(declaredMajorGhosts)
+		.. " 玩家自选 major=" .. tostring(majorChoice) .. " cityState=" .. tostring(current)
+		.. " maxPlayers=" .. tostring(maxMajorPlayers)
+		.. " 总预算=" .. tostring(totalGhosts)
+		.. " ⇒ 主流幽灵=" .. tostring(majorGhosts) .. " 城邦幽灵=" .. tostring(cityStateGhosts)
+		.. " " .. slotNote)
+
+	return totalGhosts, majorGhosts, cityStateGhosts
+end
+
+-- 城邦幽灵池计划（本局打算产生多少个城邦幽灵槽位）：
+-- 只在变化时写进随档协议，供对局内的城邦幽灵 pass 当作**申报上限**（0 = 不产生城邦幽灵）。
+local m_GhostLastSavedCityGhostPool = nil
+
+local function ModMiscToolSaveCityStateGhostPool(count)
+	count = math.max(0, math.floor(tonumber(count) or 0))
+	if count == m_GhostLastSavedCityGhostPool then return end
+	m_GhostLastSavedCityGhostPool = count
+	local ok, err = DataProtocol.Save("ghost_citystatepool", tostring(count))
+	if not ok then
+		print("[ModMiscTool][Ghost] 城邦幽灵池计划写入失败 -> " .. tostring(err))
+		return
+	end
+	print("[ModMiscTool][Ghost] 城邦幽灵池计划 = " .. tostring(count))
+end
+
+-- 城邦侧计划日志去重键（必须在城邦 pass 之前声明：Lua 5.1 里后定义的 local 在
+-- 函数体里会解析成全局 nil，去重就会失效、变成每帧刷屏）
+local m_GhostLastCityPlanLogKey = nil
+
+-- 玩家自己选的城邦数：同样随档写下来（进游戏后靠它算“哪些城邦槽位是幽灵”）。
+-- 与“池计划”分开：池计划可能因为申报/预算变成 0，但边界基数始终要用玩家自己的选择。
+local m_GhostLastSavedCityStateChoice = nil
+
+local function ModMiscToolSavePlayerCityStateChoice(choice)
+	choice = math.max(0, math.floor(tonumber(choice) or 0))
+	if choice == m_GhostLastSavedCityStateChoice then return end
+	m_GhostLastSavedCityStateChoice = choice
+	local ok, err = DataProtocol.Save("ghost_citystates", tostring(choice))
+	if not ok then
+		print("[ModMiscTool][Ghost] 城邦数量写入失败 -> " .. tostring(err))
+	end
+end
+
+-- 主流侧同理：ghost_majorpool = 本局主流幽灵的申报上限（0 = 一个都不产生），
+-- ghost_majorplayers = 玩家自己选的主要文明人数（局内算槽位边界）。
+local m_GhostLastSavedMajorGhostPool = nil
+local m_GhostLastSavedMajorChoice = nil
+
+local function ModMiscToolSaveMajorGhostPool(count)
+	count = math.max(0, math.floor(tonumber(count) or 0))
+	if count == m_GhostLastSavedMajorGhostPool then return end
+	m_GhostLastSavedMajorGhostPool = count
+	local ok, err = DataProtocol.Save("ghost_majorpool", tostring(count))
+	if not ok then
+		print("[ModMiscTool][Ghost] 主流幽灵池计划写入失败 -> " .. tostring(err))
+		return
+	end
+	print("[ModMiscTool][Ghost] 主流幽灵池计划 = " .. tostring(count))
+end
+
+local function ModMiscToolSavePlayerMajorChoice(choice)
+	choice = math.max(0, math.floor(tonumber(choice) or 0))
+	if choice == m_GhostLastSavedMajorChoice then return end
+	m_GhostLastSavedMajorChoice = choice
+	local ok, err = DataProtocol.Save("ghost_majorplayers", tostring(choice))
+	if not ok then
+		print("[ModMiscTool][Ghost] 主要文明人数写入失败 -> " .. tostring(err))
+		return
+	end
+	print("[ModMiscTool][Ghost] major player choice saved = " .. tostring(choice))
+end
+
 local function ModMiscToolApplyGhostCityStates()
 	if not ModMiscToolIsGameSetupContext() then return end
 
@@ -1156,81 +1365,384 @@ local function ModMiscToolApplyGhostCityStates()
 	pcall(ModMiscToolDumpMapSizeDiagnostics)
 
 	if current == nil or maxCityStates == nil then return end
+	-- 结论没变就直接返回（申报一变，主流 pass 会把 m_GhostPlanCityTarget 清空 ⇒ 自动重算）
+	if m_GhostPlanCityTarget == current
+		and m_GhostPlanDemandKey == ModMiscToolGhostDemandKey() then
+		return end
 	-- current <= 0 时不处理：避免在参数还没载入时把 0 当成“玩家选择”记下来
-	if current <= 0 or maxCityStates <= 0 or current >= maxCityStates then return end
-
-	-- 请求值 = 按地图尺寸查表（唯一策略来源），再受数据库天花板与硬上限夹取
-	local mapSizeKey, mapSizeDiag = ModMiscToolGetMapSizeKey()
-	local target = GHOST_CITY_STATE_BY_MAP_SIZE[mapSizeKey]
-	if target == nil then
-		target = GHOST_CITY_STATE_DEFAULT
-		print("[ModMiscTool][Ghost] 地图尺寸认不出（" .. tostring(mapSizeDiag)
-			.. "）→ 用兜底 " .. tostring(GHOST_CITY_STATE_DEFAULT))
+	if current <= 0 or maxCityStates <= 0 then return end
+	if current >= maxCityStates then
+		-- 城邦数已拉满 ⇒ 不可能有多余槽位，一个城邦幽灵都不产生。
+		-- 边界基数也刷新成当前值，免得局内拿着旧基数去搬玩家。
+		m_GhostPlanCityTarget = current
+		m_GhostAppliedCityCount = nil
+		ModMiscToolSaveCityStateGhostPool(0)
+		ModMiscToolSavePlayerCityStateChoice(current)
+		return
 	end
-	if target > maxCityStates then target = maxCityStates end
-	if target > GHOST_CITY_STATE_HARD_LIMIT then target = GHOST_CITY_STATE_HARD_LIMIT end
-	if target <= current then return end
 
-	-- 走协议（登记项 ghost_citystates 是 persave：随档走、新局不继承）
-	local okGhost, ghostErr = DataProtocol.Save("ghost_citystates", tostring(current))
-	if not okGhost then
-		print("[ModMiscTool][Ghost] 城邦数量写入失败 -> " .. tostring(ghostErr))
+	-- 城邦幽灵数**只认“申报分账”**：主流幽灵 pass 算好后放进 m_GhostNextCityStateTarget。
+	-- 没有分账（= 没有 mod 申报城邦幽灵需求 / 预算为 0）就是 0 个 —— 不再回落到地图尺寸表：
+	-- 那张表只用来算“幽灵总预算”，绝不能当成“默认产生城邦幽灵”的开关。
+	--
+	-- 计划值一律以**玩家自己选的城邦数**为基数：current 可能是本 hook 上一轮抬上去的值，
+	-- 拿它当基数会层层加码（14 → 22 → 30…），撤销申报时也还原不回去。
+	local mapSizeKey = ModMiscToolGetMapSizeKey()
+	local choice = ModMiscToolGetPlayerCityStateChoice()
+	local target = m_GhostNextCityStateTarget
+	m_GhostNextCityStateTarget = nil
+
+	local plannedGhosts = 0
+	if target ~= nil then
+		if target > maxCityStates then target = maxCityStates end
+		if target > GHOST_CITY_STATE_HARD_LIMIT then target = GHOST_CITY_STATE_HARD_LIMIT end
+		plannedGhosts = math.max(0, target - choice)
 	end
-	GameConfiguration.SetValue("CITY_STATE_COUNT", target)
-	local tableValue = GHOST_CITY_STATE_BY_MAP_SIZE[mapSizeKey]
-	print("[ModMiscTool][Ghost] city states -> " .. tostring(target)
-		.. " (player choice " .. tostring(current) .. " saved"
-		.. " | mapSize=" .. tostring(mapSizeKey)
-		.. " tableValue=" .. tostring(tableValue)
-		.. " dbCeiling=" .. tostring(maxCityStates)
-		.. " -> 幽灵池 " .. tostring(target - current) .. ")")
-end
+	-- 池计划按“申报分到的数量”写（执行层无条件照办）：局内城邦 pass 拿它当申报上限
+	ModMiscToolSaveCityStateGhostPool(plannedGhosts)
 
--- 主要文明同理：把参与玩家数抬到“预算内允许的上限”，并记下玩家原本选择的数量。
--- 引擎只在开局按这个数量创建玩家，所以这是唯一能让主要文明多出来的途径。
--- 上一次写进 CustomData 的主要文明数量（只在变化时写）
-local m_GhostLastSavedMajorCount = nil
-
-local function ModMiscToolApplyGhostMajorPlayers()
-	if not ModMiscToolIsGameSetupContext() then return end
-
-	-- 策略关闭（当前）：**不抬上限**，但要把玩家设定的人数记下来 ——
-	-- 进游戏后要用“主要文明数 + 城邦数”算出槽位边界，边界之后的城邦槽位全部变幽灵。
-	if not GHOST_RAISE_MAJOR_CAP then
-		local configured = GameConfiguration.GetParticipatingPlayerCount()
-		local hidden = GameConfiguration.GetHiddenPlayerCount()
-		if configured == nil or hidden == nil then return end
-		configured = configured - hidden          -- 参与人数含隐藏槽位，减掉才是玩家设定的人数
-		if configured <= 0 then return end
-		if configured ~= m_GhostLastSavedMajorCount then
-			m_GhostLastSavedMajorCount = configured
-			DataProtocol.Save("ghost_majorplayers", tostring(configured))
-			print("[ModMiscTool][Ghost] major players (configured, not raised) = "
-				.. tostring(configured))
+	if plannedGhosts <= 0 then
+		-- 不产生城邦幽灵。若上一轮已经被我们抬过，这里要把玩家自己的选择**还回去**，
+		-- 否则关掉申报会凭空多出一批城邦（多出来的槽位没人用）。
+		ModMiscToolSavePlayerCityStateChoice(choice)
+		local needRestore = (m_GhostAppliedCityCount ~= nil and current == m_GhostAppliedCityCount
+			and choice ~= current)
+		if needRestore then
+			GameConfiguration.SetValue("CITY_STATE_COUNT", choice)
+			-- 只有引擎真的接受了还原才清账本；否则保留（下一帧继续按玩家自己的选择算）
+			if (GameConfiguration.GetValue("CITY_STATE_COUNT") or 0) == choice then
+				m_GhostAppliedCityCount = nil
+			end
+			m_GhostPlanCityTarget = choice
+		else
+			m_GhostPlanCityTarget = current
+		end
+		-- 归零这条路径每帧都会走到（结论没变时由上面的守卫早退），提示按结论去重
+		local cityLogKey = tostring(needRestore) .. "/" .. tostring(choice) .. "/"
+			.. tostring(current)
+		if cityLogKey ~= m_GhostLastCityPlanLogKey then
+			m_GhostLastCityPlanLogKey = cityLogKey
+			if needRestore then
+				print("[ModMiscTool][Ghost] 城邦幽灵计划归零 → 城邦数还原为玩家选择 "
+					.. tostring(choice) .. "（原被抬到 " .. tostring(current) .. "）")
+			else
+				print("[ModMiscTool][Ghost] 城邦幽灵未申报 → 不产生城邦幽灵"
+					.. "（keep CITY_STATE_COUNT=" .. tostring(current) .. "）")
+			end
 		end
 		return
 	end
 
+	target = choice + plannedGhosts
+	if target > maxCityStates then target = maxCityStates end
+	if target > GHOST_CITY_STATE_HARD_LIMIT then target = GHOST_CITY_STATE_HARD_LIMIT end
+	plannedGhosts = math.max(0, target - choice)
+	if plannedGhosts <= 0 then
+		m_GhostPlanCityTarget = current
+		ModMiscToolSavePlayerCityStateChoice(choice)
+		return
+	end
+	m_GhostPlanCityTarget = target
+	m_GhostAppliedCityCount = target
+	m_GhostPlanCityPlayerChoice = choice
+	ModMiscToolSaveCityStateGhostPool(plannedGhosts)
+
+	-- 走协议（登记项 ghost_citystates 是 persave：随档走、新局不继承）
+	-- 记的是**玩家自己选的数**：进游戏后靠它算“哪些城邦槽位是幽灵”
+	--（只在变化时写，见 ModMiscToolSavePlayerCityStateChoice）。
+	ModMiscToolSavePlayerCityStateChoice(choice)
+	if target ~= current then
+		GameConfiguration.SetValue("CITY_STATE_COUNT", target)
+	end
+	local tableValue = GHOST_CITY_STATE_BY_MAP_SIZE[mapSizeKey]
+	print("[ModMiscTool][Ghost] city states -> " .. tostring(target)
+		.. " (player choice " .. tostring(choice) .. " saved"
+		.. " | mapSize=" .. tostring(mapSizeKey)
+		.. " tableValue=" .. tostring(tableValue)
+		.. " dbCeiling=" .. tostring(maxCityStates)
+		.. " -> 幽灵池 " .. tostring(plannedGhosts) .. ")")
+end
+
+-- 主要文明同理：把参与玩家数抬到“预算内允许的上限”，并记下玩家原本选择的数量。
+-- 引擎只在开局按这个数量创建玩家，所以这是唯一能让主要文明多出来的途径。
+-- 计划日志去重键（结论没变就不重复打）
+local m_GhostLastMajorPlanLogKey = nil
+
+-- ===========================================================================
+-- 幽灵申报（**本工具只接受，数量由其它 mod 决定**，2026-10-15 授权者）
+--
+-- 高级选项那一行在手机/平板布局下溢出屏幕 ⇒ 已从 modinfo 里撤掉，数量也不由选项决定。
+-- 声明方在前端上下文里二选一：
+--   * 一次性申报：ModMiscToolRegisterGhostDemand(source, count)
+--     （城邦侧：ModMiscToolRegisterCityStateGhostDemand(source, count)）
+--   * 动态申报：ModMiscToolRegisterGhostDemandProvider(source, fn)，见下方刷新函数。
+-- 默认声明方 = Vassal System 的 Vassal_GhostDemand.sql（主流按地图尺寸 4..24、城邦 0，
+-- 要测保守行为把那边改成 8）；它由本文件末尾的“声明方清单”include 进本上下文。
+-- 没人申报 ⇒ 该类幽灵为 0。
+-- ===========================================================================
+-- 【2026-10-15 授权者】两个池子 = 两种**附庸行为**（Vassal System 里区分开）：
+--   * 主流幽灵池 = 正常玩家行为（会扩张、正常建造）；
+--   * 城邦幽灵池 = 保守玩家行为（不扩张、建造的区域也少）。
+--   玩家在面板里选文明时看到的主流/城邦分组只是为了找文明方便，**行为**才是选池子的依据。
+-- 城邦幽灵池默认**不申报**（0）：它会把创建游戏界面的城邦数量抬高，很多玩家只看那个数字就投诉；
+-- 但框架按“城邦幽灵池存在”来写 —— 声明方把它申报成一个正数（例如 8）就能开回来测保守行为。
+-- ===========================================================================
+
+-- ===========================================================================
+-- 数据通道：**声明表**（数量由声明方决定，本工具只读表 + 汇总）
+--
+-- 表结构由本框架建（GhostPlayers_MapSizes.sql），声明方在自己的
+-- FrontEndActions → UpdateDatabase 里插行（范例：Vassal System/Vassal_GhostDemand.sql）：
+--   ModMiscGhostDemand(Source TEXT, MapSizeType TEXT, MajorGhosts INTEGER, CityStateGhosts INTEGER)
+--   MapSizeType = 'MAPSIZE_XXX'（精确行，对应尺寸）/ '*'（兜底行，尺寸认不出时用）
+-- 同一个 Source 只取一条：有精确行就用精确行，否则用 '*' 兜底行。
+-- 【性能】按地图尺寸**原始值**缓存：值没变就不重查（每帧成本 = 一次 GetMapSize + 一次比较）。
+-- 表不存在（没装声明方 / 没建表）⇒ 视为没人申报，只记一行日志。
+-- ===========================================================================
+local m_GhostDemandTableRawSize = nil
+local m_GhostDemandTableSizeKey = nil
+local m_GhostDemandTableRows = nil      -- { [source] = { major = n, cityState = m } }
+
+-- 拼接进 SQL 的动态部分只有地图尺寸名；洗成 [A-Za-z0-9_] 后再用（表名/列名都是常量）
+local function ModMiscToolSanitizeSqlToken(text)
+	return (tostring(text or ""):gsub("[^A-Za-z0-9_]", ""))
+end
+
+-- 返回：bySource 表, 查询是否成功（成功但没有行也是成功）
+local function ModMiscToolQueryGhostDemandTable(mapSizeKey)
+	if DB == nil then return nil, false end
+	local query = DB.ConfigurationQuery or DB.Query
+	if query == nil then return nil, false end
+	local sql = "SELECT Source, MapSizeType, MajorGhosts, CityStateGhosts FROM ModMiscGhostDemand"
+		.. " WHERE MapSizeType = '" .. ModMiscToolSanitizeSqlToken(mapSizeKey) .. "' OR MapSizeType = '*'"
+	local ok, rows = pcall(function() return query(sql) end)
+	if not ok or type(rows) ~= "table" then return nil, false end
+	local bySource = {}
+	for _, row in ipairs(rows) do
+		local source = tostring(row.Source or "anonymous")
+		local isExact = (mapSizeKey ~= nil and tostring(row.MapSizeType) == tostring(mapSizeKey))
+		local entry = bySource[source]
+		-- 精确行优先：先来的兜底行会被后来的精确行顶掉，反之不顶
+		if entry == nil or isExact then
+			bySource[source] = {
+				major = math.max(0, math.floor(tonumber(row.MajorGhosts) or 0)),
+				cityState = math.max(0, math.floor(tonumber(row.CityStateGhosts) or 0)),
+			}
+		end
+	end
+	return bySource, true
+end
+
+local function ModMiscToolLoadGhostDemandTable()
+	local raw = nil
+	if MapConfiguration ~= nil and MapConfiguration.GetMapSize ~= nil then
+		local ok, value = pcall(function() return MapConfiguration.GetMapSize() end)
+		if ok then raw = value end
+	end
+	-- 尺寸没变 ⇒ 直接用上次读到的行（这是“不每帧查表”的关键）
+	if m_GhostDemandTableRows ~= nil and raw ~= nil and raw == m_GhostDemandTableRawSize then
+		return m_GhostDemandTableRows
+	end
+	local mapSizeKey = ModMiscToolGetMapSizeKey()
+	if m_GhostDemandTableRows ~= nil and raw == nil and mapSizeKey == m_GhostDemandTableSizeKey then
+		return m_GhostDemandTableRows
+	end
+
+	local bySource, queryOk = ModMiscToolQueryGhostDemandTable(mapSizeKey)
+	if not queryOk then
+		bySource = {}
+		print("[ModMiscTool][Ghost][DemandTable] 声明表不可用（没装声明方或没建表）⇒ 本轮按 0 算")
+	else
+		local parts = {}
+		for source, demand in pairs(bySource) do
+			table.insert(parts, source .. " major=" .. tostring(demand.major)
+				.. " city=" .. tostring(demand.cityState))
+		end
+		table.sort(parts)
+		print("[ModMiscTool][Ghost][DemandTable] 地图=" .. tostring(mapSizeKey)
+			.. " 声明 " .. tostring(#parts) .. " 条"
+			.. (#parts > 0 and ("：" .. table.concat(parts, "、")) or "（没有声明行）"))
+	end
+	m_GhostDemandTableRawSize = raw
+	m_GhostDemandTableSizeKey = mapSizeKey
+	m_GhostDemandTableRows = bySource
+	return bySource
+end
+
+-- 把声明表的行写进申报表（在动态申报方之前调用，动态值可以覆盖它）
+local function ModMiscToolApplyGhostDemandTable()
+	local bySource = ModMiscToolLoadGhostDemandTable()
+	for source, demand in pairs(bySource) do
+		ModMiscToolRegisterGhostDemand(source, demand.major)
+		ModMiscToolRegisterCityStateGhostDemand(source, demand.cityState)
+	end
+end
+
+-- 动态申报表：source → fn()，fn 返回 主流数, 城邦数（nil = 这一类不变）。
+-- 【契约】fn 每次前端刷新都会被调一次，所以必须便宜（查表/比较级别）；
+--   需要地图尺寸的，请自己按“原始值变化”缓存（声明表通道就是这么做的）。
+ModMiscToolGhostDemandProviders = ModMiscToolGhostDemandProviders or {}
+
+function ModMiscToolRegisterGhostDemandProvider(source, provider)
+	local key = tostring(source or "anonymous")
+	if type(provider) ~= "function" then
+		ModMiscToolGhostDemandProviders[key] = nil
+		return nil
+	end
+	ModMiscToolGhostDemandProviders[key] = provider
+	print("[ModMiscTool][Ghost] 已登记动态申报方：" .. key)
+	return key
+end
+
+if ExposedMembers ~= nil then
+	if ExposedMembers.ModMiscToolUI == nil then
+		ExposedMembers.ModMiscToolUI = {}
+	end
+	ExposedMembers.ModMiscToolUI.RegisterGhostDemandProvider = ModMiscToolRegisterGhostDemandProvider
+end
+
+-- 把动态申报方的最新值写进申报表（在算幽灵计划之前调用）
+local function ModMiscToolRefreshGhostDemandProviders()
+	for source, provider in pairs(ModMiscToolGhostDemandProviders) do
+		local ok, major, cityState = pcall(provider)
+		if not ok then
+			print("[ModMiscTool][Ghost] 申报函数报错（本轮跳过）：" .. tostring(source)
+				.. " -> " .. tostring(major))
+		else
+			if tonumber(major) ~= nil then
+				ModMiscToolRegisterGhostDemand(source, major)
+			end
+			if tonumber(cityState) ~= nil then
+				ModMiscToolRegisterCityStateGhostDemand(source, cityState)
+			end
+		end
+	end
+end
+
+
+local function ModMiscToolApplyGhostMajorPlayers()
+	if not ModMiscToolIsGameSetupContext() then return end
+
 	local current = GameConfiguration.GetParticipatingPlayerCount()
 	local hidden = GameConfiguration.GetHiddenPlayerCount()
 	local maxMajorPlayers = MapConfiguration.GetMaxMajorPlayers()
-	if current == nil or maxMajorPlayers == nil then return end
-	if hidden == nil then hidden = 0 end
+	if current == nil or hidden == nil or maxMajorPlayers == nil then return end
 	if current <= 0 or maxMajorPlayers <= 0 then return end
 
-	local majorTarget = GHOST_SLOT_BUDGET - GHOST_RESERVED_MINOR_SLOTS
-	if majorTarget > maxMajorPlayers then majorTarget = maxMajorPlayers end
-	if majorTarget < 2 then majorTarget = math.min(maxMajorPlayers, 2) end
-	-- 参与玩家数含隐藏槽位，两边口径要一致
-	majorTarget = majorTarget + hidden
-	if current >= majorTarget then return end
+	-- 玩家自己选的人数：current 可能是上一轮被本 hook 抬上去的值，不能直接当“玩家选择”。
+	local configured = ModMiscToolGetPlayerMajorChoice(current, hidden)
+	if configured <= 0 then return end
 
-	DataProtocol.Save("ghost_majorplayers", tostring(current))
-	GameConfiguration.SetParticipatingPlayerCount(majorTarget)
-	print("[ModMiscTool][Ghost] major players -> " .. tostring(majorTarget)
-		.. " (player choice " .. tostring(current) .. " saved"
-		.. " maxMajor=" .. tostring(maxMajorPlayers)
-		.. " hidden=" .. tostring(hidden) .. ")")
+	-- 取声明方的最新申报值：① 数据通道（ModMiscGhostDemand 声明表，默认）
+	-- ② 动态通道（ExposedMembers 接口，可覆盖声明表）。都放在比对计划之前，
+	-- 这样申报一变（例如换了地图尺寸）计划就自动重算。
+	ModMiscToolApplyGhostDemandTable()
+	ModMiscToolRefreshGhostDemandProviders()
+
+	local currentCityStates = GameConfiguration.GetValue("CITY_STATE_COUNT") or 0
+	local demandKey = ModMiscToolGhostDemandKey()
+	-- 同一组“玩家选择 + 申报需求”只执行一次；任一项变了都自动重算。
+	if m_GhostPlanApplied and m_GhostPlanMajorTarget == current
+		and m_GhostPlanCityTarget == currentCityStates
+		and m_GhostPlanDemandKey == demandKey then
+		return
+	end
+	m_GhostPlanApplied = false
+	m_GhostPlanCityTarget = nil
+	-- 本轮申报汇总（主流/城邦各一个数）：城邦侧也用同一把尺子判断结论是否过期
+	m_GhostPlanDemandKey = demandKey
+
+	-- 无论是否真正抬高，都记下玩家原本选择的主要文明人数，供进游戏后算边界
+	--（记的是**玩家自己的选择**，不是被本 hook 抬过的值）。
+	ModMiscToolSavePlayerMajorChoice(configured)
+
+	-- 定制附庸入口常开（选项已撤，对局内 IsVassalCustomVassalEnabledUI 读到 "1" 即启用）
+	if DataProtocol ~= nil and DataProtocol.Save ~= nil then
+		pcall(function() DataProtocol.Save("vassal_custom_vassal_enabled", "1") end)
+	end
+
+	-- 幽灵总预算沿用旧策略的“多出来的城邦数”，再按申报需求/地图上限分给主流/城邦。
+	-- 【硬规则】两类幽灵各自都要申报，没申报的那一类是 0（判定都在 ModMiscToolGetGhostSplit 里）。
+	-- 基数用**玩家自己选的城邦数**：currentCityStates 可能是上一轮被本 hook 抬上去的值。
+	local cityStateChoice = ModMiscToolGetPlayerCityStateChoice()
+	local totalGhosts, majorGhosts, cityGhosts = ModMiscToolGetGhostSplit(cityStateChoice, configured)
+	if totalGhosts <= 0 then return end
+
+	-- 主流上限开关关掉时主流幽灵数为 0；它没用的预算**不自动退回城邦**
+	--（城邦侧只按自己的申报值走），否则关掉主流反而会凭空多出城邦幽灵。
+	if not GHOST_RAISE_MAJOR_CAP then majorGhosts = 0 end
+
+	local desiredMajorTarget = configured + majorGhosts
+	if desiredMajorTarget > maxMajorPlayers then desiredMajorTarget = maxMajorPlayers end
+	if desiredMajorTarget < configured then desiredMajorTarget = configured end
+	local actualMajorGhosts = desiredMajorTarget - configured
+
+	-- 主流放不下/没放完的部分可以退回城邦，但城邦侧同样不得超过它自己的申报值。
+	-- 目标值以**玩家自己选的城邦数**为基数（不能用被抬过的 currentCityStates）。
+	local remainingCityGhosts = math.max(0, math.min(cityGhosts, totalGhosts - actualMajorGhosts))
+	m_GhostNextCityStateTarget = cityStateChoice + remainingCityGhosts
+
+	-- 主流幽灵池计划（0 = 不产生）：局内主流 pass 拿它当申报上限
+	ModMiscToolSaveMajorGhostPool(actualMajorGhosts)
+
+	-- 参与人数（含隐藏）最终落到哪个值：
+	--   * 有主流幽灵 ⇒ 玩家选择 + 幽灵数；
+	--   * 计划归零（没申报/开关关掉）且当前值正是我们抬上去的 ⇒ **还原**成玩家自己的选择，
+	--     否则玩家关掉申报后仍会拿到一堆多出来的主要文明。
+	local targetWithHidden = desiredMajorTarget + hidden
+	if actualMajorGhosts <= 0 and m_GhostAppliedMajorCount ~= nil
+		and current == m_GhostAppliedMajorCount and configured + hidden ~= current then
+		targetWithHidden = configured + hidden
+	end
+
+	local changed = false
+	local restoreRejected = false
+	if current ~= targetWithHidden then
+		-- pcall 兜住：万一引擎不接受这个值就保持现状（局内还有申报上限这道闸门）
+		local ok = pcall(function()
+			GameConfiguration.SetParticipatingPlayerCount(targetWithHidden)
+		end)
+		if ok then
+			changed = true
+		else
+			print("[ModMiscTool][Ghost] 参与人数设置失败，保持 " .. tostring(current))
+			targetWithHidden = current
+		end
+	end
+	if actualMajorGhosts > 0 or targetWithHidden == current then
+		-- 真的抬上去了，或者计划本来就没动这个值 ⇒ 账本按现状记
+		m_GhostAppliedMajorCount = (actualMajorGhosts > 0) and targetWithHidden or nil
+	else
+		-- 还原/下调没被引擎接受：**保留账本**，下一帧继续按“玩家自己的选择”算，
+		-- 不然后面会把我们抬上去的值当成玩家的新选择（ghost_majorplayers 被写坏）。
+		-- 提示放到下面那个去重块里打（这条路径每帧都会走到，不能在这里直接打）。
+		restoreRejected = true
+	end
+	m_GhostPlanMajorPlayerChoice = configured
+	m_GhostPlanMajorTarget = targetWithHidden
+	m_GhostPlanApplied = true
+
+	-- 计划每帧都会重算到“结论没变就早退”，这里按结论去重，避免刷屏
+	local planKey = tostring(desiredMajorTarget) .. "/" .. tostring(actualMajorGhosts)
+		.. "/" .. tostring(targetWithHidden) .. "/" .. tostring(demandKey)
+	if planKey ~= m_GhostLastMajorPlanLogKey then
+		m_GhostLastMajorPlanLogKey = planKey
+		print("[ModMiscTool][Ghost] major players -> " .. tostring(desiredMajorTarget)
+			.. " (player choice " .. tostring(configured) .. " saved"
+			.. " | maxMajor=" .. tostring(maxMajorPlayers)
+			.. " hidden=" .. tostring(hidden)
+			.. " applied=" .. tostring(targetWithHidden)
+			.. " | totalGhost=" .. tostring(totalGhosts)
+			.. " majorGhost=" .. tostring(actualMajorGhosts)
+			.. " cityGhost=" .. tostring(remainingCityGhosts)
+			.. " demand=" .. tostring(demandKey)
+			.. " changed=" .. tostring(changed) .. ")")
+		if restoreRejected then
+			print("[ModMiscTool][Ghost] 参与人数仍是 " .. tostring(current) .. "（目标是 "
+				.. tostring(targetWithHidden) .. "），保留玩家选择 "
+				.. tostring(configured))
+		end
+	end
 end
 
 -- ===========================================================================
@@ -1336,11 +1848,12 @@ local function ModMiscToolProbeMapConfig()
 	print("[ModMiscTool][MapConfigProbe] 创建游戏界面看到的配置: " .. key)
 end
 
+
 local function ModMiscToolGhostRefresh(delta)
 	if not ModMiscToolIsGameSetupContext() then return end
 	if not ContextPtr:IsHidden() then
-		ModMiscToolApplyGhostCityStates()
 		ModMiscToolApplyGhostMajorPlayers()
+		ModMiscToolApplyGhostCityStates()
 		ModMiscToolProbeMapConfig()
 	end
 	-- 探针在隐藏时也要跑：它靠“隐藏→显示”的那一刻判定新一轮（内部自己判界面）
@@ -1358,6 +1871,9 @@ local function ModMiscToolGhostRefresh(delta)
 	ContextPtr:RequestRefresh()
 end
 
+-- 【框架边界】本工具**不去 include 任何其它 mod 的文件**（那会让框架依赖消费者，
+-- 也会把别人的代码拖进本上下文）：申报只通过 ExposedMembers 上公开的接口进来
+-- （RegisterGhostDemand / RegisterCityStateGhostDemand / RegisterGhostDemandProvider）。
 if ModMiscToolIsGameSetupContext() then
 	ContextPtr:SetRefreshHandler(ModMiscToolGhostRefresh)
 	ContextPtr:RequestRefresh()

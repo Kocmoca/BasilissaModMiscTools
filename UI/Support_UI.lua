@@ -153,11 +153,39 @@ function GetUnsettledCityStatePlayerIDsUI()
     return playerIDs
 end
 
+-- 外交 UI 压制用：幽灵玩家（主流池 / 城邦池）不显示在 diplomacyRibbon 和外交弹窗里。
+-- 函数体在运行时才访问 gameplay 暴露的脚本接口，避免加载顺序问题。
+function IsDiplomacyGhostPlayerUI(playerID)
+    local script = ExposedMembers and ExposedMembers.ModMiscToolScript or nil
+    if script ~= nil then
+        if script.IsGhostPlayer ~= nil then
+            local ok, result = pcall(script.IsGhostPlayer, playerID)
+            if ok and result == true then return true end
+        end
+        if script.IsCityStateGhostPlayer ~= nil then
+            local ok, result = pcall(script.IsCityStateGhostPlayer, playerID)
+            if ok and result == true then return true end
+        end
+    end
+    return false
+end
+
+function IsVassalCustomVassalEnabledUI()
+    local value = (DataProtocol.Load("vassal_custom_vassal_enabled"))
+    if value == nil or value == "" then return true end
+    local text = tostring(value)
+    return text ~= "0" and text ~= "false"
+end
+
 -- 文件加载阶段就暴露，保证 gameplay 侧随时能拿到
 if not ExposedMembers.ModMiscToolUI then
     ExposedMembers.ModMiscToolUI = {}
 end
 ExposedMembers.ModMiscToolUI.IsMinorPlayerUI = IsMinorPlayerUI
+ExposedMembers.ModMiscToolUI.IsDiplomacyGhostPlayerUI = IsDiplomacyGhostPlayerUI
+ExposedMembers.ModMiscToolUI.IsVassalCustomVassalEnabledUI = IsVassalCustomVassalEnabledUI
+ExposedMembers.ModMiscToolUI.GetCityProductionHashUI = GetCityProductionHashUI
+ExposedMembers.ModMiscToolUI.GetCityProductionInfoUI = GetCityProductionInfoUI
 ExposedMembers.ModMiscToolUI.GetUnsettledCityStatePlayerIDsUI = GetUnsettledCityStatePlayerIDsUI
 local GHOST_CITY_STATE_CUSTOM_DATA_KEY = "ModMiscToolCityStateCount"
 local GHOST_MAJOR_PLAYER_CUSTOM_DATA_KEY = "ModMiscToolMajorPlayerCount"
@@ -196,12 +224,40 @@ local function HandOffGhostCityStateCount()
     else
         print("[ModMiscTool][Ghost] handing off configured major players=" .. tostring(savedMajors))
     end
+    -- 主流幽灵池计划：同上，建局侧按申报量算好后写下来（0 = 不产生主流幽灵，nil = 老档不限额）
+    local savedMajorGhostPool = tonumber((DataProtocol.Load("ghost_majorpool")))
+    if savedMajorGhostPool == nil then
+        print("[ModMiscTool][Ghost] no major ghost plan saved (老档/老前端) → 不限额")
+    else
+        print("[ModMiscTool][Ghost] handing off major ghost plan="
+            .. tostring(savedMajorGhostPool))
+    end
+    -- 城邦幽灵池计划：建局侧按“mod 申报量”算好后写下来的**申报上限**。
+    --   0    = 没有 mod 申报城邦幽灵 ⇒ 一个都不产生（城邦 pass 直接跳过）
+    --   nil  = 老档/老前端没写过这个键 ⇒ 不限额（沿用旧行为，避免读老档时误伤已有池子）
+    local savedCityGhostPool = tonumber((DataProtocol.Load("ghost_citystatepool")))
+    if savedCityGhostPool == nil then
+        print("[ModMiscTool][Ghost] no city state ghost plan saved (老档/老前端) → 不限额")
+    else
+        print("[ModMiscTool][Ghost] handing off city state ghost plan="
+            .. tostring(savedCityGhostPool))
+    end
 
-    -- 一次判定搞定：id 大于 (主要文明数 + 城邦数 - 1) 的城邦槽位全部搬成幽灵
+    -- 先搬多出来的主流玩家，再搬多出来的城邦：
+    -- 主流幽灵进 GetGhostPlayers 池；城邦幽灵进 GetCityStateGhostPlayers 池。
     print("[ModMiscTool][Ghost] pass start trigger=" .. GHOST_PASS_TRIGGER_NAME
         .. " keepMajors=" .. tostring(savedMajors)
-        .. " keepCityStates=" .. tostring(savedCount))
-    script.InitializeGhostPlayers(savedCount, savedMajors)
+        .. " keepCityStates=" .. tostring(savedCount)
+        .. " cityStateGhostPlan=" .. tostring(savedCityGhostPool)
+        .. " majorGhostPlan=" .. tostring(savedMajorGhostPool))
+    if script.InitializeGhostMajorPlayers ~= nil then
+        script.InitializeGhostMajorPlayers(savedMajors, savedMajorGhostPool)
+    end
+    if script.InitializeCityStateGhostPlayers ~= nil then
+        script.InitializeCityStateGhostPlayers(savedCount, savedMajors, savedCityGhostPool)
+    elseif script.InitializeGhostPlayers ~= nil then
+        script.InitializeGhostPlayers(savedCount, savedMajors)
+    end
 end
 
 -- ===========================================================================
@@ -379,6 +435,68 @@ local INGAME_BULK_HIDE_GROUPS = {
 	"WorldViewControls", "HUD", "PartialScreens", "Screens", "TopLevelHUD",
 }
 
+-- ===========================================================================
+-- 【2026-10-15 授权者】自愈：官方城邦面板“点不开”会把回合卡死
+--
+-- 链路（基座代码，已核对）：
+--   * 给城邦派使者是**回合拦截项**（ActionPanel: ENDTURN_BLOCKING_GIVE_INFLUENCE_TOKEN）——
+--     拦截消息点下去 → `LuaEvents.ActionPanel_ActivateNotification` →
+--     NotificationPanel → `LuaEvents.NotificationPanel_OpenCityStatesSendEnvoys`；
+--   * 城邦面板本体 = PartialScreens/CityStates（启动栏按钮走 `LuaEvents.LaunchBar_OpenCityStates`）。
+-- 而 InGame.lua 的 BulkHide 会把 **/InGame/PartialScreens 等五大组**一起隐藏：
+--   只要有界面调过 `BulkHide(true, "Diplomacy")` 而配对的 show 没跑到（本 mod 挡下幽灵的
+--   外交入口时就会出现这种半开状态），城邦面板就**永远显示不出来** ⇒ 使者派不出去 ⇒
+--   **玩家无法进入下一回合**。
+-- 所以在这两个“要打开城邦面板”的入口做自愈：五大组被隐藏就恢复；确认卡着外交输入上下文
+--   就 fire 原版的 `DiplomacyActionView_ShowIngameUI`（让 InGame 自己执行
+--   `BulkHide(false,"Diplomacy")` + `Input.PopContext()`，保持引用计数配平）。
+-- 只在“城邦面板要被打开”的时刻做，避免误伤全屏地图/外交界面这类**合法隐藏**。
+-- ===========================================================================
+local function AreInGameGroupsHidden()
+	for _, group in ipairs(INGAME_BULK_HIDE_GROUPS) do
+		local control = ContextPtr:LookUpControl("/InGame/" .. group)
+		if control ~= nil and control:IsHidden() then return true, group end
+	end
+	return false, nil
+end
+
+local function IsDiplomacyInputContextActive()
+	if Input == nil or Input.GetActiveContext == nil then return false end
+	if InputContext == nil or InputContext.Diplomacy == nil then return false end
+	local ok, active = pcall(function() return Input.GetActiveContext() end)
+	return ok and active == InputContext.Diplomacy
+end
+
+-- 配对原版的外交 show：fire DiplomacyActionView_ShowIngameUI（它内部 BulkHide(false) + PopContext）
+function PairDiplomacyBulkShow()
+	if LuaEvents ~= nil and LuaEvents.DiplomacyActionView_ShowIngameUI ~= nil then
+		local ok = pcall(function() LuaEvents.DiplomacyActionView_ShowIngameUI() end)
+		if ok then
+			print("[ModMiscTool][RestoreUI] 已补齐原版配对：DiplomacyActionView_ShowIngameUI")
+			return true
+		end
+	end
+	-- 事件不可用（不该发生）：退回手动弹掉外交输入上下文
+	local popped = false
+	if IsDiplomacyInputContextActive() and Input.PopContext ~= nil then
+		popped = pcall(function() Input.PopContext() end)
+	end
+	print("[ModMiscTool][RestoreUI] ShowIngameUI 事件不可用，手动弹输入上下文=" .. tostring(popped))
+	return popped
+end
+
+-- 打开城邦面板前的自愈；返回是否做了修复
+function HealInGameUIForPanelOpen(why)
+	local hidden, group = AreInGameGroupsHidden()
+	local diploStuck = IsDiplomacyInputContextActive()
+	if not hidden and not diploStuck then return false end
+	print("[ModMiscTool][RestoreUI] " .. tostring(why) .. "：检测到界面被隐藏/输入上下文卡住（"
+		.. tostring(group or "无隐藏组") .. "，外交输入=" .. tostring(diploStuck) .. "），开始自愈")
+	if diploStuck then PairDiplomacyBulkShow() end
+	if hidden then RestoreInGameUI() end
+	return true
+end
+
 function RestoreInGameUI()
 	local restored = {}
 	for _, group in ipairs(INGAME_BULK_HIDE_GROUPS) do
@@ -406,10 +524,18 @@ local m_TurnEventTextResolvers = {}
 local m_PendingTurnEventTexts = {}
 
 function RegisterTurnEventTextResolver(resolver)
+	m_TurnEventTextResolvers = m_TurnEventTextResolvers or {}
 	if type(resolver) ~= "function" then return false end
 	table.insert(m_TurnEventTextResolvers, resolver)
 	return true
 end
+
+-- 立即暴露给其它 UI 脚本：避免它们在本 mod Initialize 之前拿到上一局上下文
+-- 残留的旧函数对象，调用时报 “function expected instead of nil”。
+if not ExposedMembers.ModMiscToolUI then
+	ExposedMembers.ModMiscToolUI = {}
+end
+ExposedMembers.ModMiscToolUI.RegisterTurnEventTextResolver = RegisterTurnEventTextResolver
 
 local TURN_EVENT_DEFAULT_TEXT_KEYS = {
 	GOLD     = "LOC_MODMISC_TURNEVENT_GOLD",
@@ -701,5 +827,26 @@ if Events.ExitToMainMenu ~= nil and Events.ExitToMainMenu.Add ~= nil then
 		print("[ModMiscTool][SaveGraph] 退出到主菜单：本 mod 不做任何存储操作（避免与引擎拆卸抢）")
 	end)
 end
+
+-- 自愈接口导出 + 两个“打开城邦面板”的入口监听（2026-10-15 授权者）
+if ExposedMembers ~= nil then
+	if ExposedMembers.ModMiscToolUI == nil then
+		ExposedMembers.ModMiscToolUI = {}
+	end
+	ExposedMembers.ModMiscToolUI.RestoreInGameUI = RestoreInGameUI
+	ExposedMembers.ModMiscToolUI.HealInGameUIForPanelOpen = HealInGameUIForPanelOpen
+	ExposedMembers.ModMiscToolUI.PairDiplomacyBulkShow = PairDiplomacyBulkShow
+end
+
+pcall(function()
+	LuaEvents.LaunchBar_OpenCityStates.Add(function()
+		HealInGameUIForPanelOpen("打开城邦面板（启动栏）")
+	end)
+end)
+pcall(function()
+	LuaEvents.NotificationPanel_OpenCityStatesSendEnvoys.Add(function()
+		HealInGameUIForPanelOpen("给城邦派使者（回合拦截）")
+	end)
+end)
 
 Events.LoadGameViewStateDone.Add(Initialize)

@@ -89,6 +89,9 @@
                         Style="ButtonControl" FontSize="26" String="LOC_MODMISC_WB_TEST_FAITH" />
             <GridButton ID="WorldBuilderTestReveal" Anchor="L,T" Offset="600,664" Size="280,60"
                         Style="ButtonControl" FontSize="26" String="LOC_MODMISC_WB_TEST_REVEAL" />
+            <!-- 压测（2026-10-15）：幽灵外交压制自检 -->
+            <GridButton ID="WorldBuilderTestDiploGhostCheck" Anchor="L,T" Offset="890,664" Size="280,60"
+                        Style="ButtonControl" FontSize="22" String="LOC_MODMISC_WB_TEST_DIPLO_GHOST_CHECK" />
 
             <!-- ============ 运行时补建幽灵槽位（测试 EXera 路径） ============ -->
             <GridButton ID="WorldBuilderTestCreateGhost" Anchor="L,T" Offset="20,736" Size="280,60"
@@ -97,9 +100,21 @@
                         Style="ButtonControl" FontSize="26" String="LOC_MODMISC_WB_TEST_CONVERT_CITY_STATE" />
             <GridButton ID="WorldBuilderTestPlayerStats" Anchor="L,T" Offset="600,736" Size="280,60"
                         Style="ButtonControl" FontSize="26" String="LOC_MODMISC_WB_TEST_PLAYER_STATS" />
+            <!-- 压测（2026-10-15 授权者要求）：一键把所有主流幽灵城邦化，验证城邦化之后的行为 -->
+            <GridButton ID="WorldBuilderTestConvertAllCityState" Anchor="L,T" Offset="890,736" Size="280,60"
+                        Style="ButtonControl" FontSize="20" String="LOC_MODMISC_WB_TEST_CONVERT_ALL_CITY_STATE" />
+
+            <!-- 城邦身份自检/修复（2026-10-15 授权者报官方城邦面板打不开后补）：
+                 把“城邦玩家 + 主流领袖”这类会让官方城邦面板报错的半成品身份修好 -->
+            <GridButton ID="WorldBuilderTestRepairCityState" Anchor="L,T" Offset="890,808" Size="280,60"
+                        Style="ButtonControl" FontSize="20" String="LOC_MODMISC_WB_TEST_REPAIR_CITY_STATE" />
+
+            <!-- 见面的幽灵转回主流（2026-10-15 授权者定位：见面后转城邦 ⇒ 城邦面板打不开 ⇒ 回合卡死） -->
+            <GridButton ID="WorldBuilderTestRestoreMetGhosts" Anchor="L,T" Offset="890,880" Size="280,60"
+                        Style="ButtonControl" FontSize="20" String="LOC_MODMISC_WB_TEST_RESTORE_MET_GHOSTS" />
 
             <!-- ============ 打开提示信息小窗 ============ -->
-            <GridButton ID="WorldBuilderTestMessages" Anchor="L,T" Offset="20,808" Size="860,60"
+            <GridButton ID="WorldBuilderTestMessages" Anchor="L,T" Offset="20,880" Size="860,60"
                         Style="ButtonControl" FontSize="26" String="LOC_MODMISC_WB_TEST_MESSAGES" />
 
             <!-- ============ 展开的选项列表（点击选择器后出现在其正下方） ============ -->

@@ -90,15 +90,21 @@ local function SetStatus(text)
     Controls.WorldBuilderTestStatus:SetText(tostring(text or ""))
 end
 
--- 最新一条显示在顶部状态栏；“提示信息”小窗里保留历史记录（由按钮打开）
-local function SetOutput(text)
+-- 只往“提示信息”小窗里追加一条，不动顶部状态栏（打开面板时用来塞幽灵池摘要）
+local function PushMessage(text)
     local message = tostring(text or "")
     table.insert(m_Messages, message)
     while #m_Messages > MESSAGE_HISTORY_MAX do
         table.remove(m_Messages, 1)
     end
-    SetStatus(message)
     Controls.WorldBuilderTestMessageText:SetText(table.concat(m_Messages, "\n"))
+    return message
+end
+
+-- 最新一条显示在顶部状态栏；“提示信息”小窗里保留历史记录（由按钮打开）
+local function SetOutput(text)
+    local message = PushMessage(text)
+    SetStatus(message)
     print("[ModMiscTool][WorldBuilderTest] " .. message)
 end
 
@@ -211,6 +217,66 @@ local function BuildPlaceRangeEntries()
     end
 end
 
+-- 跨上下文调 gameplay 暴露的幽灵 API：一律 pcall，取不到就回落（别让面板自己报错）
+local function CallGhostAPI(name, fallback, ...)
+    local script = ExposedMembers and ExposedMembers.ModMiscToolScript or nil
+    if script == nil or script[name] == nil then return fallback end
+    local ok, value = pcall(script[name], ...)
+    if not ok or value == nil then return fallback end
+    return value
+end
+
+-- 幽灵池摘要：两类池各有多少、可用多少、本局**申报上限**是多少
+-- （授权者要求“方便查看幽灵玩家数量”；申报上限那一栏就是“没有 mod 申报 ⇒ 0 个”的落地结果）
+local function DescribeGhostPlan(plan)
+    if plan == nil then return Locale.Lookup("LOC_MODMISC_WB_TEST_GHOST_PLAN_UNLIMITED") end
+    if tonumber(plan) == nil or tonumber(plan) <= 0 then
+        return Locale.Lookup("LOC_MODMISC_WB_TEST_GHOST_PLAN_NONE")
+    end
+    return tostring(math.floor(tonumber(plan)))
+end
+
+local function DescribeGhostPool(kindKey, poolAPI, freeAPI, planAPI, logLabel)
+    local pool = tonumber(CallGhostAPI(poolAPI, 0)) or 0
+    local free = tonumber(CallGhostAPI(freeAPI, 0)) or 0
+    local plan = CallGhostAPI(planAPI, nil)
+    print("[ModMiscTool][Ghost] pool summary " .. logLabel .. ": pool=" .. tostring(pool)
+        .. " free=" .. tostring(free) .. " used=" .. tostring(pool - free)
+        .. " declaredPlan=" .. tostring(plan))
+    return Locale.Lookup("LOC_MODMISC_WB_TEST_GHOST_LINE", Locale.Lookup(kindKey),
+        tostring(pool), tostring(free), tostring(pool - free), DescribeGhostPlan(plan))
+end
+
+-- 建局侧记下的“玩家自己选的数量”（局内算槽位边界的基数）；老档/取不到就报 n/a
+local function ReadSavedChoice(key)
+    if DataProtocol == nil or DataProtocol.Load == nil then return "n/a" end
+    local ok, value = pcall(function() return DataProtocol.Load(key) end)
+    if not ok or value == nil then return "n/a" end
+    -- DataProtocol.Load 返回 (值, 来源) 两个值：多包一层括号截断，别把来源当值
+    local number = tonumber((tostring(value)))
+    if number == nil then return "n/a" end
+    return tostring(number)
+end
+
+local function ReportGhostPoolSummary()
+    local script = ExposedMembers.ModMiscToolScript
+    if script == nil or script.GetGhostPlayerCount == nil then
+        print("[ModMiscTool][Ghost] pool summary: ModMiscToolScript API 不可用")
+        return nil
+    end
+    local majorLine = DescribeGhostPool("LOC_MODMISC_WB_TEST_GHOST_KIND_MAJOR",
+        "GetGhostPlayerCount", "GetAvailableGhostPlayerCount", "GetMajorGhostPoolLimit", "major")
+    local cityLine = DescribeGhostPool("LOC_MODMISC_WB_TEST_GHOST_KIND_CITY_STATE",
+        "GetCityStateGhostPlayerCount", "GetAvailableCityStateGhostPlayerCount",
+        "GetCityStateGhostPoolLimit", "citystate")
+    local majorChoice = ReadSavedChoice("ghost_majorplayers")
+    local cityChoice = ReadSavedChoice("ghost_citystates")
+    print("[ModMiscTool][Ghost] pool summary choice: majorPlayers=" .. majorChoice
+        .. " cityStates=" .. cityChoice)
+    return majorLine .. "\n" .. cityLine .. "\n"
+        .. Locale.Lookup("LOC_MODMISC_WB_TEST_GHOST_CHOICE", majorChoice, cityChoice)
+end
+
 -- 玩家列表（普通对局：Players[playerID] 不为 nil 即有效，nil 即空槽位）
 local function MakePlayerText(playerID)
     local playerConfig = PlayerConfigurations[playerID]
@@ -227,8 +293,14 @@ local function MakePlayerText(playerID)
         end
         civText = GetLocalizedCivName(playerConfig:GetCivilizationTypeName())
     end
+    -- 幽灵标记：主流池与城邦池分开显示（旧接口 IsGhostPlayer 只指主流池）
     local ghostText = ""
-    if ExposedMembers.ModMiscToolScript.IsGhostPlayer(playerID) then
+    local poolType = CallGhostAPI("GetGhostPlayerPoolType", nil, playerID)
+    if poolType == "major" then
+        ghostText = " · " .. Locale.Lookup("LOC_MODMISC_WB_TEST_GHOST_KIND_MAJOR")
+    elseif poolType == "citystate" then
+        ghostText = " · " .. Locale.Lookup("LOC_MODMISC_WB_TEST_GHOST_KIND_CITY_STATE")
+    elseif CallGhostAPI("IsGhostPlayer", false, playerID) == true then
         ghostText = " · " .. Locale.Lookup("LOC_MODMISC_WB_TEST_GHOST")
     end
     return string.format("%d · %s · %s · %s%s", playerID, kindText, playerName, civText, ghostText)
@@ -814,14 +886,120 @@ local function ConvertSelectedToCityState()
     end
 end
 
--- 统计当前槽位：引擎建了多少主要文明/城邦、还剩多少空槽位、幽灵池里有多少可用
+-- 一键：把所有主流幽灵城邦化（压测“城邦化之后”的行为）
+-- 注意 pcall 的返回值错位：pcall(f) -> ok, f返回值1, f返回值2, f返回值3 …
+-- ConvertAllGhostMajorPlayersToCityState 返回 (converted, failed, skipped)。
+local function ConvertAllGhostsToCityState()
+    local api = ExposedMembers.ModMiscToolScript
+    if api == nil or api.ConvertAllGhostMajorPlayersToCityState == nil then
+        SetError("ConvertAllCityState", "ConvertAllGhostMajorPlayersToCityState 不可用")
+        return
+    end
+    local called, converted, failed, skipped = pcall(api.ConvertAllGhostMajorPlayersToCityState)
+    if not called then
+        SetError("ConvertAllCityState", converted)
+        return
+    end
+    SetOutput(Locale.Lookup("LOC_MODMISC_WB_TEST_CONVERT_ALL_RESULT",
+        tostring(converted or 0), tostring(failed or 0), tostring(skipped or 0)))
+    RefreshSelectorButtons()
+end
+
+-- 见面的幽灵转回主流（授权者 2026-10-15 定位：见面后转城邦 ⇒ 官方城邦面板取不到关系数据 ⇒
+-- 面板打不开，而城邦面板是“给城邦派使者”这个回合拦截项的出口 ⇒ 回合卡死）。
+-- Api 返回 (恢复数, 本来就是主流数, 失败数)；改完身份按流程存档重读。
+local function RestoreMetGhostsAsMajor()
+    local api = ExposedMembers.ModMiscToolScript
+    if api == nil or api.RestoreMetGhostsAsMajorPlayers == nil then
+        SetError("RestoreMetGhosts", "RestoreMetGhostsAsMajorPlayers 不可用")
+        return
+    end
+    local called, restored, skipped, failed = pcall(api.RestoreMetGhostsAsMajorPlayers)
+    if not called then
+        SetError("RestoreMetGhosts", restored)
+        return
+    end
+    SetOutput(Locale.Lookup("LOC_MODMISC_WB_TEST_RESTORE_MET_GHOSTS_RESULT",
+        tostring(restored or 0), tostring(skipped or 0), tostring(failed or 0)))
+    RefreshSelectorButtons()
+end
+
+-- 城邦身份自检/修复：把“城邦玩家 + 主流领袖”这类半成品身份修好
+-- 为什么：官方城邦面板用领袖原型取加成文本，取不到会拼接 nil 直接报错 ⇒ 面板打不开。
+-- Api 返回 (合规数, 修复数, 失败数) —— 注意 pcall 会在最前面多塞一个成功标志。
+local function RepairCityStateIdentity()
+    local api = ExposedMembers.ModMiscToolScript
+    if api == nil or api.RepairCityStatePlayerIdentities == nil then
+        SetError("RepairCityStateIdentity", "RepairCityStatePlayerIdentities 不可用")
+        return
+    end
+    local called, okCount, repaired, failed = pcall(api.RepairCityStatePlayerIdentities)
+    if not called then
+        SetError("RepairCityStateIdentity", okCount)
+        return
+    end
+    SetOutput(Locale.Lookup("LOC_MODMISC_WB_TEST_REPAIR_CITY_STATE_RESULT",
+        tostring(okCount or 0), tostring(repaired or 0), tostring(failed or 0)))
+    RefreshSelectorButtons()
+end
+
+-- 外交压制自检：把两类幽灵池里每个玩家的“压制判定”逐条打出来（压测用）
+-- 注：2026-10-15 起城邦幽灵退役（申报 0），默认只有主流池；城邦池只在别的 mod 申报时才有货。
+local function CheckDiplomacyGhostSuppression()
+    local script = ExposedMembers.ModMiscToolScript
+    if script == nil or script.GetGhostPlayers == nil then
+        SetError("DiploGhostCheck", "ModMiscToolScript API 不可用")
+        return
+    end
+    local pools = {
+        { Kind = "major", Getter = script.GetGhostPlayers },
+        { Kind = "citystate", Getter = script.GetCityStateGhostPlayers },
+    }
+    local lines = {}
+    local majorCount, cityCount, suppressed = 0, 0, 0
+    for _, pool in ipairs(pools) do
+        if pool.Getter ~= nil then
+            local ok, ids = pcall(pool.Getter)
+            if ok and type(ids) == "table" then
+                for _, playerID in ipairs(ids) do
+                    -- 压制判定用与外交 UI 完全同一个入口（ExposedMembers.ModMiscToolUI）
+                    local isSuppressed = nil
+                    local uiMembers = ExposedMembers.ModMiscToolUI
+                    if uiMembers ~= nil and uiMembers.IsDiplomacyGhostPlayerUI ~= nil then
+                        local okCall, value = pcall(uiMembers.IsDiplomacyGhostPlayerUI, playerID)
+                        if okCall then isSuppressed = value end
+                    end
+                    local available = CallGhostAPI("IsGhostPlayerAvailable", false, playerID)
+                    local hasCity = CallGhostAPI("PlayerOwnsCity", false, playerID)
+                    if pool.Kind == "major" then majorCount = majorCount + 1
+                    else cityCount = cityCount + 1 end
+                    if isSuppressed == true then suppressed = suppressed + 1 end
+                    table.insert(lines, Locale.Lookup("LOC_MODMISC_WB_TEST_DIPLO_GHOST_CHECK_LINE",
+                        tostring(playerID), pool.Kind, tostring(isSuppressed),
+                        tostring(available), tostring(hasCity)))
+                end
+            end
+        end
+    end
+    print("[ModMiscTool][WorldBuilderTest] DiploGhostCheck: major=" .. tostring(majorCount)
+        .. " citystate=" .. tostring(cityCount) .. " suppressed=" .. tostring(suppressed))
+    local text = Locale.Lookup("LOC_MODMISC_WB_TEST_DIPLO_GHOST_CHECK_RESULT",
+        tostring(majorCount), tostring(cityCount), tostring(suppressed))
+    if #lines > 0 then text = text .. "\n" .. table.concat(lines, "\n") end
+    SetOutput(text)
+end
+
+-- 统计当前槽位：引擎建了多少主要文明/城邦、还剩多少空槽位、两类幽灵池里各有多少可用
 local function ShowPlayerSlotStats()
     local summary = "n/a"
     if ExposedMembers.ModMiscToolScript.GetPlayerSlotSummary ~= nil then
         summary = tostring(ExposedMembers.ModMiscToolScript.GetPlayerSlotSummary())
     end
+    local ghostSummary = ReportGhostPoolSummary()
     print("[ModMiscTool][WorldBuilderTest] PlayerSlots: " .. summary)
-    SetOutput(Locale.Lookup("LOC_MODMISC_WB_TEST_PLAYER_STATS_RESULT", summary))
+    local text = Locale.Lookup("LOC_MODMISC_WB_TEST_PLAYER_STATS_RESULT", summary)
+    if ghostSummary ~= nil then text = text .. "\n" .. ghostSummary end
+    SetOutput(text)
 end
 
 -- ===========================================================================
@@ -945,9 +1123,13 @@ local GEOMETRY_CONTROLS = {
     "WorldBuilderTestGold",
     "WorldBuilderTestFaith",
     "WorldBuilderTestReveal",
+    "WorldBuilderTestDiploGhostCheck",
     "WorldBuilderTestCreateGhost",
     "WorldBuilderTestConvertCityState",
     "WorldBuilderTestPlayerStats",
+    "WorldBuilderTestConvertAllCityState",
+    "WorldBuilderTestRepairCityState",
+    "WorldBuilderTestRestoreMetGhosts",
     "WorldBuilderTestMessages",
     "WorldBuilderTestMessageWindow",
     "WorldBuilderTestMessageHeader",
@@ -981,8 +1163,12 @@ local FONT_CONTROLS = {
     "WorldBuilderTestGold",
     "WorldBuilderTestFaith",
     "WorldBuilderTestReveal",
+    "WorldBuilderTestDiploGhostCheck",
     "WorldBuilderTestCreateGhost",
     "WorldBuilderTestPlayerStats",
+    "WorldBuilderTestConvertAllCityState",
+    "WorldBuilderTestRepairCityState",
+    "WorldBuilderTestRestoreMetGhosts",
     "WorldBuilderTestMessages",
     "WorldBuilderTestMessageTitle",
     "WorldBuilderTestMessageText",
@@ -1093,25 +1279,6 @@ local function AttachPanelToInGame()
     return panelRoot
 end
 
--- 幽灵池摘要：打开面板就打一行，直接看数量（授权者要求“方便查看幽灵玩家数量”）
-local function ReportGhostPoolSummary()
-    local script = ExposedMembers.ModMiscToolScript
-    if script == nil or script.GetGhostPlayerCount == nil then
-        print("[ModMiscTool][Ghost] pool summary: ModMiscToolScript API 不可用")
-        return
-    end
-    local total = script.GetGhostPlayerCount()
-    local available = nil
-    if script.GetAvailableGhostPlayerCount ~= nil then
-        available = script.GetAvailableGhostPlayerCount()
-    end
-    local claimed = nil
-    if total ~= nil and available ~= nil then claimed = total - available end
-    print("[ModMiscTool][Ghost] pool summary: total=" .. tostring(total)
-        .. " available=" .. tostring(available)
-        .. " claimed=" .. tostring(claimed))
-    return total, available, claimed
-end
 
 function OpenWorldBuilderTestPanel()
     local panelRoot = AttachPanelToInGame()
@@ -1121,7 +1288,8 @@ function OpenWorldBuilderTestPanel()
 
     InitializeData()
     CloseOptionList()
-    ReportGhostPoolSummary()
+    local ghostSummary = ReportGhostPoolSummary()
+    if ghostSummary ~= nil then PushMessage(ghostSummary) end
     SetStatus(Locale.Lookup("LOC_MODMISC_WB_TEST_READY"))
 
     print("[ModMiscTool][WorldBuilderTest] panel state: hidden=" .. tostring(panelRoot:IsHidden())
@@ -1134,7 +1302,11 @@ function CloseWorldBuilderTestPanel()
     Controls.WorldBuilderTestRoot:SetHide(true)
 end
 
--- 【发布态 · 2026-10-06 授权者要求】同上：测试面板的侧栏入口不注册；面板代码留着，改 true 可调出来。
+-- 【2026-10-15 授权者要求】重新启用侧栏入口：要看幽灵玩家状态。
+-- 要再收起来：把这里改回 false，并注释掉 modinfo 里的 WorldBuilderTestPanel 那段 AddUserInterfaces。
+-- 【2026-10-15 授权者：进入发布阶段】调试面板**停用**：
+--   ① 这个侧栏入口开关关掉；② modinfo 里这段 AddUserInterfaces 也注释掉了（见那里的说明）。
+--   要再用（排障/实机验收幽灵状态）：这里改 true + modinfo 恢复那段注册即可。
 local MODMISC_WB_TEST_ENTRY_ENABLED = false
 
 function TryRegisterWorldBuilderTestButton()
@@ -1181,6 +1353,14 @@ function OnInit()
     Controls.WorldBuilderTestRecycleGhost:RegisterCallback(Mouse.eLClick,
         OnAction("MovePlayerOffMap", RecycleGhostPlayer))
     Controls.WorldBuilderTestRemove:RegisterCallback(Mouse.eLClick, OnAction("RemovePlayer", RemovePlayer))
+    Controls.WorldBuilderTestConvertAllCityState:RegisterCallback(Mouse.eLClick,
+        OnAction("ConvertAllCityState", ConvertAllGhostsToCityState))
+    Controls.WorldBuilderTestDiploGhostCheck:RegisterCallback(Mouse.eLClick,
+        OnAction("DiploGhostCheck", CheckDiplomacyGhostSuppression))
+    Controls.WorldBuilderTestRepairCityState:RegisterCallback(Mouse.eLClick,
+        OnAction("RepairCityStateIdentity", RepairCityStateIdentity))
+    Controls.WorldBuilderTestRestoreMetGhosts:RegisterCallback(Mouse.eLClick,
+        OnAction("RestoreMetGhosts", RestoreMetGhostsAsMajor))
     if Controls.WorldBuilderTestGhostKillMode ~= nil then
         Controls.WorldBuilderTestGhostKillMode:RegisterCallback(Mouse.eLClick,
             OnAction("GhostKillMode", ToggleGhostKillMode))

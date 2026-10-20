@@ -1,0 +1,288 @@
+LOC_MODMISC_SIDEBAR_TITLE	Mod Tools
+LOC_MODMISC_SIDEBAR_PAGE_UP	Previous Page
+LOC_MODMISC_SIDEBAR_PAGE_DOWN	Next Page
+LOC_MODMISC_SIDEBAR_PAGE_UP_TOOLTIP	Show previous toolbar buttons
+LOC_MODMISC_SIDEBAR_PAGE_DOWN_TOOLTIP	Show next toolbar buttons
+LOC_MODMISC_PRESET_BUTTON	Game Info
+LOC_MODMISC_PRESET_TOOLTIP	Show yields, resources and game info
+LOC_MODMISC_BUTTON_PLACEHOLDER	Button
+LOC_MODMISC_INFO_TITLE	Empire Overview
+LOC_MODMISC_YIELDS	Yields
+LOC_MODMISC_YIELD_SCIENCE	Science
+LOC_MODMISC_YIELD_CULTURE	Culture
+LOC_MODMISC_YIELD_GOLD	Gold
+LOC_MODMISC_YIELD_FAITH	Faith
+LOC_MODMISC_YIELD_PRODUCTION	Production
+LOC_MODMISC_YIELD_TOURISM	Tourism
+LOC_MODMISC_YIELD_SCIENCE_TOOLTIP	Science per turn
+LOC_MODMISC_YIELD_CULTURE_TOOLTIP	Culture per turn
+LOC_MODMISC_YIELD_GOLD_TOOLTIP	Gold per turn
+LOC_MODMISC_YIELD_FAITH_TOOLTIP	Faith per turn
+LOC_MODMISC_YIELD_PRODUCTION_TOOLTIP	Production per turn
+LOC_MODMISC_YIELD_TOURISM_TOOLTIP	Tourism per turn
+LOC_EXTENSIVEUNIT_PANEL_TITLE	Unit Extended Operations Panel
+LOC_EXTENSIVEUNIT_NO_UNIT	No unit selected
+LOC_EXTENSIVEUNIT_NO_CASES	No available build cases
+LOC_EXTENSIVEUNIT_TOGGLE_TOOLTIP	Unit Extended Operations Menu
+LOC_EXTENSIVEUNIT_CASE_NAME	Build Case
+LOC_EXTENSIVEUNIT_CASE_DESC	Build description
+LOC_EXTENSIVEUNIT_EXT_BUTTON	Extension
+LOC_EXTENSIVEUNIT_EXT_DESC	Custom extension
+LOC_CASE_FARM_DESC	Build a Farm improvement on the selected plot.
+LOC_CASE_MINE_DESC	Build a Mine improvement on the selected plot.
+LOC_CASE_LUMBER_MILL_DESC	Build a Lumber Mill on the selected plot.
+LOC_CASE_FORT_DESC	Build a Fort on the selected plot.
+LOC_CASE_ROAD_DESC	Build an Ancient Road to the selected plot (range: 1).
+LOC_CASE_REMOVE_FEATURE_DESC	Remove a Forest feature from the selected plot.
+LOC_CASE_REPAIR_DESC	Repair a pillaged improvement on the selected plot.
+LOC_ABILITY_INCREASE_BUILD_CHARGE_NAME	Increase Build Charge
+LOC_ABILITY_INCREASE_BUILD_CHARGE_DESCRIPTION	Increases this unit's build charges by 1.
+LOC_ABILITY_DECREASE_BUILD_CHARGE_NAME	Decrease Build Charge
+LOC_ABILITY_DECREASE_BUILD_CHARGE_DESCRIPTION	Decreases this unit's build charges by 1.
+LOC_MODMISC_WB_TEST_TITLE	WorldBuilder API Test
+LOC_MODMISC_WB_TEST_TOOLTIP	Open the WorldBuilder API test panel
+LOC_MODMISC_WB_TEST_PLAYER	Player
+LOC_MODMISC_WB_TEST_CIV	Civilization
+LOC_MODMISC_WB_TEST_LEADER	Leader
+LOC_MODMISC_WB_TEST_GHOST_KILL_MODE	Ghost kill mode (damage+kill / kill only)
+LOC_MODMISC_WB_TEST_REMOVE	Remove Player
+LOC_MODMISC_WB_TEST_APPLY	Set Civilization / Leader
+LOC_MODMISC_WB_TEST_SET_ERA	Set Ancient Era
+LOC_MODMISC_WB_TEST_GOLD	Set Gold 1000
+LOC_MODMISC_WB_TEST_FAITH	Set Faith 1000
+LOC_MODMISC_WB_TEST_REVEAL	Reveal All
+LOC_MODMISC_WB_TEST_CLEAR_START	Clear Start Position
+LOC_MODMISC_WB_TEST_READY	WorldBuilder interfaces are ready.
+LOC_MODMISC_WB_TEST_PLAYER_INFO	Player {1_ID}: {2_Info}
+LOC_MODMISC_WB_TEST_INITIALIZED	initialized
+LOC_MODMISC_WB_TEST_NOT_INITIALIZED	not initialized
+LOC_MODMISC_WB_TEST_RESULT	{1_Test}: {2_Result}
+LOC_MODMISC_WB_TEST_ERROR	{1_Test} error: {2_Error}
+LOC_MODMISC_WB_TEST_CREATE_CITY	Create City (pick plot)
+LOC_MODMISC_WB_TEST_CREATE_UNIT	Create Unit (pick plot)
+LOC_MODMISC_WB_TEST_PLACE_SETTLER	Place Settler (pick plot)
+LOC_MODMISC_WB_TEST_PICK_PLOT	{1_Action}: pick a highlighted plot on the map.
+LOC_MODMISC_WB_TEST_PLAYER_NOT_READY	Player is not ready yet; try again in a moment.
+LOC_MODMISC_WB_TEST_GHOST_RECYCLE_BLOCKED	Can't recycle player {1_PlayerID} into a ghost: it already owns a city, and removing all cities kills a player (a settler won't save it).
+LOC_MODMISC_WB_TEST_MESSAGES	Messages
+LOC_MODMISC_WB_TEST_NO_PLOT	No valid plot found around the anchor.
+LOC_MODMISC_WB_TEST_PLAYER_TYPE	Player Type
+LOC_MODMISC_WB_TEST_TYPE_MAJOR	Major Civilization
+LOC_MODMISC_WB_TEST_TYPE_CITY_STATE	City-State
+LOC_MODMISC_WB_TEST_PLACE_RANGE	Placement Range
+LOC_MODMISC_WB_TEST_RANGE_VALUE	{1_Range} tiles
+LOC_MODMISC_WB_TEST_ACTIVATE_GHOST	Activate Ghost Player
+LOC_MODMISC_WB_TEST_RECYCLE_GHOST	Send Back Off-Map
+LOC_MODMISC_WB_TEST_GHOST	ghost
+LOC_MODMISC_WB_TEST_GHOST_KIND_MAJOR	major ghost
+LOC_MODMISC_WB_TEST_GHOST_KIND_CITY_STATE	city-state ghost
+LOC_MODMISC_WB_TEST_GHOST_LINE	{1_Kind}: pool {2_Pool} (free {3_Free}, used {4_Used}) · declared {5_Plan}
+LOC_MODMISC_WB_TEST_GHOST_PLAN_NONE	none (no mod declared)
+LOC_MODMISC_WB_TEST_GHOST_PLAN_UNLIMITED	unlimited (legacy save)
+LOC_MODMISC_WB_TEST_GHOST_CHOICE	player choice: major {1_Major} / city-state {2_CityState}
+LOC_MODMISC_WB_TEST_NO_GHOST	No ghost player available (start a new game with this mod enabled).
+LOC_MODMISC_WB_TEST_GHOST_ACTIVATED	Ghost player {1_PlayerID} activated as {2_Civ}.
+LOC_MODMISC_WB_TEST_CREATE_GHOST	Create Ghost Slot
+LOC_MODMISC_WB_TEST_GHOST_CREATED	Runtime ghost slot created: player {1_PlayerID}.
+LOC_MODMISC_WB_TEST_GHOST_CREATE_FAILED	Could not create a ghost slot: {1_Reason}
+LOC_MODMISC_WB_TEST_CONVERT_CITY_STATE	Convert to City-State
+LOC_MODMISC_WB_TEST_CONVERT_ALL_CITY_STATE	Convert ALL Major Ghosts to City-States
+LOC_MODMISC_WB_TEST_CONVERT_ALL_RESULT	Convert all major ghosts: converted {1_Converted}, failed {2_Failed}, skipped {3_Skipped}. Identity changes take effect next turn (no reload needed).
+LOC_MODMISC_WB_TEST_RESTORE_MET_GHOSTS	Met Ghosts Back to Majors
+LOC_MODMISC_WB_TEST_RESTORE_MET_GHOSTS_RESULT	Met ghosts back to majors: restored {1_Restored}, already major {2_Skipped}, failed {3_Failed}. (Save and reload afterwards.)
+LOC_MODMISC_WB_TEST_REPAIR_CITY_STATE	Repair City-State Identities
+LOC_MODMISC_WB_TEST_REPAIR_CITY_STATE_RESULT	City-state identity check: legal {1_Ok}, repaired {2_Repaired}, failed {3_Failed}. (The official city-state panel needs a city-state level civilization plus a minor-archetype leader.)
+LOC_MODMISC_WB_TEST_DIPLO_GHOST_CHECK	Diplomacy Suppression Check
+LOC_MODMISC_WB_TEST_DIPLO_GHOST_CHECK_RESULT	Ghost suppression check: major {1_Major}, city-state {2_CityState}, still suppressed {3_Suppressed}.
+LOC_MODMISC_WB_TEST_DIPLO_GHOST_CHECK_LINE	#{1_ID} [{2_Pool}] suppressed={3_Suppressed} available={4_Available} hasCity={5_HasCity}
+LOC_MODMISC_WB_TEST_PLAYER_STATS	Player Slots
+LOC_MODMISC_WB_TEST_PLAYER_STATS_RESULT	Slots: {1_Summary}
+LOC_MODMISC_AUTOMATION_TEST_TITLE	Automation API Test
+LOC_MODMISC_AUTOMATION_TEST_TOOLTIP	Open the Automation API test panel
+LOC_MODMISC_AUTOMATION_TEST_PLAYER	Player
+LOC_MODMISC_AUTOMATION_TEST_TURNS	Autoplay Turns
+LOC_MODMISC_AUTOMATION_TEST_TURNS_UNLIMITED	No limit
+LOC_MODMISC_AUTOMATION_TEST_REPLAY_ASSETS	Replay assets
+LOC_MODMISC_AUTOMATION_TEST_REPLAY_ASSETS_DONE	Replayed {1_Placed}/{2_Total} persistent asset placements
+LOC_MODMISC_AUTOMATION_TEST_RESTORE_UI	Restore UI
+LOC_MODMISC_AUTOMATION_TEST_STORE_WRITE	Store write
+LOC_MODMISC_AUTOMATION_TEST_STORE_READ	Store read
+LOC_MODMISC_AUTOMATION_TEST_STORE_CLEAR	Store clear
+LOC_MODMISC_AUTOMATION_TEST_STORE_WRITTEN	Cross-save store write: {1_Detail}
+LOC_MODMISC_AUTOMATION_TEST_STORE_WRITE_SUMMARY	Cross-save store: wrote {1_Key} (tap Messages above for details)
+LOC_MODMISC_AUTOMATION_TEST_STORE_HEADER	Cross-save store ({1_Count} keys):
+LOC_MODMISC_AUTOMATION_TEST_STORE_SUMMARY	Cross-save store: {1_Action} done, {2_Count} keys (tap Messages above for details)
+LOC_MODMISC_AUTOMATION_TEST_MODGROUP_LABEL	Mod-group storage (data goes into mod loadout names; size selectable up to 1 MB; press Clear after testing)
+LOC_MODMISC_AUTOMATION_TEST_MODGROUP_SELFTEST	ModGroup self-test
+LOC_MODMISC_AUTOMATION_TEST_MODGROUP_WRITE	ModGroup write
+LOC_MODMISC_AUTOMATION_TEST_MODGROUP_READ	ModGroup read
+LOC_MODMISC_AUTOMATION_TEST_MODGROUP_INFO	ModGroup info
+LOC_MODMISC_AUTOMATION_TEST_MODGROUP_CLEAR	ModGroup clear
+LOC_MODMISC_AUTOMATION_TEST_MODGROUP_INFO_TEXT	Mod-group store: {1_Detail}
+LOC_MODMISC_AUTOMATION_TEST_MODGROUP_INFO_SUMMARY	Mod-group store: available={1_Available} groups={2_Total} ours={3_Ours}
+LOC_MODMISC_AUTOMATION_TEST_MODGROUP_SELFTEST_TEXT	Mod-group self-test: {1_Detail}
+LOC_MODMISC_AUTOMATION_TEST_MODGROUP_SELFTEST_SUMMARY	Mod-group self-test: largest round-trip {1_Size} B, cleaned {2_Count} group(s)
+LOC_MODMISC_AUTOMATION_TEST_MODGROUP_WRITTEN	Mod-group store write: {1_Detail}
+LOC_MODMISC_AUTOMATION_TEST_MODGROUP_WRITE_SUMMARY	Mod-group store: wrote {1_Size} into {2_Chunks} group(s); value kept for the restart check
+LOC_MODMISC_AUTOMATION_TEST_MODGROUP_READ_TEXT	Mod-group store read: {1_Detail}
+LOC_MODMISC_AUTOMATION_TEST_MODGROUP_READ_SUMMARY	Mod-group store: read {1_Key} -> {2_Bytes} bytes
+LOC_MODMISC_AUTOMATION_TEST_MODGROUP_CLEARED	Mod-group store clear: {1_Detail}
+LOC_MODMISC_AUTOMATION_TEST_MODGROUP_CLEAR_SUMMARY	Mod-group store: cleaned {1_Count} group(s)
+LOC_MODMISC_AUTOMATION_TEST_MODGROUP_NAMECEIL	Name ceiling
+LOC_MODMISC_AUTOMATION_TEST_MODGROUP_NAMECEIL_TEXT	Mod-group name ceiling: {1_Detail}
+LOC_MODMISC_AUTOMATION_TEST_MODGROUP_NAMECEIL_SUMMARY	Name ceiling: largest OK name {1_NameLen} chars (payload {2_Payload} B)
+LOC_MODMISC_AUTOMATION_TEST_MODGROUP_CHUNK_LABEL	Chunk {1_Size}
+LOC_MODMISC_AUTOMATION_TEST_NAMESTORE_SELFTEST	Settings store self-test
+LOC_MODMISC_AUTOMATION_TEST_NAMESTORE_SELFTEST_TEXT	Settings store self-test: {1_Detail}
+LOC_MODMISC_AUTOMATION_TEST_NAMESTORE_SELFTEST_SUMMARY	Settings store self-test: {1_Result} (largest round-trip per channel)
+LOC_MODMISC_AUTOMATION_TEST_NAMESTORE_READ	Settings store read
+LOC_MODMISC_AUTOMATION_TEST_NAMESTORE_READ_TEXT	Settings store read: {1_Detail}
+LOC_MODMISC_AUTOMATION_TEST_NAMESTORE_READ_SUMMARY	Settings store read (use after restarting the app to see if it survived)
+LOC_MODMISC_AUTOMATION_TEST_NAMESTORE_CLEAR	Settings store clear
+LOC_MODMISC_AUTOMATION_TEST_NAMESTORE_CLEARED_TEXT	Settings store clear: {1_Detail}
+LOC_MODMISC_AUTOMATION_TEST_NAMESTORE_CLEAR_SUMMARY	Settings store: probe keys cleared
+LOC_MODMISC_AUTOMATION_TEST_DATA_LABEL	Data protocol (registry / audit / GC; purging permanent data needs two taps)
+LOC_MODMISC_AUTOMATION_TEST_DATA_REGISTERED	Registry
+LOC_MODMISC_AUTOMATION_TEST_DATA_AUDIT	Audit
+LOC_MODMISC_AUTOMATION_TEST_DATA_GC	GC
+LOC_MODMISC_AUTOMATION_TEST_DATA_PURGE	Purge permanent
+LOC_MODMISC_AUTOMATION_TEST_DATA_REGISTERED_TEXT	Data registry: {1_Detail}
+LOC_MODMISC_AUTOMATION_TEST_DATA_REGISTERED_SUMMARY	Data registry: {1_Count} dataset(s)
+LOC_MODMISC_AUTOMATION_TEST_DATA_AUDIT_TEXT	Data audit: {1_Detail}
+LOC_MODMISC_AUTOMATION_TEST_DATA_AUDIT_SUMMARY	Data audit: {1_Count} registered, {2_Present} on disk, {3_Orphans} orphan(s)
+LOC_MODMISC_AUTOMATION_TEST_DATA_GC_TEXT	Data GC: {1_Detail}
+LOC_MODMISC_AUTOMATION_TEST_DATA_GC_SUMMARY	Data GC: {1_Removed} expired item(s), {2_Orphans} orphan part(s) removed
+LOC_MODMISC_AUTOMATION_TEST_DATA_PURGE_ARMED	Purge permanent: armed - tap again within 5 seconds to confirm
+LOC_MODMISC_AUTOMATION_TEST_DATA_PURGED_TEXT	Purge permanent: {1_Detail}
+LOC_MODMISC_AUTOMATION_TEST_DATA_PURGED_SUMMARY	Purge permanent: {1_Count} dataset(s) removed
+LOC_MODMISC_AUTOMATION_TEST_NAMESTORE_LABEL	Settings store (invisible to the player) - tested: useroption rejected by the engine, userconfig does not keep values
+LOC_MODMISC_AUTOMATION_TEST_NAMESTORE_WRITE	Settings store write (keep)
+LOC_MODMISC_AUTOMATION_TEST_NAMESTORE_WRITTEN_TEXT	Settings store write: {1_Detail}
+LOC_MODMISC_AUTOMATION_TEST_NAMESTORE_WRITTEN_SUMMARY	Settings store: wrote {1_Size} into {2_Channels} channel(s); value kept for the restart check
+LOC_MODMISC_AUTOMATION_TEST_VIEW_PLAYER	View Selected Player
+LOC_MODMISC_AUTOMATION_TEST_VIEW_OBSERVER	Observer Mode
+LOC_MODMISC_AUTOMATION_TEST_STOP_VIEW	Stop / Return Local
+LOC_MODMISC_AUTOMATION_TEST_LOOK_CAPITAL	Look at Selected Capital
+LOC_MODMISC_AUTOMATION_TEST_ASSET_TYPE	Asset Type
+LOC_MODMISC_AUTOMATION_TEST_ASSET_INDEX	Asset
+LOC_MODMISC_AUTOMATION_TEST_ASSET_PLACE	Place Asset (pick plot)
+LOC_MODMISC_AUTOMATION_TEST_ASSET_CLEAR_PLOT	Clear Asset at Plot
+LOC_MODMISC_AUTOMATION_TEST_ASSET_CLEAR_ALL	Clear All Assets
+LOC_MODMISC_AUTOMATION_TEST_MESSAGES	Messages
+LOC_MODMISC_AUTOMATION_TEST_OBSERVER	Observer
+LOC_MODMISC_AUTOMATION_TEST_NO_PLAYER	No Player
+LOC_MODMISC_AUTOMATION_TEST_RESULT	{1_Test}: {2_Result}
+LOC_MODMISC_AUTOMATION_TEST_ERROR	{1_Test} error: {2_Error}
+LOC_MODMISC_AUTOMATION_TEST_NO_OPTIONS	No options available for this selector.
+LOC_MODMISC_AUTOMATION_TEST_NO_PLOT	No valid plot found around the anchor.
+LOC_MODMISC_AUTOMATION_TEST_PICK_PLOT	{1_Action}: pick a highlighted plot on the map.
+LOC_MODMISC_AUTOMATION_TEST_PICK_ASSET_PLOT	Pick a plot to place the selected asset.
+LOC_MODMISC_AUTOMATION_TEST_PICK_CLEAR_PLOT	Pick a plot to clear assets from.
+LOC_MODMISC_AUTOMATION_TEST_ASSET_NOT_SELECTED	Select an asset...
+LOC_MODMISC_AUTOMATION_TEST_ASSET_CITY	City
+LOC_MODMISC_AUTOMATION_TEST_ASSET_DISTRICT_BASE	District Base
+LOC_MODMISC_AUTOMATION_TEST_ASSET_BUILDING	Building
+LOC_MODMISC_AUTOMATION_TEST_ASSET_LANDMARK	Landmark
+LOC_MODMISC_AUTOMATION_TEST_ASSET_UNIT	Unit
+LOC_MODMISC_AUTOMATION_TEST_READY	Automation test panel ready.
+LOC_MODMISC_CREATEGAME_MAP_TARGET	Target Map
+LOC_MODMISC_CREATEGAME_MAP_NOT_SELECTED	No target map selected
+LOC_MODMISC_CREATEGAME_PROBE	Probe create-game APIs
+LOC_MODMISC_CREATEGAME_APPLY_MAP	Apply map config
+LOC_MODMISC_CREATEGAME_ARM_MARKER	Arm marker
+LOC_MODMISC_CREATEGAME_SAVE	Save before switch
+LOC_MODMISC_CREATEGAME_RESTART	RestartGame
+LOC_MODMISC_CREATEGAME_EXIT	Exit to main menu
+LOC_MODMISC_CREATEGAME_PROBE_HEADER	Create-game probe in game (log prefix [ModMiscTool][CreateGame]):
+LOC_MODMISC_CREATEGAME_PROBE_SHORT	Create-game probe done
+LOC_MODMISC_CREATEGAME_PROBE_MAPS	map scripts: {1_Count} (source: {2_Source})
+LOC_MODMISC_CREATEGAME_APPLY_OK	Map config applied (readback matches the target)
+LOC_MODMISC_CREATEGAME_APPLY_FAIL	Map config NOT applied (readback is still the old value)
+LOC_MODMISC_CREATEGAME_APPLY_SHORT_OK	map config applied
+LOC_MODMISC_CREATEGAME_APPLY_SHORT_FAIL	map config failed
+LOC_MODMISC_CREATEGAME_ARMED	Marker written (before-switch snapshot):
+LOC_MODMISC_CREATEGAME_ARMED_SHORT	marker written
+LOC_MODMISC_CREATEGAME_SAVE_ISSUED	Save requested: {1_Name} (waiting for SaveComplete)
+LOC_MODMISC_CREATEGAME_SAVE_ISSUED_SHORT	save requested
+LOC_MODMISC_CREATEGAME_SAVE_DONE	SaveComplete: {1_Result}
+LOC_MODMISC_CREATEGAME_SAVE_DONE_SHORT	save complete
+LOC_MODMISC_CREATEGAME_CALLING	Calling {1_Action} ... (if the log stops here, the engine died)
+LOC_MODMISC_CREATEGAME_CALLING_SHORT	calling {1_Action}
+LOC_MODMISC_CREATEGAME_RETURNED	{1_Action} returned (no crash):
+LOC_MODMISC_CREATEGAME_RETURNED_SHORT	{1_Action} returned
+LOC_MODMISC_AUTOMATION_TEST_TAB_MAIN	Main
+LOC_MODMISC_AUTOMATION_TEST_TAB_TIMELINE	Restart & Timeline
+LOC_MODMISC_SAVEPANEL_TITLE	Saves & Map Switch
+LOC_MODMISC_SAVEPANEL_TOOLTIP	Open the save-tree / map-switch panel
+LOC_MODMISC_SAVEPANEL_SAVE	Save
+LOC_MODMISC_SAVEPANEL_CONFIRM_AGAIN	Tap again to confirm
+LOC_MODMISC_SAVEPANEL_SWITCH_SELECTED	Restart as new branch
+LOC_MODMISC_SAVEPANEL_SWITCH_NEED_SELECTION	Select a branch save in the list first
+LOC_MODMISC_SAVEPANEL_SWITCH_CONFIRM	Restart as a new branch? The game restarts now and the new game is recorded as a branch of this line. No save is written automatically.
+LOC_MODMISC_SAVEPANEL_SWITCH_REFUSED	Cannot switch: {1_Reason}
+LOC_MODMISC_SAVEPANEL_SWITCH_SENT	Map-switch broadcast sent - the game restarts now (no save was written).
+LOC_MODMISC_SAVEPANEL_SWITCH_CACHED	Branch info cached (the switch is not done yet). Tap "Restart as new branch" once more to restart - that tap only restarts.
+LOC_MODMISC_SAVEPANEL_SWITCH_CACHED_DETAIL	Why two taps: writing the branch broadcast is an engine database write, and restarting right after it crashed the engine once (luaL_unref during teardown). The pause lets the write settle.
+LOC_MODMISC_SAVEPANEL_SWITCH_SENT_DETAIL	The new game will identify itself as a branch of this line when it loads. The broadcast lives 5 minutes and is deleted as soon as it is read.
+LOC_MODMISC_SAVEPANEL_THIS_MAINLINE	This save -> Mainline
+LOC_MODMISC_SAVEPANEL_THIS_BRANCH	This save -> Branch
+LOC_MODMISC_SAVEPANEL_SEL_MAINLINE	Selected -> M
+LOC_MODMISC_SAVEPANEL_SEL_BRANCH	Selected -> B
+LOC_MODMISC_SAVEPANEL_RELATION_SET	Relation updated ({1_Scope}) - the tree redraws; this save carries it in its name from the next save on.
+LOC_MODMISC_SAVEPANEL_BROADCAST	Branch broadcast from {1_Parent} ({2_Age}s ago)
+LOC_MODMISC_SAVEPANEL_SWITCH	Switch map (auto)
+LOC_MODMISC_SAVEPANEL_REFRESH	Refresh list
+LOC_MODMISC_SAVEPANEL_INFO	This game: {1_Current}   |   Origin: {2_Incoming}   |   Logical turn: {3_Logical}   |   Mainline head: {4_Head}   |   Pending: {5_Pending}
+LOC_MODMISC_SAVEPANEL_NONE	none
+LOC_MODMISC_SAVEPANEL_CURRENT	this game
+LOC_MODMISC_SAVEPANEL_ORPHAN	parent not in list
+LOC_MODMISC_SAVEPANEL_EMPTY	(no managed saves yet)
+LOC_MODMISC_SAVEPANEL_SCANNED	Managed saves found: {1_Count}
+LOC_MODMISC_SAVEPANEL_READY	Save panel ready.
+LOC_MODMISC_SAVEPANEL_SAVING	Saving...
+LOC_MODMISC_SAVEPANEL_SAVING_DETAIL	Waiting for the cross-save store to load, then writing the save. The result shows up when SaveComplete arrives.
+LOC_MODMISC_SAVEPANEL_SAVED	Saved node {1_Id} ({2_State})
+LOC_MODMISC_SAVEPANEL_SAVED_ON_DISK	confirmed on disk
+LOC_MODMISC_SAVEPANEL_SAVED_UNCONFIRMED	not seen in the list yet
+LOC_MODMISC_SAVEPANEL_NODE_DETAIL	node {1_Id} | parent {2_Parent} | kind {3_Kind} | engine turn {4_Turn} | logical turn {5_Logical} | map {6_Map} | stamp {7_Stamp}
+{8_Raw}
+LOC_MODMISC_SAVEPANEL_ERROR	{1_Action} failed: {2_Detail}
+LOC_MODMISC_SAVEPANEL_SAVED_ACKED	SaveComplete received, checking the list...
+LOC_MODMISC_SAVEPANEL_RESTART_IGNORED	Engine did NOT restart - the game is still running.
+LOC_MODMISC_SAVEPANEL_RESTART_IGNORED_DETAIL	Network.RestartGame() returned but this screen is still alive, so the engine refused the restart in this state. Tapping any button reports it again; the log line lists anyMultiplayer / worldBuilder / savedGame.
+LOC_MODMISC_SAVEPANEL_EVENT_PLAYER	Target player
+LOC_MODMISC_SAVEPANEL_EVENT_PLAYER_NONE	no player selected
+LOC_MODMISC_SAVEPANEL_EVENT_TYPE	Event type
+LOC_MODMISC_SAVEPANEL_EVENT_DETAIL	Content
+LOC_MODMISC_SAVEPANEL_EVENT_DETAIL_NONE	no content selected
+LOC_MODMISC_SAVEPANEL_EVENT_TURN	Accept turn
+LOC_MODMISC_SAVEPANEL_EVENT_TURN_NONE	no accept turn selected
+LOC_MODMISC_SAVEPANEL_TURN_NOW	logical turn {1_Turn}
+LOC_MODMISC_SAVEPANEL_TURN_PLUS	logical turn {1_Turn} (+{2_Offset})
+LOC_MODMISC_SAVEPANEL_EVENT_SEND	Send event to selection
+LOC_MODMISC_SAVEPANEL_LOAD	Load selected
+LOC_MODMISC_SAVEPANEL_NO_SELECTION	No save selected
+LOC_MODMISC_SAVEPANEL_NO_SELECTION_DETAIL	Tap a save in the tree above first - both "send event" and "load" act on the selected one.
+LOC_MODMISC_SAVEPANEL_SELECTED	Selected: {1_Id} (logical turn {2_Logical})
+LOC_MODMISC_SAVEPANEL_SELECTED_MARK	selected
+LOC_MODMISC_SAVEPANEL_LOGICAL	{1_Logical} (engine {2_Engine}, +{3_Offset})
+LOC_MODMISC_SAVEPANEL_EVENT_SENT	Event sent to {1_Target}: {2_Type} {3_Detail}, accept turn {4_Turn}
+LOC_MODMISC_SAVEPANEL_EVENT_SENT_DETAIL	mailbox key {1_Key}
+LOC_MODMISC_SAVEPANEL_LOAD_CONFIRM	Load this save? The current game will be replaced.
+{1_Name}
+LOC_MODMISC_SAVEPANEL_NO_OPTIONS	No options available
+LOC_MODMISC_TURNEVENT_TYPE_GOLD	Gold
+LOC_MODMISC_TURNEVENT_TYPE_UNIT	Unit
+LOC_MODMISC_TURNEVENT_TYPE_RESOURCE	Resource
+LOC_MODMISC_TURNEVENT_TITLE	Cross-save event
+LOC_MODMISC_TURNEVENT_GOLD	From {1_From}: {3_Amount} gold (handler {4_Result})
+LOC_MODMISC_TURNEVENT_UNIT	From {1_From}: unit {2_Detail} (handler {4_Result})
+LOC_MODMISC_TURNEVENT_RESOURCE	From {1_From}: resource {2_Detail} x{3_Amount} (handler {4_Result})
+LOC_MODMISC_TURNEVENT_OVERDUE_SUFFIX	  (overdue - delivered this turn)
+LOC_MODMISC_TURNEVENT_UNKNOWN	From {1_From}: {2_Detail}
+LOC_MODMISC_SAVEPANEL_INTAKE	Pull events
+LOC_MODMISC_SAVEPANEL_INTAKE_DONE	Events pulled: {1_Count} ({2_How})
+LOC_MODMISC_SAVEPANEL_INTAKE_DETAIL	Events addressed to this game's save node are moved into the turn-event list; they fire at their accept turn (overdue ones fire next turn).
+LOC_MODMISC_SAVEPANEL_DELETE	Delete selected
+LOC_MODMISC_SAVEPANEL_DELETE_CONFIRM	Delete this save? {1_Name}
+LOC_MODMISC_SAVEPANEL_DELETED	Deleted {1_Name}

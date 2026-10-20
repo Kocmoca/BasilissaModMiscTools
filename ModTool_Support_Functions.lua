@@ -673,33 +673,126 @@ function GetCityForPlot(iX, iY)
     return city
 end
 
-function RespawnUnit(unit, newX, newY, newOwnerID)
-	local currentPromotions = {}
-	for gPromotion in GameInfo.UnitPromotions() do
-		if gPromotion ~= nil and unit:GetExperience():HasPromotion(gPromotion.Index) then
-			table.insert(currentPromotions, gPromotion.Index)
+-- ===========================================================================
+-- 单位状态快照 / 序列化（2026-10-19）
+--
+-- 跨存档搬运单位（例如 Exoplanet Homeland 的星际支援）拿不到原单位对象，
+-- 只能把状态先记下来、到对面重建后再套回去。编码格式（给 MMT 事件的大载荷
+-- PayloadText 用；只用 | = / 这些安全字符）：
+--
+--   av_eh_unit=1|exp=12|form=2|dmg=50|prom=PROMOTION_A/PROMOTION_B
+--
+--   * exp  = 当前等级内的经验点（GetExperiencePoints）
+--   * form = 军事编队（GetMilitaryFormation；0 = 无）
+--   * dmg  = 伤害（GetDamage）
+--   * prom = 已获得晋升的**类型名**（跨版本比索引稳）
+-- 单位类型 / 名字不在这里（事件 Detail / 支援信件里的 Name 已有）。
+-- RespawnUnit 与本文件的 UNIT 事件处理器共用 ApplyUnitState 这一条路径。
+-- ===========================================================================
+
+function SnapshotUnitState(unit)
+	if unit == nil then return nil end
+	local state = { Promotions = {}, Exp = 0, Formation = 0, Damage = 0 }
+	pcall(function()
+		local experience = unit:GetExperience()
+		if experience ~= nil then
+			state.Exp = tonumber(experience:GetExperiencePoints()) or 0
+			for row in GameInfo.UnitPromotions() do
+				if row ~= nil and experience:HasPromotion(row.Index) then
+					table.insert(state.Promotions, tostring(row.UnitPromotionType))
+				end
+			end
+		end
+	end)
+	pcall(function() state.Formation = tonumber(unit:GetMilitaryFormation()) or 0 end)
+	pcall(function() state.Damage = tonumber(unit:GetDamage()) or 0 end)
+	return state
+end
+
+function EncodeUnitState(unitOrState)
+	local state = unitOrState
+	if state ~= nil and state.GetType ~= nil then state = SnapshotUnitState(unitOrState) end
+	if type(state) ~= "table" then return "" end
+	local parts = {
+		"av_eh_unit=1",
+		"exp=" .. tostring(tonumber(state.Exp) or 0),
+		"form=" .. tostring(tonumber(state.Formation) or 0),
+		"dmg=" .. tostring(tonumber(state.Damage) or 0),
+	}
+	if type(state.Promotions) == "table" and #state.Promotions > 0 then
+		table.insert(parts, "prom=" .. table.concat(state.Promotions, "/"))
+	end
+	return table.concat(parts, "|")
+end
+
+-- 不是单位状态（没有 av_eh_unit=1）就返回 nil —— 其它 mod 的大载荷不受影响。
+function DecodeUnitState(text)
+	if text == nil or tostring(text) == "" then return nil end
+	local state = { Promotions = {} }
+	local marked = false
+	for part in string.gmatch(tostring(text), "([^|]+)") do
+		local key, value = string.match(part, "^([%w_]+)=(.*)$")
+		if key == "av_eh_unit" and tostring(value) == "1" then
+			marked = true
+		elseif key == "exp" then
+			state.Exp = tonumber(value) or 0
+		elseif key == "form" then
+			state.Formation = tonumber(value) or 0
+		elseif key == "dmg" then
+			state.Damage = tonumber(value) or 0
+		elseif key == "prom" then
+			for promotion in string.gmatch(tostring(value), "([^/]+)") do
+				table.insert(state.Promotions, promotion)
+			end
 		end
 	end
+	if not marked then return nil end
+	return state
+end
+
+-- 把快照套到刚建出来的单位上（晋升 / 编队 / 伤害 / 当前经验）。
+function ApplyUnitState(unit, state)
+	if unit == nil or type(state) ~= "table" then return false end
+	local damage = tonumber(state.Damage)
+	if damage ~= nil then pcall(function() unit:SetDamage(damage) end) end
+	local formation = tonumber(state.Formation)
+	if formation ~= nil and formation > 0 then
+		pcall(function() unit:SetMilitaryFormation(formation) end)
+	end
+	for _, promotionType in ipairs(state.Promotions or {}) do
+		local row = GameInfo.UnitPromotions[tostring(promotionType)]
+		if row ~= nil then
+			pcall(function() unit:GetExperience():SetPromotion(row.Index) end)
+		end
+	end
+	local exp = tonumber(state.Exp)
+	if exp ~= nil and exp > 0 then
+		pcall(function() unit:GetExperience():ChangeExperience(exp) end)
+	end
+	return true
+end
+
+-- 从序列化状态重建单位（跨地图支援用；RespawnUnit 的“数据版”）。
+function RespawnUnitFromState(playerID, unitType, x, y, state)
+	if unitType == nil or tostring(unitType) == "" then return nil end
+	local unit = UnitManager.InitUnit(playerID, tostring(unitType), x, y)
+	if unit ~= nil then ApplyUnitState(unit, state) end
+	return unit
+end
+
+function RespawnUnit(unit, newX, newY, newOwnerID)
+	if unit == nil then return nil end
+	local state = SnapshotUnitState(unit)
 	local oldUnitType = GameInfo.Units[unit:GetType()].UnitType
-	local oldUnitMltFormation = unit:GetMilitaryFormation()
-	local oldUnitDamage = unit:GetDamage()
 	-- 【同一条路线】换单位也是“移除旧单位”：伤害 >= 100 直接跳过，否则 SetDamage(100) 再 Kill
-	-- （oldUnitDamage 已先读出来，不受影响）。说明见 ModTool_GhostPlayers.lua。
+	-- （state.Damage 已先读出来，不受影响）。说明见 ModTool_GhostPlayers.lua。
 	if unit:GetDamage() < 100 then
 		unit:SetDamage(100)
 	end
 	UnitManager.Kill(unit)
 	local newUnit = UnitManager.InitUnit(newOwnerID, oldUnitType, newX, newY)
-	if newUnit == nil then return end
-	newUnit:SetDamage(oldUnitDamage)
-	if #currentPromotions > 0 then
-		for _, promotionIndex in ipairs(currentPromotions) do
-			newUnit:GetExperience():SetPromotion(promotionIndex)
-		end
-	end
-	if (oldUnitMltFormation ~= nil and oldUnitMltFormation > 0) then
-		newUnit:SetMilitaryFormation(oldUnitMltFormation)
-	end
+	if newUnit == nil then return nil end
+	ApplyUnitState(newUnit, state)
 	return newUnit
 end
 

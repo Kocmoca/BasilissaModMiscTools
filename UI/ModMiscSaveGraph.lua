@@ -384,6 +384,20 @@ end
 function API.GetLogicalTurnInfo()
     local engineTurn = tonumber(TryCall(function() return Game.GetCurrentGameTurn() end)) or 1
 
+    -- ⓪ 外部时钟（Exoplanet Homeland 的共享星历）已接管：逻辑回合 = StarNow，
+    --    不再用本 mod 的旧身份/分支偏移（否则读档收件会先把事件重排到几百回合后）。
+    local script = GetGameplayMembers()
+    local turnEvents = script ~= nil and script.TurnEvents or nil
+    -- 外部 mod 的 ExposedMembers 可能是函数/占位对象；只接受真正的表。
+    if type(turnEvents) == "table" and turnEvents.IsLogicalOffsetLocked ~= nil
+        and turnEvents.IsLogicalOffsetLocked() then
+        local offset = 0
+        if turnEvents.GetLogicalOffset ~= nil then
+            offset = tonumber(turnEvents.GetLogicalOffset()) or 0
+        end
+        return engineTurn + offset, engineTurn, offset, "shared-clock"
+    end
+
     -- ① 本局偏移（身份里带的，或开局固化下来的）
     local identity = LoadNodeIdentity()
     local offset = identity ~= nil and tonumber(identity.Offset) or nil

@@ -206,6 +206,27 @@ Register({
 })
 
 Register({
+    Name = "ghost_citystatepool", Lifecycle = "persave", Owner = "幽灵玩家（建局侧）", Version = 1,
+    Type = "string",
+    Describe = "本局计划产生的城邦幽灵槽位数（= mod 申报后分到的量；0 = 不产生城邦幽灵）",
+})
+
+Register({
+    Name = "ghost_majorpool", Lifecycle = "persave", Owner = "幽灵玩家（建局侧）", Version = 1,
+    Type = "string",
+    Describe = "本局计划产生的主流幽灵槽位数（= mod 申报后分到的量；0 = 不产生主流幽灵）",
+})
+
+-- 高级选项「定制附庸支持」的开关状态（建局侧写、对局内读）。
+-- 【原来漏登记】协议的铁律①是“没登记不许写”，所以这个键以前**写不进去**：
+-- 对局内读回 nil ⇒ IsVassalCustomVassalEnabledUI 回落 true ⇒ 关掉开关也照样能用定制附庸。
+Register({
+    Name = "vassal_custom_vassal_enabled", Lifecycle = "persave",
+    Owner = "幽灵玩家（建局侧）", Version = 1,
+    Type = "string", Describe = "高级选项「定制附庸支持」是否开启（\"1\"/\"0\"）",
+})
+
+Register({
     Name = "svprobe", Lifecycle = "persave", Owner = "诊断探针", Version = 1, Type = "string",
     Describe = "跨存档探针（验证随档通道能写能读）",
 })

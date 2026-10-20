@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!-- 对外发布号：1.54 → 1.6（开发期内部编号 v1.55…v3.10，见 API_Verification_Status.md §19.34） -->
-<Mod id="a1b2c3d4-5e6f-7a8b-9c0d-1e2f3a4b5c6d" version="1.6">
+<Mod id="a1b2c3d4-5e6f-7a8b-9c0d-1e2f3a4b5c6d" version="1.71">
     <Properties>
         <Name>Basilissa Mod Misc Tools</Name>
         <Description>LOC_MODMISC_MOD_DESCRIPTION</Description>
@@ -10,25 +10,18 @@
         <AffectsSavedGames>0</AffectsSavedGames>
         <CompatibleVersions>1.2,2.0</CompatibleVersions>
     </Properties>
-    <!-- 选项判据：创建游戏界面的开关值 → 决定数据库文件是否加载 -->
-    <ActionCriteria>
-        <Criteria id="ModMisc_DuplicateCityStates_ON">
-            <ConfigurationValueMatches>
-                <ConfigurationId>MODMISC_DUPLICATE_CITY_STATES</ConfigurationId>
-                <Group>Game</Group>
-                <Value>1</Value>
-            </ConfigurationValueMatches>
-        </Criteria>
-    </ActionCriteria>
     <FrontEndActions>
-        <!-- 创建游戏界面的选项行（Parameters 表） -->
-        <UpdateDatabase id="GhostPlayersOptions">
-            <File>GhostPlayers_Options.xml</File>
-        </UpdateDatabase>
+        <!-- 【2026-10-15 授权者】高级选项那一行已撤掉：
+             它在手机/平板布局下溢出屏幕导致整个高级选项不可用，而 _PHONE 变体又改不了。
+             数量也不依赖任何选项：**本工具只接受申报**，幽灵数量由其它 mod 决定 ——
+             读框架声明表 ModMiscGhostDemand（默认由 Vassal System 的 Vassal_GhostDemand.sql
+             插行：主流按地图尺寸 4..24、城邦 0，见 API_Documentation §2.8b），
+             另有 ExposedMembers 动态申报接口。本工具**不 include 任何其它 mod 的文件**。 -->
         <!-- 选项名/说明要在前端就显示，所以前端也挂一份文案 -->
         <UpdateText id="GhostPlayersFrontEndTexts">
             <File>Text.xml</File>
             <File>Text_CN.xml</File>
+            <File>Text_RU.xml</File>
         </UpdateText>
         <!-- 幽灵玩家池需要城邦槽位：只抬高上限（配置数据库）
              —— 沿用老版方法（前端 UpdateDatabase + SQL，不设 LoadOrder），
@@ -36,7 +29,9 @@
         <UpdateDatabase id="GhostPlayersMapSizes">
             <File>GhostPlayers_MapSizes.sql</File>
         </UpdateDatabase>
-        <!-- 创建游戏界面：拉满城邦数量并用 WriteCustomData 记下玩家原本的选择 -->
+        <!-- 创建游戏界面：拉满城邦数量并用 WriteCustomData 记下玩家原本的选择。
+             【2026-10-15 授权者定】Civ6Common **保持取代不变**（整体替换 + ImportFiles），
+             不改成 ReplaceUIScript：它是“支持文件”不是 UI 上下文，而且这条路径已经实机验证过。 -->
         <ImportFiles id="FrontEndUIReplacements">
             <Properties>
                 <LoadOrder>10000</LoadOrder>
@@ -73,25 +68,8 @@
             </Properties>
             <File>ExpansiveUnitBuild.sql</File>
         </UpdateDatabase>
-        <!-- 复制城邦：由创建游戏界面的选项控制加载（默认开启）。
-             不设 LoadOrder：按默认顺序加载；关掉选项时本文件完全不加载。 -->
-        <UpdateDatabase id="GhostPlayersCityStates">
-            <Criteria>ModMisc_DuplicateCityStates_ON</Criteria>
-            <File>GhostPlayers_CityStates.sql</File>
-        </UpdateDatabase>
-        <!-- 复制城邦的图标：图标是独立数据库，没法用 SQL 批量拉取，只能逐个定义；
-             用 XML（与游戏自己的 Icons_Civilizations.xml 同格式），交给 XML 序列化器，
-             避免 SQL 里 "Index" 之类的保留字坑。
-             这里【必须设 LoadOrder】：复制体要引用 XP1/XP2/DLC 的图集，
-             而官方图标动作加载更早；排在它们之后引用才不会报数据库错
-             （报错会中断图标库构建，连官方的图标如 Palenque 一起丢）。 -->
-        <UpdateIcons id="GhostPlayersCityStateIcons">
-            <Properties>
-                <LoadOrder>9000</LoadOrder>
-            </Properties>
-            <Criteria>ModMisc_DuplicateCityStates_ON</Criteria>
-            <File>GhostPlayers_CityStateIcons.xml</File>
-        </UpdateIcons>
+        <!-- 复制城邦已废弃：GhostPlayersCityStates / GhostPlayersCityStateIcons 不再注册，
+             城邦幽灵池改用数据库原有城邦文明。选项文件仍保留仅为兼容旧配置。 -->
         <UpdateDatabase id="Support">
             <File>SupportData.sql</File>
         </UpdateDatabase>
@@ -121,14 +99,50 @@
             <File>ModTool_Support_Functions.lua</File>
             <File>ModTool_Support_UI.lua</File>
             <File>ModTool_WorldBuilderAPI.lua</File>
+            <File>ModTool_MapRebuild.lua</File>
             <File>ModTool_GhostPlayers.lua</File>
+            <!-- 外交补丁用 include("<名字>") 加载共用件（include 只认 ImportFiles 登记过的名字）：
+                 资料片链 + 幽灵判定，两份外交补丁共用。地图尺寸解析仍由 Civ6Common 取代版提供。 -->
+            <File>UI/Replacements/ModMiscGhostShared.lua</File>
         </ImportFiles>
+        <!-- Civ6Common：**保持取代不变**（整体替换 + ImportFiles，2026-10-15 授权者定）。
+             它承担两件事：① 对局内的移动拦截（MoveUnitToPlot，定义就在这个文件里）；
+             ② 前端的建局 hook。两条路径都已实机验证，所以不改成 ReplaceUIScript。 -->
         <ImportFiles id="UIReplacements">
             <Properties>
                 <LoadOrder>10000</LoadOrder>
             </Properties>
             <File>UI/Replacements/Civ6Common.lua</File>
         </ImportFiles>
+        <!-- 外交两处：改成官方 Expansion1/2 那种 ReplaceUIScript 补丁
+             （补丁 include 上一层脚本 + 只覆盖要改的函数）：
+               * DiplomacyRibbon     -> 幽灵不进外交条（覆盖 AddLeader）
+               * DiplomacyActionView -> 幽灵不弹领袖窗（事件入口 + TestValid + SelectPlayer）
+             资料片链由 UI/Replacements/ModMiscGhostShared.lua 的
+             ModMiscToolIncludeUILayer 按数据库探测自动接（XP2 -> XP1 -> 基座）。 -->
+        <ReplaceUIScript id="ModMiscGhostDiplomacyRibbon">
+            <Properties>
+                <LoadOrder>1000</LoadOrder>
+                <LuaContext>DiplomacyRibbon</LuaContext>
+                <LuaReplace>UI/Replacements/DiplomacyRibbon_ModMiscGhost.lua</LuaReplace>
+            </Properties>
+        </ReplaceUIScript>
+        <!-- 城邦面板加固（2026-10-15）：面板打不开会让“给城邦派使者”这个回合拦截项卡死玩家。
+             补丁只兜底 GetBonusText 的 nil Details + 单行出错不拖垮整个面板。 -->
+        <ReplaceUIScript id="ModMiscGhostCityStates">
+            <Properties>
+                <LoadOrder>1000</LoadOrder>
+                <LuaContext>CityStates</LuaContext>
+                <LuaReplace>UI/Replacements/CityStates_ModMiscGhost.lua</LuaReplace>
+            </Properties>
+        </ReplaceUIScript>
+        <ReplaceUIScript id="ModMiscGhostDiplomacyActionView">
+            <Properties>
+                <LoadOrder>1000</LoadOrder>
+                <LuaContext>DiplomacyActionView</LuaContext>
+                <LuaReplace>UI/Replacements/DiplomacyActionView_ModMiscGhost.lua</LuaReplace>
+            </Properties>
+        </ReplaceUIScript>
         <AddUserInterfaces id="SupportUI">
             <Properties>
                 <Context>InGame</Context>
@@ -162,10 +176,14 @@
             <File>UI/AutomationTestPanel.xml</File>
         </AddUserInterfaces>
         -->
-        <!-- WorldBuilder 测试面板：**默认不注册**（发布版收起来；调试幽灵池时很实用）。
-             它带玩家列表，能直接看出哪些槽位是幽灵；功能同时也通过 API 暴露给其它 mod
-             （ExposedMembers.ModMiscToolScript.* 与 ExposedMembers.ModMiscToolUI.*）。
-             需要时把下面这段 AddUserInterfaces 加回来即可：
+        <!-- WorldBuilder 测试面板：**面板照旧注册，但侧栏入口在发布态关闭**
+             （2026-10-15 授权者：进入发布阶段 ⇒ 只关入口，不动注册）。
+             侧栏入口开关：UI/WorldBuilderTestPanel.lua 的 MODMISC_WB_TEST_ENTRY_ENABLED = false。
+             要排障/实机验收幽灵状态：把那个开关改 true 即可（面板本体一直都在）。
+             面板内容：玩家列表标出「主流幽灵 / 城邦幽灵」，「玩家槽位统计」打出两类幽灵池
+             数量/可用数/本局申报上限；另有「主流幽灵全部城邦化」「外交压制自检」
+             「修复城邦身份」「见面的幽灵转回主流」。
+             Automation 测试面板（对局内创建新局/换地图）**仍然收起**（2026-10-07 授权者要求）。 -->
         <AddUserInterfaces id="WorldBuilderTestPanel">
             <Properties>
                 <Context>InGame</Context>
@@ -173,7 +191,6 @@
             </Properties>
             <File>UI/WorldBuilderTestPanel.xml</File>
         </AddUserInterfaces>
-        -->
         <!-- 存档与换图（成品面板）：**面板照旧注册，但侧栏入口默认不注册**
              （2026-10-09 授权者要求 —— 玩家不该再从侧栏进这个面板）。
              开关注释见 UI/ModMiscSavePanel.lua 的 MODMISC_SAVEPANEL_ENTRY_ENABLED；
@@ -204,6 +221,7 @@
         <UpdateText id="Texts">
             <File>Text.xml</File>
             <File>Text_CN.xml</File>
+            <File>Text_RU.xml</File>
         </UpdateText>
     </InGameActions>
     <Files>
@@ -217,10 +235,8 @@
         <File>ModTool_Support_Functions.lua</File>
         <File>ModTool_Support_UI.lua</File>
         <File>ModTool_WorldBuilderAPI.lua</File>
+        <File>ModTool_MapRebuild.lua</File>
         <File>ModTool_GhostPlayers.lua</File>
-        <File>GhostPlayers_Options.xml</File>
-        <File>GhostPlayers_CityStates.sql</File>
-        <File>GhostPlayers_CityStateIcons.xml</File>
         <File>ExtensiveUnitBuild.lua</File>
         <!-- UI -->
         <File>UI/Support_UI.xml</File>
@@ -240,7 +256,13 @@
         <File>UI/ButtonAdjust.xml</File>
         <File>UI/ButtonAdjust.lua</File>
         <File>UI/ButtonAdjust_PHONE.lua</File>
+        <!-- Civ6Common 取代版（整体替换，走 ImportFiles；含移动拦截与建局 hook） -->
         <File>UI/Replacements/Civ6Common.lua</File>
+        <!-- 外交两处改成 ReplaceUIScript 补丁：官方文件不复制，只 include + 覆盖个别函数 -->
+        <File>UI/Replacements/ModMiscGhostShared.lua</File>
+        <File>UI/Replacements/DiplomacyRibbon_ModMiscGhost.lua</File>
+        <File>UI/Replacements/DiplomacyActionView_ModMiscGhost.lua</File>
+        <File>UI/Replacements/CityStates_ModMiscGhost.lua</File>
         <File>UI/ModMiscStore.lua</File>
         <File>UI/ModMiscModGroupStore.lua</File>
         <File>UI/ModMiscBigStore.lua</File>
@@ -260,6 +282,7 @@
         <!-- texts -->
         <File>Text.xml</File>
         <File>Text_CN.xml</File>
+            <File>Text_RU.xml</File>
         <!-- docs -->
         <File>API_Documentation.txt</File>
         <!-- 【发布态 2026-10-06】三个探针文件（FrontEnd_SaveProbe / FrontEnd_GameSaveProbe /
@@ -275,10 +298,11 @@
     </Files>
     <LocalizedText>
         <Text id="LOC_MODMISC_MOD_DESCRIPTION">
-            <en_US>Basilissa Mod - Misc Tools: Extended unit build system with dynamic toolbar and empire overview panel.</en_US>
-            <zh_Hans_CN>Basilissa Mod - 杂项工具：扩展单位建造系统、动态工具栏与帝国概况面板。</zh_Hans_CN>
+            <en_US>Basilissa Mod - Misc Tools: Unit extended operations panel with dynamic toolbar and empire overview panel.</en_US>
+            <zh_Hans_CN>Basilissa Mod - 杂项工具：单位扩展操作面板、动态工具栏与帝国概况面板。</zh_Hans_CN>
         </Text>
         <File>Text.xml</File>
         <File>Text_CN.xml</File>
+            <File>Text_RU.xml</File>
     </LocalizedText>
 </Mod>

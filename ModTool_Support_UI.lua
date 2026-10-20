@@ -104,6 +104,53 @@ function GetCityProductionHashUI(playerID, cityID)
 	return productionHash
 end
 
+function GetCityProductionInfoUI(playerID, cityID)
+	local productionHash = GetCityProductionHashUI(playerID, cityID)
+	if productionHash == 0 then return nil end
+	local city = CityManager.GetCity(playerID, cityID)
+	if city == nil then return nil end
+	local buildQueue = city:GetBuildQueue()
+	local productionTable = {
+		["unit"] = GameInfo.Units,
+		["district"] = GameInfo.Districts,
+		["building"] = GameInfo.Buildings,
+		["project"] = GameInfo.Projects
+	}
+	local row = nil
+	local cityProductionType = nil
+	for productionType, tableType in pairs(productionTable) do
+		row = tableType[productionHash]
+		if row ~= nil then
+			cityProductionType = productionType
+			break
+		end
+	end
+	if row == nil then return nil end
+	local progressTable = {
+		["unit"] = function(typeIndex) return buildQueue:GetUnitProgress(typeIndex) end,
+		["district"] = function(typeIndex) return buildQueue:GetDistrictProgress(typeIndex) end,
+		["building"] = function(typeIndex) return buildQueue:GetBuildingProgress(typeIndex) end,
+		["project"] = function(typeIndex) return buildQueue:GetProjectCost(typeIndex) end
+	}
+	local productionProgress = progressTable[cityProductionType](row.Index)
+	local typeNameTable = {
+		["unit"] = function(typeIndex) return GameInfo.Units[typeIndex].UnitType end,
+		["district"] = function(typeIndex) return GameInfo.Districts[typeIndex].DistrictType end,
+		["building"] = function(typeIndex) return GameInfo.Buildings[typeIndex].BuildingType end,
+		["project"] = function(typeIndex) return GameInfo.Projects[typeIndex].ProjectType end
+	}
+	local typeName = typeNameTable[cityProductionType](row.Index)
+	local productionData = {}
+	productionData.hash = productionHash
+	productionData.productionType = cityProductionType
+	productionData.typeIndex = row.Index
+	productionData.typeName = typeName
+	productionData.name = row.Name
+	productionData.progress = productionProgress
+	productionData.cost = row.Cost
+	return productionData
+end
+
 function GetCityFreePower(playerID, cityID)
     local city = CityManager.GetCity(playerID, cityID)
 	if city == nil then return 0 end

@@ -412,6 +412,72 @@ WorldBuilder 顶层（撤销 / 重做 / ID / 模式）
   end
 
 ------------------------------------------------------------------------------
+### 2.6.1 地图重建（MapRebuild）
+------------------------------------------------------------------------------
+
+访问方式：
+  ExposedMembers.ModMiscToolScript.MapRebuild.RebuildMap(options)
+  ExposedMembers.ModMiscToolScript.RebuildMap(options)   -- 直接函数别名
+
+说明：独立文件 ModTool_MapRebuild.lua，由 ModTool.lua include 并暴露。
+      负责“整图重做”：海陆布局（Archipelago / Small Continents / Pangaea /
+      Continents）、浅海/深海、河流、湖泊、以及本项目自创的“浅海大河”。
+      Exoplanet Homeland 只调用本接口，不再维护地图生成代码。
+
+RebuildMap(options) -> true, details / false, error
+  options.Layout          string  地图脚本名（"Archipelago"）或布局键
+  options.SpawnKey        string  出生点表属性键（可选；默认 ModMiscMapRebuild_spawns）
+  options.CandidateKey    string  出生点候选表属性键（可选）
+  options.UnitSpawnKey    string  非幽灵玩家单位出生地表属性键（可选；
+                                  默认 ModMiscMapRebuild_unit_spawns）
+  options.Lakes           boolean 默认 true
+  options.Rivers          boolean 默认 true
+  options.BigRivers       boolean 默认 true
+  options.LakeCount / RiverCount / BigRiverCount  number 可选，覆盖按地图尺寸算出的默认值
+  options.WorldBuilder     table   可选，测试用 WorldBuilderAPI 替代
+
+  details = {
+    Layout, Land, Total, Lakes, Rivers, BigRivers,
+    ClearedRivers, SpawnRepaired, SpawnCandidates, SpawnedPlayers, MovedUnits,
+    BigRiverCells, LongestBigRiver
+  }
+
+  · 陆地/海洋按目标水陆比例用陆块中心 + 随机生长重建；
+  · 靠陆地的水格改海岸，其余深海；
+  · 河流/湖泊 = 完整移植原版 RiversLakes.lua（Expansion2）：
+    GetRiverValueAtPlot / DoRiver / AddRivers / AddLakes / AddMoreLake / 转向表；
+    河沿优先用 3 参数 TerrainBuilder.Set*OfRiver(plot, true, flowDirection)
+    （不传自编 riverID），失败才退回 WorldBuilder EditRiver；水格一律跳过；
+  · 大河 = 选离水最远的源头，铺一条从内陆到海边的 TERRAIN_COAST 单元格带
+    · **稳定性结论（2026-10-21）**：大河不要复用原版河流的 GetRiverValueAtPlot/DoRiver
+      寻路（会与原版河流相互干扰）；实机原生闪退 ReadTextureFromDisk 出现在改用原版取向之后，
+      改成“山脉源头 + 随机 6 向 + 蜿蜒绕山”的独立算法后不再出现。
+
+    （本项目自创，模拟宽阔大河/水上门户；深入内陆交给它）；原版河流只做短支流
+    （源头离水范围 2/1），再运行原版 AddRivers ⇒ 原版河流成为大河的支流；
+  · 校验/修复 SpawnKey 里的出生点，并把最多 32 个可用出生点写入 CandidateKey；
+  · 非幽灵、地图上有单位的玩家（含城邦）：预设 UnitSpawnKey 出生格，UnitManager.PlaceUnit
+    平铺传送（同 formationClass 不叠格、不同 formationClass 可重叠），
+    RestoreMovement 恢复行动力；幽灵玩家跳过。
+
+Direct helpers：
+  MapRebuild.ClassifyLayout(mapName) -> layoutKey|nil
+  MapRebuild.ClearRivers(wb, width, height) -> clearedCount
+  MapRebuild.AddLakes(wb, width, height, land, targetCount) -> placed
+  MapRebuild.AddRivers(wb, width, height, land, targetCount) -> placed
+  MapRebuild.AddBigRivers(wb, width, height, land, targetCount) -> placed
+
+示例（Exoplanet Homeland 的调用方式）：
+  local api = ExposedMembers.ModMiscToolScript.MapRebuild
+  if api ~= nil and api.RebuildMap ~= nil then
+      local ok, details = api.RebuildMap({
+          Layout = "Archipelago",
+          SpawnKey = "AV_EH_EXOPLANET_SPAWNS",
+          CandidateKey = "AV_EH_EXOPLANET_SPAWN_CANDIDATES",
+      })
+  end
+
+------------------------------------------------------------------------------
 ### 2.7 幽灵玩家（Ghost Players）
 ------------------------------------------------------------------------------
 
@@ -426,6 +492,31 @@ WorldBuilder 顶层（撤销 / 重做 / ID / 模式）
         * 幽灵可用 GhostPlayers_CityStates.sql 复制城邦文明来扩容（引擎按城邦文明条数上限
           创建城邦玩家）。
       幽灵玩家池记录在存档属性里，随存档走；读老档不会重建池子。
+
+—— 幽灵需求申报（**产生幽灵的唯一入口**，前端 setup 上下文）——
+
+ModMiscToolRegisterGhostDemand(source, count)
+ModMiscToolRegisterCityStateGhostDemand(source, count)
+  返回：无
+  说明：其它 mod 在 **FrontEndActions** 里（本 mod 的 UI/Replacements/Civ6Common.lua
+        已 import 之后）调用，申报自己需要多少**主流** / **城邦**幽灵槽位。
+        source 是申报方名字（同名再申报 = 覆盖），count 取整到 ≥ 0。
+        两张表各自汇总，Mod Misc Tool 据此决定抬多少主要文明 / 城邦数量。
+        【硬规则】**没有申报的那一类一个都不产生**：城邦侧连 CITY_STATE_COUNT 都不会
+        多要，进游戏后的城邦幽灵 pass 也直接跳过（读档不会新增，已有池子照旧）。
+        前端也能从 ExposedMembers.ModMiscToolUI.RegisterGhostDemand /
+        RegisterCityStateGhostDemand 调；查汇总用 GetGhostDemandTotal /
+        GetCityStateGhostDemandTotal。
+        数量分账：幽灵总预算按地图尺寸表算，再按申报量分给两类；两类都**只按申报值**走
+        （本工具不自己申报，见 §2.8b），城邦侧不得超过自己的申报值。
+        建局侧把结果写进随档数据：ghost_majorpool / ghost_citystatepool = 两类幽灵各自的
+        申报上限（**0 = 一个都不产生**），ghost_majorplayers / ghost_citystates = 玩家自己
+        选的人数/城邦数（局内算槽位边界；即使申报被撤销也记玩家自己的选择）。
+
+局内查询本局的申报上限（都挂在 ExposedMembers.ModMiscToolScript）：
+GetMajorGhostPoolLimit() / GetCityStateGhostPoolLimit()
+  返回：number 或 nil（nil = 老档/老前端没写过这道数据 ⇒ 不限额；0 = 不产生该类幽灵）
+  说明：面板「玩家槽位统计」里是 majorPlan=N / cityStatePlan=N。
 
 查询接口（均挂在 ExposedMembers.ModMiscToolScript）：
 
@@ -496,15 +587,20 @@ InitializeGhostPlayers(cityStateCount, majorPlayerCount)
         * 开局时所有玩家都还没建城，所以不必考虑城市的影响；
           城邦一旦落地就有首都，MovePlayerOffMap 的“有城市就拒绝”保护也不会误伤。
 
+        ghostPoolLimit：城邦幽灵的**申报上限**（建局侧按申报量算好、随档传进来）：
+        0 = 没有 mod 申报城邦幽灵（整个 pass 直接跳过）、N = 最多搬 N 个、nil = 不限额。
+        即**申报多少最多产生多少**；边界之外的槽位再多也不会搬。
+
         由 UI 层在 LoadGameViewStateDone 时调用一次（有多回合扫描已按要求移除）；
         其他 mod 一般不需要直接调用。
 
-InitializeGhostMajorPlayers(originalCount)   【已停用】
+InitializeGhostMajorPlayers(originalCount, ghostPoolLimit)
   返回：无
-  说明：主要文明版的建池（把多余的主要文明搬离地图）。**当前策略不再抬主要文明上限**
-        （前端 hook 的 GHOST_RAISE_MAJOR_CAP = false），所以没有多余的主要文明，
-        UI 层也不再调用本函数；接口保留供参考/需要时启用。
-        原说明：
+  说明：主要文明版的建池（把多余的主要文明搬离地图）。**主流幽灵同样只有 mod 申报需求
+        时才产生**（前端 hook 的 GHOST_RAISE_MAJOR_CAP 是总开关，申报表见上节）；
+        UI 层在 LoadGameViewStateDone 里先调它、再调城邦那一个。
+        ghostPoolLimit 与城邦侧同义：0 = 没申报（整个 pass 跳过）、N = 最多搬 N 个、
+        nil = 不限额（老档）。
         originalCount 含本机玩家，因此图上保留 originalCount-1 个 AI；
         本机玩家与已经建城的对手一律不动（不会拆城）。
         引擎只在开局按“参与玩家数”创建主要文明，所以前端 hook 会先把这个数抬到
@@ -527,42 +623,190 @@ ConvertGhostPlayerToCityState(playerID)
         引擎不生成玩家对象；这里换的是已经存在的玩家的身份，才有机会生效。
         player:IsMinor() 在 gameplay 层不可用，不要用它做判定。
 
+—— 幽灵玩家的“新鲜度”：复活后必须立刻不再是幽灵（2026-10-15）——
+
+背景（授权者实机）：幽灵被复活（拿到城市、回到地图上，例如定制附庸落地）之后，框架仍把它
+当幽灵 ⇒ ①外交界面/外交条看不到这个新附庸；②点它的城市 banner 去开领袖场景时，该玩家又被
+当幽灵挡下 ⇒ 场景半开，引擎那边 `BulkHide(true, "Diplomacy")` 之后再也等不到
+`BulkHide(false)` ⇒ HUD 五组（WorldViewControls/HUD/PartialScreens/Screens/TopLevelHUD）
+全部隐藏，也就是“UI 全部消失”。
+
+两层处理：
+  ① **兜底判定**：`IsGhostPlayer / IsCityStateGhostPlayer` 现在会检查“该玩家有没有城市”，
+     有城市就直接返回 false（池子还没清也立刻不再被当幽灵；每条玩家只打一次日志）。
+  ② **及时清池**：`RemoveGhostPlayerFromPool(playerID, reason)` /
+     `RefreshGhostPoolsFromCities(reason)`（都挂在 ExposedMembers.ModMiscToolScript）——
+     建城（CreateCityForGhostPlayer）与转城（TransferCityToGhostPlayer）成功后会立刻把它
+     摘出两个池子；每回合开始再全量刷一次；其它 mod 落地完幽灵也可以主动调。
+     `PlayerOwnsCity(playerID)` 一并导出，供判断用。
+
+外交界面侧再加一道：幽灵在**界面入口**就被挡下（`OnOpenDiplomacyActionView`），
+连 `InitializeView` 都不进 —— 这正是避免“半开 ⇒ HUD 只隐藏不恢复”的关键；
+拒绝时如果发现 HUD 已经被隐藏，会顺手 `RestoreInGameUI()` 兜底恢复。
+
+若真的遇到 HUD 全没了（旧版本留下的状态）：面板「恢复 UI」按钮，或调
+`ExposedMembers.ModMiscToolUI.RestoreInGameUI()`（只强制取消隐藏那五组，不动引擎计数与输入栈）。
+
+—— 【2026-10-15 授权者】两个池子 = 两种**附庸行为**（Vassal System 里的语义）——
+
+| 池子 | 附庸行为 | 表现 |
+|---|---|---|
+| 主流幽灵池 | **正常玩家行为** | 会扩张、正常建造 |
+| 城邦幽灵池 | **保守玩家行为** | 不扩张、建造的区域也少 |
+
+* 玩家可以在面板里**二选一**；**“行为”才是选池子的依据**。
+* 面板里“选文明”时把文明按主流/城邦分开列，只是为了**找文明方便** ——
+  它和“选行为”是两件事，别把两者混为一谈（代码里 `branch` 就是行为：
+  `'major'` = 正常行为 = 主流池；`'citystate'` = 保守行为 = 城邦池）。
+* 取幽灵**严格按行为选池**（`TransferCityToGhostPlayer` 的第 7 个参数 `behavior` 决定池子；
+  没给 behavior 时才退回"按目标文明等级猜"的老行为。Vassal System 一律传行为）。
+  ⚠️ 2026-10-17 更正：**等级（CivLevel）与选池是两件事**——等级看文明的类型
+  （主流文明 ⇒ `FULL_CIV`、城邦文明 ⇒ `CITY_STATE`），行为只看该从哪个池取人。跨池兜底默认关（`GHOST_ALLOW_POOL_FALLBACK = false`）——
+  选了保守就该给保守幽灵，宁可如实报错也不偷偷换行为。
+* **城邦幽灵池默认不申报（0）**：它会把创建游戏界面的城邦数量抬高，很多玩家只看那个数字就投诉。
+  但框架按“城邦幽灵池存在”来写：声明表里那一列（默认 `Vassal System/Vassal_GhostDemand.sql`
+  的 `CityStateGhosts`）改成 8 即可开回来
+  （其它 mod 也可以用 `ModMiscToolRegisterCityStateGhostDemand` 申报，见 §2.8b）。
+  没开回来时，选保守行为会在确认前提示“所选行为当前没有可用的幽灵玩家”，池子空但流程不假成功。
+  面板文案（2026-10-15 授权者定）：两个行为按钮就叫**正常行为 / 保守行为**，不写机制说明；
+  定制附庸栏顶部与信息行**不放文字**；行为每次都要显式点一次（进入配置步骤不预选行为）。
+* 城邦池相关 API（`GetCityStateGhostPlayers` / `ClaimAvailableCityStateGhostPlayer` …）全部保留。
+
+
+—— 【2026-10-15 授权者】幽灵“原身份”台账 + 自动城邦化 + 读档语义更正 ——
+
+**原身份台账**（`ModTool_GhostPlayers.lua`，存档属性 `kocmoca_modmisctool_ghost_identities`）：
+  * 玩家创建时引擎会记下它的**原文明/原领袖**，之后改 `PlayerConfigurations` 也改不掉引擎那份 ——
+    外交界面/议会按引擎记录显示，幽灵被改成别的文明时就会和场上真正的该文明玩家**显示冲突**；
+  * 所以幽灵**进池子的那一刻**把 `playerID → { civ, leader, turn }` 记进台账（只记一次，
+    之后无论怎么改身份都不覆盖）；
+  * 查询：`GetGhostOriginalIdentities()` / `GetGhostOriginalIdentity(id)` /
+    `GetGhostOriginalIdentityScore(id, civType, leaderType)`（原文明+原领袖全中 = 2、中一个 = 1、
+    没台账 = nil）。Vassal System 取幽灵时按 `原身份 ×10 + 当前身份` 排序 ⇒ **优先原身份相符的**，
+    外交界面不会冲突；这类幽灵通常也不用改身份 ⇒ 建城后免读档。
+
+**自动城邦化**：时机 = **本地玩家建立第一座城市时**（`Events.CityAddedToMap` +
+`TryAutoConvertGhostsOnFirstCity`，只做一次、写 `kocmoca_modmisctool_ghost_autoconvert_done` 落档）：
+  * 城邦化后幽灵不再带“大文明外交 footprint”（外交界面 / 世界议会都不受影响，已实机验证）；
+  * 开局就做完，之后玩家要附庸时池子里已经是“城邦幽灵”，配合原身份匹配多数请求可免读档；
+  * 老档（本地玩家已有 >1 城）不补做，只标记完成；开关 `GHOST_AUTO_CONVERT_ON_FIRST_CITY` 可关。
+
+—— 【2026-10-17 授权者】开拓者归位：城市落地时把**地图外的开拓者移动进城市** ——
+
+现象：幽灵化时用 `InitUnit(UNIT_SETTLER, -1, -1)` 把玩家搬到地图外垫底，这个开拓者一直留在地图外。
+AI 一次只盯一个开拓者 ⇒ 玩家（定制附庸）落地后**不再自己找地建城**。
+（口径更正 2026-10-17：**能自己建城的是「普通行为」= 主流等级 `FULL_CIV`**；
+保守行为 = 城邦级 `CITY_STATE`，引擎按城邦处理、不扩张，本来就不该自己建城 ——
+开拓者归位只是把"卡住的开拓者槽位"还原，不代表保守行为会去建城。）
+
+处置（授权者定案）：**城市添加到地图的事件触发时判断是否为幽灵，是则把该玩家地图外的开拓者
+移动进这座城市**。实现在 `ModTool_GhostPlayers.lua`：
+
+  * 机制（授权者口径）：**遍历该玩家的单位 ⇒ 找"开拓者类型"且"坐标 < 0"（地图外）的
+    ⇒ `UnitManager.PlaceUnit(unit, iX, iY)` 拉进城市**。不做快照比对、不删单位。
+  * 触发：
+    ① `Events.CityAddedToMap(ownerID, cityID, iX, iY)` ⇒ `HandleGhostCityAddedToMap`；
+    ② `Events.CityTransfered(newOwnerID, cityID)` ⇒ `HandleGhostCityTransfered`（转城不一定触发 ①）；
+    ③ 建城/转城函数末尾各调一次 `EnsureGhostSettlerInCity`（**幂等**：开拓者已在地图内就直接返回）。
+    判据不再依赖池子/台账，而是"**这个玩家名下确实有地图外的开拓者**"（正常玩家不可能有）。
+  * 日志（只在真的找到地图外开拓者时才打印，避免噪音）：
+    `开拓者归位：player=… 扫描单位=N 地图外开拓者→城市=M 失败=0 位置=x,y 原因=… 明细=501@已入城`
+  * **赠开拓者的机制已取消**（授权者 2026-10-17）：不再 `InitUnit` 补定居者，
+    只把本来就存在的地图外开拓者移动进城市。因此也没有 `SpawnSettlerNear` 了。
+  * 老存档兜底：载入后**第一次** `LocalPlayerTurnBegin` 跑一次 `SweepGhostOffMapSettlers`
+    （已经有城、开拓者却还卡在地图外的存量档案，就地归位；Vassal System 侧不再自己整理）。
+
+对外接口（都在 `ExposedMembers.ModMiscToolScript`）：
+```
+GetGhostSettlerCount(playerID)              → 开拓者（FoundCity=true）总数
+GetGhostOffMapSettlerCount(playerID)        → 其中在地图外（坐标 < 0）的个数
+RelocateOffMapSettlersIntoCity(playerID, iX, iY, reason) → 拉进城市的个数（核心：遍历单位 → PlaceUnit）
+EnsureGhostSettlerInCity(playerID, iX, iY, reason)       → 幂等版（没地图外开拓者就什么都不做）
+HandleGhostCityAddedToMap(ownerID, cityID, iX, iY)       → 事件入口（内部用，通常不用自己调）
+HandleGhostCityTransfered(newOwnerID, cityID)            → 转城事件入口（内部用）
+SweepGhostOffMapSettlers(reason)            → 全量兜底，返回修好的玩家数
+IsGhostOrFormerGhost(playerID)              → 是否幽灵（含已落地的前幽灵）
+GetKnownGhostPlayerIDs()                    → 所有曾经是幽灵的 playerID 列表
+```
+
+**读档语义更正（重要）**：之前记的“过一个回合自动生效”指的是**外交效果**；
+  **建立城市之后的实际效果仍然需要读档**。所以定制附庸的规则是：
+  * 幽灵**当前身份已经相符**（`exactMatch`：当前文明+领袖都对）⇒ 不改身份 ⇒ 直接执行、免读档；
+  * 否则要改身份 ⇒ 照旧“存档前配置、读档后执行”。
+  批量城邦化本身**不需要读档**（它的效果就是城邦化后的外交表现 + 池子状态）。
+
+—— 幽灵玩家的外交压制（UI 侧）——
+
+IsDiplomacyGhostPlayerUI(playerID)          … 挂在 ExposedMembers.ModMiscToolUI
+  返回：boolean
+  说明：外交 UI 用它判断“这个玩家是不是幽灵池里的”（主流池 + 城邦池都算）。
+        * 外交条（DiplomacyRibbon 的 PopulateDiplomacyRibbon）：幽灵直接跳过，不加入列表；
+        * 领袖弹窗（DiplomacyActionView）：在**会话入口**挡掉 ——
+          ① OnDiplomacyStatement 换成带闸门的包装（幽灵 ⇒ CloseSession + 返回，视图不初始化）；
+          ② 给每个语句处理器的 TestValid 套一层（幽灵 ⇒ false，基座走自己的“会话无效”路径）；
+          ③ SelectPlayer 换成带闸门的包装（幽灵 ⇒ 直接返回）—— 挡住“在外交界面里点
+             领袖条上那一条幽灵”这条路（它不走 Events.DiplomacyStatement）。
+          于是幽灵既上不了外交条，也不会弹出领袖对话。
+        ⚠️ **不要**再用“让 DiplomacySupport_ExtractStatement 返回空表”的办法：那只压掉
+        弹窗里的**文本与选项**，弹窗本身照旧打开 ⇒ 空弹窗卡住（2026-10-15 修正）。
+
+—— 定制附庸的「完全匹配 ⇒ 跳过保存重读」契约（Vassal System 侧实现，2026-10-15 修正）——
+
+背景：定制附庸要把一座城/一个开拓者交给幽灵玩家，如果目标幽灵的**领袖+文明**与玩家选的
+      不一样，就得先改它的 PlayerConfigurations 身份，而身份改动要**存档 + 重读**才生效。
+      所以 Vassal System 的 RequestCustomVassal 会先在幽灵池里找“领袖+文明完全匹配”的：
+        * 完全匹配 ⇒ 不动身份 ⇒ 调用方可以直接执行，**跳过保存重读**；
+        * 否则      ⇒ 存档前配置身份、写 pending，读档后确认再执行。
+      返回值约定：(ok, err, exactMatch) —— 第三个值就是那个开关。
+
+⚠️ **pcall 的返回值错位（就是这条功能一度没生效的原因）**：
+    pcall(f, ...) 会**先塞一个自己的成功标志**，再排 f 的返回值：
+        local ok, ret1, ret2, ret3 = pcall(f, ...)
+    调用方原来写成 `local called, result, isImmediate = pcall(RequestCustomVassal, ...)`，
+    于是 `isImmediate` 拿到的是 f 的**第二个**返回值（err=nil）⇒ 永远是 false ⇒
+    “完全匹配直接执行”这条路一次都走不到（表现为：选中的领袖/文明明明和池里的幽灵一样，
+    仍然弹“请存档再读档”）。现在改成
+        local called, requestOk, requestErr, isImmediate = pcall(...)
+    并在日志里打 `[VassalSystem][UI] 定制附庸请求：… immediate(领袖/文明已匹配，跳过保存重读)=true/false`。
+
 GetPlayerSlotSummary()
-  返回：一行统计字符串，如 "major=26 minor=36 engine=62 empty=0 pool=32 free=30"
-  说明：面板「玩家槽位统计」按钮用的诊断接口，可用来确认引擎实际建了多少玩家。
+  返回：一行统计字符串，如 "major=26 minor=36 engine=62 empty=0 majorPool=8 majorFree=8
+        majorPlan=8 cityStatePool=8 cityStateFree=8 cityStatePlan=8"
+  说明：面板「玩家槽位统计」按钮用的诊断接口，可用来确认引擎实际建了多少玩家、
+        两类幽灵池各有多少可用，以及**本局两类幽灵各自的申报上限**（majorPlan /
+        cityStatePlan）。
 
-—— 当前策略：扩容后优先填充城邦（2026-10-01 定）——
-  * 只抬 CITY_STATE_COUNT（MapSizes.MaxCityStates=62），**不抬主要文明数量**
-    （hook 里的 GHOST_RAISE_MAJOR_CAP = false）；
-  * 引擎给到 36 个城邦（数据库城邦文明条数上限），玩家保留自己选的 6 个，
-    其余 30 个进幽灵池 —— 全程零外交副作用，也不需要城邦化改造；
-  * 主要文明幽灵（曾把池子做到 52）已停用：它们会参与外交，而城邦化改造有风险
-    （见 API_Verification_Status.md 第 29/31 条）。
-  * 需要恢复时把 GHOST_RAISE_MAJOR_CAP 改回 true 即可（预算逻辑仍在）。
-
-—— 幽灵池的槽位预算（前端 hook，UI/Replacements/Civ6Common.lua）——
-  * MAX_PLAYERS = 64，减去野蛮人与自由城市两个固定槽位 → GHOST_SLOT_BUDGET = 62；
-  * 主要文明与城邦抢同一批槽位，所以给城邦预留 GHOST_RESERVED_MINOR_SLOTS = 36
-    （实测引擎最多就建这么多城邦），剩下的 26 个才给主要文明；
-  * 实测结果（玩家原本选 4 个主要文明 + 6 个城邦）：
-      前端：major players -> 26 (player choice 4 saved) / city states -> max 62 (player choice 6 saved)
-      局内：unsettled city states=36 player choice=6 newly off-map=30 pool total=30
-            unsettled major players=25 player choice=4 newly off-map=22 pool total=52
-    引擎给出 26 主要文明（0..25，含本机玩家）+ 36 城邦（26..61）= 62，正好吃满槽位预算，
-    城邦没有被主要文明挤掉；幽灵池 52（改造前只有 30）；
-    留在图上的正是玩家自己选的那批：主要文明 0..3、城邦 26..31。
-  * [待验证] 幽灵化的主要文明会先被城邦化（GHOST_CONVERT_MAJOR_TO_CITY_STATE 开关，
+—— 当前策略：**两类幽灵都只有 mod 申报需求时才产生**（2026-10-15 定）——
+  * 建局时（前端 hook）先汇总申报：ModMiscToolRegisterGhostDemand（主流）与
+    ModMiscToolRegisterCityStateGhostDemand（城邦）。**没申报的那一类就是 0 个**：
+    城邦侧连 CITY_STATE_COUNT 都不多要，局内城邦幽灵 pass 直接跳过。
+  * 幽灵总预算按地图尺寸表算（GHOST_CITY_STATE_BY_MAP_SIZE，只管“该尺寸最多能多要多少
+    城邦槽位”），再按申报量拆给两类。
+  * 【2026-10-15 授权者】**不再有高级选项**（那一行在手机/平板布局下溢出屏幕）：
+    本工具**自己什么都不申报**，数量完全由声明方给（默认 Vassal System 的
+    `Vassal_GhostDemand.sql`：主流按地图尺寸 4..24、城邦 0，见 §2.8b）；
+    申报若被撤销/没人申报，被本 hook 抬过的**参与玩家数与城邦数都会还原**成玩家自己的选择。
+  * 建局侧把四个数写进随档协议：ghost_majorplayers / ghost_citystates（玩家自己选的人数与
+    城邦数，局内算槽位边界）、ghost_majorpool / ghost_citystatepool（两类幽灵各自的申报
+    上限，**0 = 一个都不产生**）。
+  * 局内先搬多出来的主流玩家（InitializeGhostMajorPlayers），再搬城邦
+    （InitializeCityStateGhostPlayers）；两个 pass 都受各自的申报上限约束。
+  * [待验证] 幽灵化的主要文明可被城邦化（GHOST_CONVERT_MAJOR_TO_CITY_STATE 开关，
     ModTool_GhostPlayers.lua 顶部）；日志里看 `converted-to-city-state=N` 与
     `IsMajor true => false`。
-  * 槽位 id 规律：引擎先排主要文明（从 0 起）再排城邦，所以“从末尾往前搬”=
-    先搬走城邦里最靠后的、再搬主要文明里的 —— 玩家原本的对手永远留在图上。
+
+—— 幽灵池的槽位预算（前端 hook，UI/Replacements/Civ6Common.lua）——
+  * MAX_PLAYERS = 64，减去野蛮人与自由城市两个固定槽位 → 62 个可用槽位；
+  * 主要文明与城邦抢同一批槽位，前端两边一起算：
+      GameConfiguration.SetParticipatingPlayerCount(configured + majorGhosts + hidden)
+      GameConfiguration.SetValue("CITY_STATE_COUNT", playerChoice + cityGhosts)
+    两个“幽灵数”来自同一份申报分账；主流放不下/没放完的部分可以退回城邦，
+    但城邦侧不得超过它自己的申报值。
+  * 槽位 id 规律（实测）：引擎先排主要文明（从 0 起）再排城邦，所以
+    边界 = 运行时实际主要文明数 + 玩家自己选的城邦数 − 1；
+    **id 大于边界、且不是 62/63 的城邦玩家**才是幽灵候选（即便候选更多，也只搬申报数）。
   * 地图脚本会给放不下的城邦打 `-- START FAILED MINOR --`（Minor TotalPlots: 0），
     这是抬 CITY_STATE_COUNT 的正常副作用，不影响开局。
-  * 创建游戏时 hook 把 CITY_STATE_COUNT 抬到 MapConfiguration.GetMaxMinorPlayers()、
-    把 GameConfiguration.SetParticipatingPlayerCount 抬到预算内的上限，
-    并用 WriteCustomData 记下玩家原本的选择，进游戏后再按原选择把富余的搬离地图。
-  * 结论：玩家对象只能由引擎在开局创建；运行时用 PlayerConfigurations 补建槽位
-    （CreateGhostPlayerFromEmptySlot）不会被引擎兑现（Players[slot] 恒为 nil）。
 
 CreateGhostPlayerFromMajorCiv(civType)
   返回：新玩家 playerID，或 nil（失败原因打到日志）
@@ -702,13 +946,426 @@ payload 形如 `run=3;load=2;turn=0;prev=run=2;...`：`run` 每次进游戏 +1�
 * **跨局**：新建游戏 → 退回主菜单 → 再新建游戏；
 * **跨进程**：新建游戏 → 存档 → 完全退出进程 → 重开 → 读档。
 
-### 3.0 关于 WorldBuilder 测试面板（开发用，默认不注册）
+### 2.8a 高级选项溢出屏幕（安卓端）：结论 = **已撤回脚本适配，改为跳过高级选项**
+
+> **2026-10-15 授权者实机：脚本适配没有生效**（`_PHONE` 后缀那套文件的界面脚本与布局都比较特殊），
+> 因此本节的 `MODMISC_FIT_ADVANCED_OPTIONS` 适配代码**已从 `Civ6Common.lua` 里删除**，
+> 同时**把 modinfo 里的高级选项整行撤掉**（`VassalDemand_Options.xml` 已删），
+> 改为“跳过高级选项、主流幽灵申报数按地图尺寸取”（见 §2.8b）。下面保留的是当时的结构分析与评估记录。
+
+（历史记录）可行性评估与当时的脚本修复方案
+
+**现象**：创建游戏 → 高级选项里，加上本 mod 的选项后整块内容超出屏幕，底部（含本 mod 的
+选项）点不到 ⇒ 不可用。授权者指出安卓端改不了游戏 XML。
+
+**根因（按官方 XML 结构核对，与平台无关，是布局差异）**
+
+| 变体 | 参数区容器 | 能否滚动 |
+|---|---|---|
+| 桌面 `AdvancedSetup.xml` | `<ScrollPanel ID="ParametersScrollPanel">` + `ScrollBar` | ✅ 能滚 |
+| 手机 `AdvancedSetup_PHONE.xml` | `<Container ID="ParametersScrollPanel" Size="parent-8,parent-12">` | ❌ 普通容器，内容超高就溢出/被裁 |
+| 平板 `AdvancedSetup_TABLET.xml` | 同上（Container） | ❌ 同样 |
+
+另外：桌面 Lua 有 `Resize()` 按屏幕高度重算 `MainWindow` / `AdvancedOptionsWindow`；
+**手机/平板 Lua 里那段被注释掉了**，窗口尺寸写死在 1920x1080 衬底上，矮屏更早溢出。
+
+**纯脚本可行性：可行**（不需要改游戏 XML）。证据：
+  * 我们的前端 hook 本来就跑在 `AdvancedSetup` 上下文里（`Civ6Common.lua` 取代版被该界面 include，
+    这条路径在授权者机器上一直有效）⇒ `Controls` 是同一个上下文，够得着这些控件；
+  * 需要的 API 全是基座自己用过的：`GetChildren()`（`GameSetupLogic_PHONE.lua` 第 598/613/621 行
+    就是枚举 `PrimaryParametersStack` / `SecondaryParametersStack` 的）、`SetSizeY`、`SetFontSize`、
+    `CalculateSize()`、`ReprocessAnchoring()`（本 mod 多处面板缩放也在用）。
+
+（历史记录）**当时实现的脚本修复**（已于 2026-10-15 撤回；`_PHONE` 变体上未生效）
+```lua
+local MODMISC_FIT_ADVANCED_OPTIONS = true   -- 关掉它 = 完全不碰高级选项布局
+local MODMISC_FIT_MIN_SCALE = 0.72          -- 行高/字号最多缩到 72%
+local MODMISC_FIT_MAX_PASSES = 3
+```
+  1. **量**：`SecondaryParametersStack`（内容高）vs `ParametersScrollPanel`（视口高），先打日志；
+  2. **压**：超了就按需要的比例缩参数行的行高 + 字号（下限 72% / 字号 ≥10），最多 3 轮；
+  3. **兜底**：压到底仍不够时，按真实屏幕高度重算 `MainWindow` / `AdvancedOptionsWindow`
+     （复刻桌面 `Resize()` 的意图；手机/平板没有 `LogoContainer`，所以只用 `ButtonStack` 那部分）。
+  另外把选项名/说明也缩短了（`Text.xml` / `Text_CN.xml`），少占一行更好塞。
+
+**测试协议**（授权者实机）
+  1. 进创建游戏 → 高级选项，看日志：
+     `[ModMiscTool][FitAdv] 高级选项：内容高=… 视口高=… 屏幕=…x… variantHint=PHONE/TABLET`
+     —— 这一行直接给出“超了多少”。塞得下会打 `塞得下，不动布局`。
+  2. 若日志显示压了 3 轮仍 `内容高 > 视口高`，把这两个数发我，调 `MODMISC_FIT_MIN_SCALE`
+     或改走“去掉选项行 / 换 XML 取代”的路线（见下）。
+  3. 不想让它碰布局：把开关改 false 即可（纯观测）。
+
+**若脚本压不下去，还有两条备选**（都请授权者定）
+  * **去掉选项行**：选项默认就是开启，取消它等于“总是申报 8+8”，行没了布局自然恢复原状（零布局风险，
+    代价是不能再在界面上关掉）。
+  * **XML 取代**：官方 DLC 正是用 `ImportFiles` 登记同名 XML 来替换界面
+    （`Expansion2.modinfo` 的 `<ImportFiles id="Expansion2_Files">` 里就有
+    `UI/Replacements/DiplomacyActionView.xml` 等），所以“把手机版参数区换成可滚动容器”在机制上成立；
+    代价是要整份复制 `AdvancedSetup_PHONE.xml`（+平板版）并随官方更新维护，
+    且**在授权者平台上 ImportFiles 换 XML 是否生效尚未验证**（换 Lua 是已验证的）。
+
+### 2.8b 幽灵数量由声明方决定 + 城邦化（2026-10-15 授权者）
+
+**分工**：`Mod Misc Tool` **只负责接受申报**（汇总 + 两道闸门），**数量由其它 mod 决定**。
+默认声明方 = **Vassal System**（它的 `Vassal_GhostDemand.sql`），数量就写在那边。
+
+**① 声明方（Vassal System）按地图尺寸声明数量 —— 走数据表**
+```sql
+-- Vassal System/Vassal_GhostDemand.sql（FrontEndActions → UpdateDatabase）：改数量只改这里
+CREATE TABLE IF NOT EXISTS ModMiscGhostDemand (
+    Source TEXT NOT NULL, MapSizeType TEXT NOT NULL,
+    MajorGhosts INTEGER NOT NULL DEFAULT 0, CityStateGhosts INTEGER NOT NULL DEFAULT 0,
+    PRIMARY KEY (Source, MapSizeType));
+
+DELETE FROM ModMiscGhostDemand WHERE Source = 'VassalSystem';
+INSERT INTO ModMiscGhostDemand (Source, MapSizeType, MajorGhosts, CityStateGhosts) VALUES
+    ('VassalSystem', 'MAPSIZE_DUEL',      4, 0),   -- 最小图 4 个主流幽灵
+    ('VassalSystem', 'MAPSIZE_TINY',      8, 0),
+    ('VassalSystem', 'MAPSIZE_SMALL',    12, 0),
+    ('VassalSystem', 'MAPSIZE_STANDARD', 16, 0),
+    ('VassalSystem', 'MAPSIZE_LARGE',    20, 0),
+    ('VassalSystem', 'MAPSIZE_HUGE',     24, 0),   -- 最大图 24 个
+    ('VassalSystem', '*',                12, 0);   -- 兜底行：尺寸认不出时
+```
+
+**为什么是数据表而不是让声明方在前端跑代码**：幽灵数量必须在“创建游戏”界面就定下来，
+而消费者 mod 在**前端没有执行路径** —— 官方 modinfo 的 `FrontEndActions` 只允许
+`AddMap / UpdateArt / UpdateColors / UpdateDatabase / UpdateIcons / UpdateText`
+（没有任何能跑 Lua 的动作；`AddUserInterfaces` 在官方数据里只出现在 `InGameActions`）。
+所以本框架把声明做成**数据契约**（谁都能用 `UpdateDatabase` 插行），而不是让框架去
+`include` 别的 mod 的文件 —— 框架不依赖消费者，也不把别人的代码拖进自己的上下文。
+
+**表结构契约**（框架建表，声明方 `CREATE TABLE IF NOT EXISTS` 后再插行，谁先跑都不会报错）
+  * `Source` 声明方标识（同一个 Source 只取一条：有精确行用精确行，否则用 `'*'` 兜底行）
+  * `MapSizeType` `'MAPSIZE_XXX'` 精确行 / `'*'` 兜底行
+  * `MajorGhosts` 主流幽灵数（正常附庸行为池）；`CityStateGhosts` 城邦幽灵数（保守行为池，0 = 不产生）
+  * 加声明方 = 自己插行（换个 `Source` 即可）；**没有行 = 该类幽灵 0**（框架自己不申报数量）。
+
+**② Misc Tool 侧（接受方）**
+  * 数据通道（默认）：每次刷新读声明表 —— 按**地图尺寸原始值缓存**，值没变就不重查
+    （每帧成本 = 一次 `GetMapSize()` + 一次比较；表不存在只记一行日志并按 0 算）。
+  * 动态通道（给能在前端跑代码的 mod，挂在 `ExposedMembers.ModMiscToolUI` 上）：
+    `ModMiscToolRegisterGhostDemand(source, count)` / `...CityStateGhostDemand`（一次性）、
+    `ModMiscToolRegisterGhostDemandProvider(source, fn)`（每次刷新调一次，返回 主流数, 城邦数）。
+    同一个 `source` 后写的覆盖先写的；不同 source **相加**。
+  * 汇总后生效值只受两个既有闸门限制：
+    ① 幽灵总预算（该尺寸能多要多少城邦槽位，`GHOST_CITY_STATE_BY_MAP_SIZE`）；
+    ② 槽位余量（`MaxPlayers` − 玩家自选主流 − 玩家自选城邦 − 城邦幽灵，防开局被挤爆）。
+  * **本工具不 include 任何其它 mod 的文件**，也不自己申报数量。
+
+**③ 桩验证**（`.harness/frontend_major_gradient_test.lua`：加载 Misc Tool 的真实前端 hook，
+DB 桩按 Vassal System 的声明 SQL 喂行；自选 4 主流 + 6 城邦、`maxPlayers=62`）——**37 项全过**：
+  * 六档 ⇒ 主流幽灵 **4/8/12/16/20/24**、参与玩家 **8/12/16/20/24/28**（城邦幽灵 0）✓
+  * 声明表不存在 / 表里没有行 ⇒ 主流幽灵 **0**、参与玩家不变（硬规则）✓
+  * 动态通道：同 `source` 覆盖表值（24 ⇒ 6）✓、异 `source` 相加（24 + 2 = 26）✓
+  * 槽位不足（上限 10、自选 6+6）⇒ 夹到 **0** ✓；总预算 1（DUEL、城邦已 15）⇒ **1** ✓
+  * 同局 SMALL→HUGE ⇒ **12→24**、参与玩家 16→28 ✓
+  * 真机哈希路径（`GetValue("MapSize")`=nil ⇒ `GetMapSize()` 哈希）⇒ LARGE **20** / DUEL **4** ✓；
+    之后每轮既不重算哈希也不重查声明表（都按原始尺寸值缓存）✓；尺寸完全认不出 ⇒ 兜底 **12** ✓
+
+日志：
+`[ModMiscTool][Ghost][DemandTable] 地图=MAPSIZE_HUGE 声明 1 条：VassalSystem major=24 city=0`
+`[ModMiscTool][Ghost][MajorPlan] 地图=MAPSIZE_HUGE 申报=24 玩家自选 major=4 cityState=6 maxPlayers=62 总预算=56 ⇒ 主流幽灵=24 城邦幽灵=0 槽位余量=52`
+
+**历史（都已撤）**：
+  * 高级选项那一行在手机/平板布局下溢出屏幕 ⇒ modinfo 里整行删掉（§2.8a）。
+  * 曾让本工具 include 声明方文件（`GHOST_DEMAND_PROVIDER_FILES`）——授权者否掉：
+    框架不该依赖消费者、也不该把别人的代码拖进本上下文；改成现在的数据表 + ExposedMembers 两条路。
+  * 压测期曾由本工具自己把主流幽灵**拉满到 52**（`GHOST_MAX_MAJOR_DEFAULT/CAP`），
+    后又短暂改为“本工具按地图尺寸表申报”（`GHOST_MAJOR_DEMAND_BY_MAP_SIZE` 在 Misc Tool 里）——
+    按授权者 2026-10-15 定论，**数量表移到声明方**，本工具只留接口与闸门。
+    52 的结论保留为“引擎塞得下”，但常态按尺寸表走（小图 4 起步）。
+
+⚠️ 申报方别把数量开太大：引擎要在地图生成阶段给这些玩家找出生点，塞不下会开局失败。
+
+**④ 实机要核对的一行**：`[ModMiscTool][Ghost][DemandTable] 地图=… 声明 N 条：…`。
+出现这行且条数/数值对 ⇒ 前端配置库里 `CREATE TABLE` + 插行 + 读表整条链通了；
+若显示「声明表不可用（没装声明方或没建表）⇒ 本轮按 0 算」，说明前端配置库不接受建表
+（或 Vassal System 的 SQL 没跑），那就退回“动态通道 + 前端补丁”路线（见上，需另验）。
+
+**①b 城邦幽灵池默认未申报（0）**：它代表**保守附庸行为**（见 §2.7 末“两个池子 = 两种附庸行为”），
+面板「外交压制自检」里城邦池显示 0 个 —— 预期状态，不是故障；
+要测保守行为把声明方那边的 `GHOST_CITY_STATE_DEMAND` 改成 8（见 §2.8b ①）。
+
+**①c 批量城邦化改为自动**：本地玩家**建立第一座城市**时自动执行一次（见 §2.7 末“自动城邦化”），
+不再需要手动点面板按钮（按钮仍保留，便于手动补做/复测）。
+
+**② 面板两个压测按钮**（WorldBuilder 测试面板）
+  * **「主流幽灵全部城邦化」** → `ConvertAllGhostMajorPlayersToCityState()`：
+    把池子里**仍在 off-map** 的主流幽灵逐个城邦化（已经有城市的会被顺手移出池子；
+    已被带回地图使用中的跳过）。返回 `(converted, failed, skipped)`。
+  * **「外交压制自检」**：把两类幽灵池里每个玩家的 `压制 / 可用 / 有城市` 逐条列出
+    （压制判定用的就是外交 UI 那个入口 `IsDiplomacyGhostPlayerUI`），用来核对压测结果。
+
+**③ 城邦化的实现契约**（`ConvertGhostPlayerToCityState(playerID[, civType])`）
+  * 走 `WorldBuilder.PlayerManager():SetPlayerLeader(id, leader, civ, 'CIVILIZATION_LEVEL_CITY_STATE')`
+    （与面板「应用」同一个接口）；**不调用 StartCityState()**（见 §10 第 29/31 条）。
+  * 判定标准：转换后 `player:IsMajor()` 是否为 false；没变再补 `SetIsMinorCiv(true)` 配置标记。
+  * 挑城邦文明时避开地图上已被占用的（避免重复城邦），全被占了就轮第一个并打日志。
+  * **硬保护**：已经有城市的玩家直接拒绝（移除全部城市 = 玩家当场死亡）。
+  * **时机**：只能在游戏跑起来之后手动触发（面板按钮）；加载过渡阶段批量改身份会把开局搞挂。
+  * 注：2026-10-15 之前这个函数**从未被定义**（面板按钮与 `GHOST_CONVERT_MAJOR_TO_CITY_STATE`
+    开关都指向 nil），这次一并补上了。
+
+### 2.8c 城邦身份的硬规则：文明级 + 小文明原型领袖（2026-10-15 授权者报“官方城邦面板打不开”）
+
+**硬规则**：任何被当作城邦的玩家（`player:IsMajor() == false`）必须同时满足
+  ① 文明是城邦级（`Civilizations.StartingCivilizationLevelType = 'CIVILIZATION_LEVEL_CITY_STATE'`）；
+  ② 领袖是**小文明原型**（`Leaders.InheritFrom` 非空：SCIENTIFIC / TRADE / CULTURAL / …）。
+
+**为什么**：官方城邦面板 `Assets/UI/PartialScreens/CityStates.lua` 用领袖原型查加成文本 ——
+原型查不到时 `GetBonusText` 只返回 `"UNKNOWN"`（第二个返回值 `Details` 为 nil），
+而面板无条件拼接 `Bonuses[1].Title .. "[NEWLINE]" .. Bonuses[1].Details` ⇒ **拼接 nil 报错**
+⇒ 整个城邦面板构建中断 ⇒ **启动栏的城邦按钮点了没反应**。
+
+**我们这边的漏洞**：`ConvertGhostPlayerToCityState` 的兜底路径原来是“`ApplyPlayerConfigIdentity`
++ `SetIsMinorCiv(true)`”——如果领袖没换成小文明原型（`SetLeaderTypeName` 失败、
+或 `SetPlayerLeader` 只改了文明等级没改领袖），就会留下**“城邦玩家 + 主流领袖”的半成品**，
+正好踩上面那条 ⇒ 这次一并补上校验与修复。
+
+**实现**（`ModTool_GhostPlayers.lua`，都是对外的 `ExposedMembers.ModMiscToolScript` 接口）
+  * `IsLegalCityStateIdentity(playerID)` —— 身份是否合规（文明级 + 小文明原型领袖）。
+  * `RepairCityStatePlayerIdentities()` —— 自检 + 修复：扫所有城邦玩家（跳过蛮族与自由城市），
+    不合规的改写成合规城邦身份；改不成就如实计入失败并打日志。返回 `(合规, 修复, 失败)`。
+  * `ConvertGhostPlayerToCityState` 现在**只在身份合规时才补 minor 标记**；转换后再校验一次，
+    修不好宁可把 minor 标记撤回并返回失败（绝不留半成品）。
+  * **进游戏时自动自检一次**（`ModTool.lua: Initialize` → `LoadGameViewStateDone` 之后，
+    `pcall(RepairCityStatePlayerIdentities)`）——老存档里已经坏掉的身份会在读档后自动修好。
+  * WorldBuilder 测试面板新按钮「修复城邦身份」（`WorldBuilderTestRepairCityState`）可手动补做，
+    结果行 `LOC_MODMISC_WB_TEST_REPAIR_CITY_STATE_RESULT` 给出 合规/修复/失败 三个数。
+
+**日志**：`[ModMiscTool][Ghost] 城邦身份自检：合规 N、修复 M、失败 K`；
+修复过的每个玩家另打一行 `城邦身份已修复 player=… civ=… leader=…`（修复 0 就说明没有半成品身份，
+城邦面板打不开就是别的原因 —— 这时要看 Lua.log 里 `CityStates` 相关报错）。
+
+### 2.8c-2 主流→城邦的转换已拦截 + 面板过滤改为"豁免型"（2026-10-17 授权者）
+
+**拦截**：把一个**主流玩家**造成城邦，引擎只会认下等级，外交/使者那套数据不会跟着建
+⇒ 官方城邦面板取关系数据拿到 nil（行渲染报错、使者按钮失效），玩家处于半城邦状态。
+城邦幽灵池本来就是在开局时由**真正的城邦**转过来的，不需要再做转换，所以这条路直接关掉：
+
+* `ModTool_GhostPlayers.lua` 顶部开关 `GHOST_ALLOW_MAJOR_TO_CITYSTATE = false`（需要恢复就改它）；
+* `ConvertGhostPlayerToCityState` / `ConvertAllGhostMajorPlayersToCityState` 一律拒绝；
+* `ConfigureGhostPlayerIdentity` 拒绝把主流玩家下发成 `CIVILIZATION_LEVEL_CITY_STATE`；
+* 本地玩家建第一座城时的自动批量城邦化 `GHOST_AUTO_CONVERT_ON_FIRST_CITY = false`（它做的就是这件事）。
+
+**面板过滤（豁免型）**：`CityStates_ModMiscGhost.lua` 仍然把"主流转出来的城邦"从官方列表里摘掉
+（隐形占位，避免基座崩溃），但**城邦幽灵池出身的一律豁免、照常显示**：
+
+| 原身份台账 | 处理 |
+|---|---|
+| 有台账 + 原文明**不是**城邦文明（主流被转出来的） | 摘掉（隐形占位） |
+| 有台账 + 原文明**是**城邦文明（城邦幽灵池出身） | **豁免，正常显示** |
+| 没有台账（原生城邦 / 正常玩家） | 正常显示 |
+
+判定用 Misc Tool 存档里的"原身份台账"（`GetGhostOriginalIdentity`），随存档走、不依赖运行时状态。
+桩测试：`Basilissa Mod Misc Tools/.harness/citystates_patch_test.lua`（含三条豁免/摘除用例）。
+
+### 2.8d 城邦面板打不开会把回合卡死 —— 自愈（2026-10-15 授权者定位）
+
+**链路（全部核对过基座代码）**
+  1. 给城邦派使者是**回合拦截项**：`ActionPanel` 的 `ENDTURN_BLOCKING_GIVE_INFLUENCE_TOKEN`
+     （拦截消息点下去 → `ActionPanel:DoEndTurn` → `LuaEvents.ActionPanel_ActivateNotification`）。
+  2. `Panels/NotificationPanel.lua` 的 `OnGiveInfluenceTokenActivate` →
+     `LuaEvents.NotificationPanel_OpenCityStatesSendEnvoys`；
+     启动栏入口则是 `LaunchBar_PHONE.lua: OnCityStates` → `LuaEvents.LaunchBar_OpenCityStates`。
+  3. 面板本体 = **PartialScreens/CityStates**（`_PHONE` 变体同名）。
+  4. `InGame.lua: BulkHide(isHide, who)` 隐藏/显示的是**五大组**：
+     `WorldViewControls / HUD / PartialScreens / Screens / TopLevelHUD` ——
+     `/InGame/PartialScreens` **正是城邦面板所在的那一组**，而且是**引用计数**
+     （`m_bulkHideTracker`）。
+
+**后果**：只要有界面调过 `BulkHide(true, "Diplomacy")`（外交界面 `InitializeView` 里那对
+`DiplomacyActionView_HideIngameUI/ShowIngameUI`，同时还会 `Input.PushActiveContext(Diplomacy)`）
+而配对的 show 没跑到，城邦面板就**永远显示不出来**（父组隐藏时子控件的 `SetHide(false)` 无效）
+⇒ 使者派不出去 ⇒ **玩家无法进入下一回合**。本 mod 挡下幽灵的外交入口时就可能留下这种半开状态。
+
+**自愈**（`UI/Support_UI.lua`，导出到 `ExposedMembers.ModMiscToolUI`）
+  * `AreInGameGroupsHidden()` / `IsDiplomacyInputContextActive()` —— 两个判据。
+  * `PairDiplomacyBulkShow()` —— fire 原版 `LuaEvents.DiplomacyActionView_ShowIngameUI`，
+    让 `InGame` 自己执行 `BulkHide(false,"Diplomacy") + Input.PopContext()`（保持引用计数配平）；
+    事件不可用才退回手动 `Input.PopContext()`（且只在确认卡着外交上下文时）。
+  * `HealInGameUIForPanelOpen(why)` —— 上面两条判据任一命中就修（隐藏组 → 强制显示；
+    外交输入上下文卡住 → 配平）。
+  * **触发点只有两个**：`LuaEvents.LaunchBar_OpenCityStates`（启动栏按钮）与
+    `LuaEvents.NotificationPanel_OpenCityStatesSendEnvoys`（回合拦截那条路）。
+    只在这两个“城邦面板要被打开”的时刻做，避免误伤全屏地图/外交界面这类**合法隐藏**。
+  * 面板里的「恢复 UI」按钮仍然保留（手动兜底）。
+
+**“点不动”的真正机制（2026-10-15 实机日志定案）**
+  1. `InGame_PHONE.xml` 里城邦上下文是 `<LuaContext ID="CityStates" FileName="CityStates" Hidden="1" />`
+     —— **注册即隐藏**；
+  2. 只有 `OpenOverview()` / `OnOpenSendEnvoys()` 的**最后一行** `m_kScreenSlideAnim.Show()`
+     会调 `ContextPtr:SetHide(false)`（`AnimSidePanelSupport.lua:37-40`）；
+  3. 所以 `Refresh()` 里**任何一行抛错** ⇒ `Show()` 跑不到 ⇒ 面板不显示，而且每次点击重演同一个错
+     ⇒ **永久“点不动”**；而城邦面板是“给城邦派使者”这个回合拦截项的出口 ⇒ 回合卡死。
+  实机日志对上了：`AddCityStateRow → GetRelationshipPipAtlasPieces(380) →
+  DIPLO_PIP_INFO[kCityState.DiplomaticState].IconName`，某玩家外交状态 -1 ⇒ 索引 nil；
+  而且它在**上下文加载阶段**就炸（`Initialize → Refresh → ViewList → AddCityStateRow`），
+  日志里跟着一行 `Error loading file where=…CityStates_Expansion1.lua:9`。
+  ⇒ 因此**只包 AddCityStateRow 不够**（加载期那次调用发生在我们的包装装上之前）。
+
+**面板本体加固（官方 ReplaceUIScript 补丁，与外交两处同一套做法）**
+  * 文件：`UI/Replacements/CityStates_ModMiscGhost.lua`；登记：`<LuaContext>CityStates</LuaContext>`
+    的 `<ReplaceUIScript>`（LoadOrder 1000）；层链 `XP2 → XP1 → 基座`
+    （`ModMiscToolIncludeUILayer("CityStates", "CityStates_Expansion1.lua", "CityStates_Expansion2.lua")`）。
+  * ① 覆盖 `GetBonusText`：`Details`/`Title` 为 nil 时补空串 ——
+    基座面板行的崩溃点就是 `Bonuses[n].Details` 为 nil（非法城邦身份 = 领袖没有
+    `InheritFrom` 时 `GetBonusText` 只返回 `"UNKNOWN"`）。
+  * ② 包一层 `AddCityStateRow`：单行数据出错只跳过该行并打日志，不再让整个面板构建中断。
+  * ②b **返回值必须原样透传**：基座 `ViewList` 是
+    `local kInst :table = AddCityStateRow( kCityState )`，游戏 Lua 会**运行时检查**这个 `:table`
+    注解 —— 兜底函数返回布尔/nil 会抛
+    `Type check failed: (expected 'table', but got 'boolean')` 并**掐断整个列表循环**
+    （实机表现：只渲染 1 行、另一个已发现的城邦整行消失）。所以：好行 `return kInst`，
+    坏行 `return {}`（空表，保证类型检查过得去、后续行照常）。
+  * ③ **包一层 `Refresh`（命门）**：整体 pcall —— 保证调用方还能走到 `Show()` 把面板弹出来；
+    并在每次刷新后打一行 `本轮列表：渲染 N 行、跳过 M 行`（用来回答“游戏里有 2 个城邦、
+    面板里怎么只有 1 个”：N 少于城邦数 ⇒ 那些城邦根本不在 `PlayerManager.GetAliveMinors()`
+    里，是引擎侧/地图侧的状态问题；M>0 ⇒ 我们的行构造仍然渲染不出来，日志里有原因）。
+  * ④ 打开入口包装 + 重新登记：`PartialScreenHooks_OpenCityStates` 与
+    `NotificationPanel_OpenCityStatesSendEnvoys` 原版登记的是**函数引用**，重定义全局不影响它，
+    所以补丁显式 `Remove` 旧引用再 `Add` 包装版；每次打开打一行
+    `[ModMiscTool][CityStates] 打开面板入口=… 进来时上下文隐藏=…`（下次排查一眼可判），
+    并顺手把上下文 `SetHide(false)` 作为最后保险。
+  * 缓存名用 `MODMISC_BASE_` 前缀：官方 XP1 自己把上一层缓存成 `BASE_AddCityStateRow`
+    并在调用时读它，用官方前缀会自读自 ⇒ 无限递归（本项目既定约定）。
+  * 桩验证 `.harness/citystates_patch_test.lua`（13 项全过）：先复现“坏领袖 ⇒ Details=nil ⇒
+    行构造抛错”，再验证补丁后 Details 一定是字符串、坏行只被跳过且有日志；
+    还模拟“`Refresh` 抛错 + 上下文隐藏”的状态机，验证**两个入口（面板按钮 / 派使者回合拦截）
+    都不再抛错、并且上下文被 unhide（面板确实弹出来）**。
+
+**日志**：命中自愈时打
+`[ModMiscTool][RestoreUI] <why>：检测到界面被隐藏/输入上下文卡住（… ，外交输入=…），开始自愈`
+与 `[ModMiscTool][RestoreUI] 已补齐原版配对：DiplomacyActionView_ShowIngameUI`
+`[ModMiscTool][RestoreUI] 已恢复：PartialScreens,…`；
+若这三行都没出现而面板仍打不开，请看 Lua.log 里基座自己打的
+`Request to BulkHide( … )` 与 `Runtime Error`（那时问题在别处，不在隐藏状态）。
+
+### 2.8e 见面过的幽灵必须留在主流体系（2026-10-15 授权者定位 + 实机日志确认）
+
+**实机日志给出的三条硬证据**（Lua.log，2026-10-15 22:16 那份）
+  1. `CityStates: [ModMiscTool][CityStates] 跳过一行坏数据 player=6：
+     zip:Base/Assets/UI/PartialScreens/CityStates_PHONE.lua:380: attempt to index a nil value`
+     —— 崩溃点是 `GetRelationshipPipAtlasPieces` 里的
+     `DIPLO_PIP_INFO[kCityState.DiplomaticState].IconName`：该玩家的外交状态是 `-1`
+     ⇒ `DiplomaticState = nil` ⇒ 索引 nil ⇒ 面板构建中断。**面板本体加固补丁正好接住了它**
+     （§2.8d 的两条兜底），所以现在面板行不会再把整个面板带崩。
+  2. `城邦身份自检：合规 14、修复 0、失败 44（18…61 identity still illegal after apply）`
+     —— 这 44 个其实是**空槽位**（`applied player config … civ=nil leader=nil level=0`）：
+     引擎没给这些槽位建玩家，`IsMajor()` 也返回 false。**自检已改为跳过空槽位**
+     （`civType == nil or ''`），不再误报“失败”。
+  3. 该局 `autoCityStateConvert=false`（自动城邦化没开）⇒ 那些城邦化是**手动面板按钮**触发的，
+     所以“见面过的幽灵被转成城邦”是可以人为造成的，必须在转换入口上就挡掉。
+
+**结论（授权者定的语义）**：**已经和本地玩家见过面的幽灵不许进/留在城邦体系** ——
+  见了面就进了外交关系数据，转成城邦后官方城邦面板取不到关系透镜数据 ⇒ 面板打不开 ⇒
+  “给城邦派使者”这个**回合拦截项**卡死 ⇒ 玩家无法进入下一回合。
+
+**实现（三层，规则只在第一层判定）**
+  * **① 源头过滤（主手段，唯一判定层）**：`ConfigureGhostPlayerIdentity` —— 这是**所有改身份的收口**
+    （Misc Tool 面板、Vassal System 的定制附庸都走它）。当目标等级是
+    `CIVILIZATION_LEVEL_CITY_STATE`、且该玩家当前是主流、且本地玩家**已经见过**它 ⇒ 直接拒绝并打日志
+    `拒绝把已见面的玩家转成城邦：player=…（见面幽灵留在主流体系）`。
+    `ConvertGhostPlayerToCityState` 与批量入口 `ConvertAllGhostMajorPlayersToCityState`
+    另做了同样的检查（更早报错、批量入口计入 `skipped`）。
+  * **② UI 兜底（不承担规则）**：城邦面板加固补丁（`CityStates_ModMiscGhost.lua`）+ 界面自愈
+    （`HealInGameUIForPanelOpen`）—— 即使某天又出现坏数据，官方城邦面板也不会因此打不开。
+  * **③ 补救入口**：面板按钮「见面的幽灵转回主流」`RestoreMetGhostsAsMajorPlayers()`。
+  * `LocalPlayerHasMet(playerID)`（全局，已导出）—— 包装 `localPlayer:GetDiplomacy():HasMet(id)`。
+  * `ConvertGhostPlayerToCityState`：**开头就检查**，见面过的直接拒绝并打日志
+    （`本地玩家已经见过它（见面幽灵留在主流体系）`）；批量入口
+    `ConvertAllGhostMajorPlayersToCityState` 也先过滤并计入 `skipped`。
+  * `RestoreMetGhostsAsMajorPlayers()` —— 把台账里**已经见面**的幽灵用**进池子时记的原身份**
+    （`GetGhostOriginalIdentity`）转回主流（`CIVILIZATION_LEVEL_FULL_CIV`：`SetMajorCiv()` +
+    `SetIsMinorCiv(false)`）；返回 `(恢复, 本来就是主流, 失败)`。
+    ⚠️ 只挂在**面板按钮**上（WorldBuilder 测试面板「见面的幽灵转回主流」，
+    `WorldBuilderTestRestoreMetGhosts`）—— 批量改身份**不能在开局加载阶段做**
+    （实机撞过：加载会被中止），按钮触发后按流程存档重读。
+
+### 2.9 UI 脚本改动方式：Civ6Common 保持取代 + 外交两处用官方 ReplaceUIScript 补丁
+
+【2026-10-15 授权者定】分两类处理，**不再一律整体复制，也不一律改补丁**：
+
+**① Civ6Common.lua —— 保持整体取代不变**（`ImportFiles` + LoadOrder 10000，前端与对局内各登记一次）
+它承担两件事，且都已实机验证过，所以不动：
+  * 对局内：移动拦截（`MoveUnitToPlot`，这个函数就定义在 Civ6Common 里）；
+  * 前端：建局 hook（拉上限 / 按 mod 申报量分账 / 玩家选择写随档）与地图尺寸解析
+    （`ModMiscToolResolveMapSizeKey` 导出给 `UI/ModMiscCreateGame.lua` 的换图指纹用）。
+  * 它是“支持文件”不是 UI 上下文，本来也没法用 `ReplaceUIScript`。
+
+**② 外交两处 —— 改成官方 Expansion1/2 那种 `ReplaceUIScript` 补丁**
+（样板：`Civ6Data/Expansion1|2/UI/Replacements/*_Expansion*.lua` +
+官方 modinfo 里的 `<ReplaceUIScript>`：`include` 上一层脚本 → 缓存上一层函数 → 只覆盖要改的）
+
+| 补丁文件（UI/Replacements/） | LuaContext | 改了什么 |
+|---|---|---|
+| `ModMiscGhostShared.lua` | （被 include） | 资料片判定、按链 include 上一层、幽灵判定（外交两处共用） |
+| `DiplomacyRibbon_ModMiscGhost.lua` | `DiplomacyRibbon` | 覆盖 `AddLeader`：幽灵不进外交条 |
+| `DiplomacyActionView_ModMiscGhost.lua` | `DiplomacyActionView` | 覆盖 `OnDiplomacyStatement` + 套 `TestValid` + 覆盖 `SelectPlayer`：幽灵不弹领袖窗、也不可被选中 |
+
+资料片链：`ModMiscToolIncludeUILayer(context, xp1File, xp2File)` 按数据库探针
+（`GameInfo.Governors` ⇒ XP1；`GameInfo.CoastalLowlands` ⇒ XP2，按官方 Schema 核对过）
+接到**当前生效那一层**后面：XP2 → XP1 → 基座。日志：
+`[ModMiscTool][UILayer] <context> <- include(<实际那一层>)  xp1=.. xp2=..`。
+
+**两条硬规矩**（都是本轮踩出来的）：
+  1. 缓存上一层函数用 `MODMISC_BASE_<函数名>`，**不要**用官方的 `BASE_<函数名>` ——
+     官方补丁正是用这个名字缓存上一层，而且是在**调用时读全局**；同名会被我们顶掉并自递归。
+  2. 被 `include("<名字>")` 加载的文件必须登记在对应阶段的 `ImportFiles`
+     （只写 `<Files>` 不够，那是打包清单）。本 mod 里 `ModMiscGhostShared.lua`
+     登记在 `InGameActions → Imports`。
+
+实机核对日志：`[ModMiscTool][UILayer] ...`、`[ModMiscTool][Ghost] 外交弹窗闸门已装载`、
+以及原来那两条（前端 `setup hook installed`、对局内 `MoveUnitToPlot` 相关）。
+
+### 2.9b 【2026-10-15 授权者】UI 改动与“新版游戏文件”的兼容性核对
+
+问题：mod 里对 UI 的改动，和 Civ6PC 里的新版官方文件是否兼容？
+
+结论（按两套官方文件实测比对：`Civ6Data` = 手机/Aspyr 版，`Civ6PC` = PC 版）：
+
+| 我们的改动 | 机制 | 新版兼容性 |
+|---|---|---|
+| `DiplomacyRibbon_ModMiscGhost.lua` | `ReplaceUIScript` + `include` 当前层 + 覆盖 `AddLeader` | ✅ **跟版本走**：只按名字覆盖，`AddLeader` 在手机版（含 `_PHONE`）与 PC 版里都存在（baseline 核对过）；新版权改了别的函数不影响我们 |
+| `DiplomacyActionView_ModMiscGhost.lua` | 同上，覆盖 `OnDiplomacyStatement` / `TestValid` / `SelectPlayer` / `OnOpenDiplomacyActionView` | ✅ 四个目标函数在两套基座的桌面版与手机版里都存在；`SelectPlayer`/`OnOpenDiplomacyActionView` 连函数体都一致，只有 `OnDiplomacyStatement` 因平台差异不同（我们不复制它，只包一层） |
+| `ModMiscGhostShared.lua` | 资料片判定 + 平台链 include | ✅ 与游戏版本无关（判据是数据库表） |
+| `UI/Replacements/Civ6Common.lua`（整体取代） | `ImportFiles` 同名替换 | ⚠️ **版本绑定**：它是**手机/Aspyr 基座**的副本（含 `-- ASPYR --` 段；PC 基座没有这些），所以：① 在手机版上正确；② 官方更新后必须重新同步（把新基座拷过来再贴回我们的两处钩子）；③ 直接拿到 **PC 版**上用会把手机分支的逻辑带进去。函数覆盖面上是 PC 的超集（PC 独有函数 = 0），所以不会缺函数，但“平台行为”会串。 |
+
+顺带记两条实测经验（本次一起确认的）：
+  * `include("X")` 与 `LuaReplace` 都是**平台感知**的：手机版上 `include("DiplomacyActionView")`
+    会取 `DiplomacyActionView_PHONE.lua`（官方 `ActionPanel_Expansion1_PHONE.lua` 也这么写），
+    所以补丁**不需要**再补一份 `_PHONE` 孪生文件；我们的两个外交补丁在授权者机器上生效即此证据。
+  * `Civ6Common.lua` **没有** `_PHONE` 变体（两套基座都只有一份），所以整体取代它在所有
+    平台变体里都能生效 —— 这也是它至今仍是“整体取代”的原因之一。
+
+### 3.0 关于 WorldBuilder 测试面板（开发用；**发布态只关侧栏入口**）
+
+> **发布态（2026-10-15 授权者）**：WorldBuilder 调试面板**只关侧栏入口**
+> （`UI/WorldBuilderTestPanel.lua` 的 `MODMISC_WB_TEST_ENTRY_ENABLED = false`），
+> 面板本体与注册都保留 —— 要排障时把开关改 `true` 就能从侧栏进。
+> 下面描述的面板按钮（幽灵标记、玩家槽位统计、全部城邦化、外交压制自检、
+> 修复城邦身份、见面的幽灵转回主流）在发布态**不显示入口**，但功能代码与文案都在。
 
 `UI/WorldBuilderTestPanel.xml/.lua` 是开发期的测试面板（选择器 + 建城/建单位/放开拓者/
-幽灵相关按钮）。**收尾后已从 `modinfo` 的 `AddUserInterfaces` 里摘掉**：不加载、
-左侧栏也没有入口，它的能力全部由 API 提供（见 §2.6 / §2.7 / §3.1）。
-要调试时把 modinfo 里注释掉的那段 `AddUserInterfaces` 加回来即可。
+幽灵相关按钮）。**2026-10-15 授权者要求：重新注册，用来查看幽灵玩家状态**——
+`modinfo` 的 `AddUserInterfaces` 已恢复，侧栏开关
+`UI/WorldBuilderTestPanel.lua` 的 `MODMISC_WB_TEST_ENTRY_ENABLED = true`。
+要再收起来：注释掉那段 `AddUserInterfaces` + 把开关改回 false。
+
+看幽灵状态的两个入口（都在这个面板里）：
+  * **玩家列表**：每个玩家条目直接标出「主流幽灵 / 城邦幽灵」（走
+    `GetGhostPlayerPoolType`；老版本 gameplay 侧回落 `IsGhostPlayer`）。
+  * **「玩家槽位统计」按钮 / 打开面板时**：打出两类幽灵池的
+    `池 / 可用 / 已用 / 本局申报上限`，以及建局侧记下的「玩家选择」（主流人数 / 城邦数）。
+    `申报 = 0` 显示「无（没有 mod 申报）」，取不到（老档）显示「不限额（老档）」。
+    —— 这一栏就是「没申报就不产生幽灵」的落地结果，配合日志里的
+    `city state ghost pass done: … plannedLimit=N` 一起看。
+
+它的能力全部同时由 API 提供（见 §2.6 / §2.7 / §3.1）；
 左侧栏入口本身仍是公开接口：`ExposedMembers.ModMiscToolUI.RegisterSidebarButton(...)`。
+Automation 测试面板（对局内创建新局 / 换地图）**仍然收起**（2026-10-07 授权者要求）。
 
 ### 3.1 左侧工具栏（LeftSideBar）
 ------------------------------------------------------------------------------
@@ -812,10 +1469,10 @@ RegisterCustomRow(iconTexture, defaultLabel, defaultValue, refreshFunc)
       只显示满足地块要求的落点，可用右上角取消按钮返回面板。
 
 OpenExtensiveUnitPanel()
-  说明：打开单位扩展建造面板（最大 1200x900，按屏幕自适应，3列网格布局）
+  说明：打开单位扩展操作面板（最大 1200x900，按屏幕自适应，3列网格布局）
 
 CloseExtensiveUnitPanel()
-  说明：关闭单位扩展建造面板
+  说明：关闭单位扩展操作面板
 
 RegisterExtensiveUnitCustomButton(icon, name, description, callback, visibleFunc)
   参数：

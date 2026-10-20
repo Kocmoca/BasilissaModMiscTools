@@ -18,11 +18,378 @@
 -- 在**一局之内、针对单个玩家**单独验证；证实可用后再把这里改回 true。
 local GHOST_CONVERT_MAJOR_TO_CITY_STATE = false
 local GHOST_PLAYER_MAX = 64   -- 兜底上限（正常用不到：所有多余城邦都当幽灵）
+-- 目标池为空时是否允许跨池兜底（前置声明：函数定义早于下面的赋值）
+local GHOST_ALLOW_POOL_FALLBACK = false
+-- 城邦幽灵的**申报上限**（建局侧按 mod 申报算好后写进随档数据传进来）：
+--   nil = 没这道数据（老档/老前端）⇒ 不限额，沿用旧行为
+--   0   = 没有 mod 申报城邦幽灵 ⇒ 一个都不产生
+--   N   = 最多产生 N 个城邦幽灵
+local m_CityStateGhostPoolLimit = nil
+-- 主流幽灵的**申报上限**（同样由建局侧按 mod 申报算好传进来；含义同上：nil/0/N）
+local m_MajorGhostPoolLimit = nil
 print("[ModMiscTool][Ghost] ghost module loaded build=" .. tostring(MODMISC_BUILD_TAG)
 	.. " autoCityStateConvert=" .. tostring(GHOST_CONVERT_MAJOR_TO_CITY_STATE))
 
 local GHOST_PLAYER_PROPERTY = 'kocmoca_modmisctool_ghost_players'
+local CITY_STATE_GHOST_PLAYER_PROPERTY = 'kocmoca_modmisctool_city_state_ghost_players'
 local UNIT_TYPE_SETTLER = 'UNIT_SETTLER'
+
+-- ===========================================================================
+-- 【授权者 2026-10-17 定案】拦截"主流文明 → 城邦文明"的转换
+-- ----------------------------------------------------------------------------
+-- 实机结论：把一个**主流玩家**造成城邦后，引擎只认了等级，外交/使者那套数据没有跟着建
+-- ⇒ 官方城邦面板取关系数据拿到 nil（行渲染报错、使者按钮失效），该玩家在引擎里处于半城邦状态。
+-- 城邦幽灵池本来就是在开局时由**真正的城邦**转过来的（InitializeGhostPlayers），不需要再做转换，
+-- 所以这里直接关掉"主流→城邦"这条路：
+--   * ConvertGhostPlayerToCityState / ConvertAllGhostMajorPlayersToCityState 一律拒绝；
+--   * ConfigureGhostPlayerIdentity 拒绝把主流玩家下发成 CITY_STATE；
+--   * 本地玩家建第一座城时的自动批量城邦化也停用（它做的就是这件事）。
+-- 需要恢复原来的行为：把这个常量改成 true 即可（只这一个开关）。
+local GHOST_ALLOW_MAJOR_TO_CITYSTATE = false
+
+-- ============================================================================
+-- 【授权者 2026-10-17】开拓者归位：**地图外的开拓者移动进城市**（不新赠）
+-- ----------------------------------------------------------------------------
+-- 现象：幽灵化时用 InitUnit(SETTLER, -1, -1) 把玩家搬到地图外垫底，那个开拓者一直留在地图外。
+--       AI 一次只盯一个开拓者，于是玩家落地后它不再自己找地建城 ⇒「不会自己建城」。
+-- 判据（授权者 2026-10-17 定案）：**建城那一刻，看这个玩家名下有没有"正常存活的、坐标为负的开拓者"**；
+--   有 ⇒ 拉进城市；没有 ⇒ 什么都不做。不按"是不是幽灵 / 是不是本地玩家"过滤
+--   （幽灵建城那刻可能已被归到本地玩家名下，用身份去卡会把该做的归位挡掉）。
+-- 机制（授权者口径，也是唯一做法）：
+--       **遍历该玩家的单位 ⇒ 找出"开拓者类型"且"在地图外（坐标 < 0）"的 ⇒ UnitManager.PlaceUnit 拉进城市。**
+--       不新赠开拓者（赠送机制已取消）；不做快照比对、不删单位。
+-- 触发时机：`Events.CityAddedToMap`（转城与直接建城都会触发）—— 建城事件里移动开拓者是**通用**处理方式。
+-- ============================================================================
+
+-- 单位是不是"开拓者类型"：先看数据表的 FoundCity，再退回 UNIT_SETTLER 的类型名/哈希
+local function IsSettlerUnit(unit)
+	if unit == nil then return false end
+	local unitType = nil
+	pcall(function() unitType = unit:GetType() end)
+	-- ① 数据表 FoundCity（能建城的单位就是开拓者系）
+	if unitType ~= nil then
+		local info = nil
+		pcall(function() info = GameInfo.Units[unitType] end)
+		if info ~= nil and info.FoundCity == true then return true end
+		if info ~= nil and info.UnitType == UNIT_TYPE_SETTLER then return true end
+		-- ② 直接比哈希（部分上下文里 GameInfo.Units[hash] 查不到行）
+		local settlerHash = nil
+		pcall(function() settlerHash = GameInfo.Units[UNIT_TYPE_SETTLER].Hash end)
+		if settlerHash ~= nil and unitType == settlerHash then return true end
+	end
+	-- ③ 类型名字符串
+	local typeName = nil
+	pcall(function() typeName = unit:GetTypeName() end)
+	if typeName == UNIT_TYPE_SETTLER then return true end
+	return false
+end
+
+-- 单位是不是"真的在地图外"。
+-- ----------------------------------------------------------------------------
+-- 【授权者 2026-10-17 实机事故】**坐标读不到 ≠ 地图外**：
+--   本地玩家建城那一刻，刚被消耗掉的开拓者还留在 `player:GetUnits()` 里，读坐标会报错；
+--   以前把"报错"当地图外 ⇒ 把本地玩家的单位也拉进了新城市
+--   （日志：`player=0 … 明细=…@已入城`）。
+-- 【授权者 2026-10-17 追加】**非幽灵玩家一律不该被搬运**，判定要严。
+--   下面三道**全部成立**才算"在地图外"，任何一道不成立都返回 false：
+--     ① 单位句柄还在，且（能查到的前提下）`IsAlive()` 为真 —— 被消耗/将死的单位不算；
+--     ② 坐标能读成功，且是数字（读不到 ⇒ 不是地图外，只是脏句柄）；
+--     ③ 坐标为负（真正的"地图外"只有这种写法，幽灵就是这么被搬出去的）；
+--     （判据只到③：**不要**再加"地图上取不到该 plot"这类交叉验证 ——
+--       地图上不显示的玩家/单位，`Map.GetPlot(x, y)` 照样能取到地块，用它会误杀真正的幽灵单位。）
+local m_unreadableUnitWarned = false
+
+-- 单位是不是"已经死了/正在死"（这类单位即使坐标是负的也不能搬，见 IsUnitOffMap 注释）
+local function IsUnitDeadOrDying(unit)
+	if unit == nil then return true end
+	local aliveOk, alive = pcall(function() return unit:IsAlive() end)
+	if aliveOk and alive == false then return true end
+	local damageOk, damage = pcall(function() return unit:GetDamage() end)
+	if damageOk and type(damage) == 'number' and damage >= 100 then return true end
+	local delayedOk, delayed = pcall(function() return unit:IsDelayedDeath() end)
+	if delayedOk and delayed == true then return true end
+	return false
+end
+
+local function IsUnitOffMap(unit)
+	if unit == nil then return false end
+
+	-- ① 句柄有效 + **真的还活着**：
+	--    【授权者 2026-10-17 实机】建城时引擎会把"建城的那个开拓者"杀死并搬到地图外，
+	--    它在下一次刷新前还留在 unit 列表里、坐标已经变成负值 ⇒ 会被我们当成"地图外开拓者"搬回城里。
+	--    所以这里必须把"将死/已死"的单位排除掉，判据三条一起用：
+	--      a) `IsAlive()` 为 false ⇒ 排除（能查到才拦）；
+	--      b) `GetDamage() >= 100` ⇒ 排除（本项目杀单位的老规矩就是先 SetDamage(100) 再 Kill）；
+	--      c) `IsDelayedDeath()` 为 true ⇒ 排除（引擎已经排队要删它了）。
+	if IsUnitDeadOrDying(unit) then return false end
+
+	-- ② 坐标必须读得到、是数字
+	local ok, unitX, unitY = pcall(function() return unit:GetX(), unit:GetY() end)
+	if not ok or type(unitX) ~= 'number' or type(unitY) ~= 'number' then
+		if not m_unreadableUnitWarned then
+			m_unreadableUnitWarned = true
+			print('[ModMiscTool][Ghost] 有单位读不到坐标（多半是刚被消耗掉的单位）'
+				.. ' ⇒ 跳过，不参与开拓者归位')
+		end
+		return false
+	end
+
+	-- ③ 坐标为负 ⇒ 就是我们要找的"地图外开拓者"
+	--    （授权者 2026-10-17：不要再拿 `Map.GetPlot` 去交叉验证 —— 地图外/未显示的玩家照样能取到地块，
+	--      那条判定会误杀真正的幽灵单位，所以判据只保留 ①②③。）
+	return unitX < 0 or unitY < 0
+end
+
+-- 遍历玩家单位、统计开拓者总数 / 其中地图外的个数
+local function CountFindCityUnits(playerID, offMapOnly)
+	local count = 0
+	local player = Players[playerID]
+	if player == nil then return 0 end
+	pcall(function()
+		local units = player:GetUnits()
+		if units == nil then return end
+		for _, unit in units:Members() do
+			if IsSettlerUnit(unit) then
+				if (not offMapOnly) or IsUnitOffMap(unit) then
+					count = count + 1
+				end
+			end
+		end
+	end)
+	return count
+end
+
+function GetGhostSettlerCount(playerID)
+	return CountFindCityUnits(playerID, false)
+end
+
+function GetGhostOffMapSettlerCount(playerID)
+	return CountFindCityUnits(playerID, true)
+end
+
+-- **核心**：遍历玩家单位 ⇒ 地图外的开拓者 ⇒ PlaceUnit 拉进 (iX, iY)；返回拉过去的个数
+-- 【授权者 2026-10-17 定案·判据只有一条】**看这个玩家名下有没有"正常存活的、坐标为负的开拓者"**。
+--   不要再用"是不是幽灵 / 是不是本地玩家"当门槛：
+--     * 幽灵建城那一刻可能已经被归到本地玩家名下（事件里的 ownerID 就是本地玩家），
+--       拿身份去卡反而会把该做的归位挡掉；
+--     * 反过来，正常玩家也不可能凭空有一个"存活 + 坐标为负"的开拓者 —— 这条判据本身就是最准的识别。
+--   所以入口只做参数检查，真正的过滤在 `IsUnitOffMap`（存活 / 坐标可读 / 为负 / 地图上无该地块）。
+function RelocateOffMapSettlersIntoCity(playerID, iX, iY, reason)
+	if playerID == nil or iX == nil or iY == nil or iX < 0 or iY < 0 then return 0 end
+	local player = Players[playerID]
+	if player == nil then return 0 end
+
+	local scanned, moved, failed = 0, 0, 0
+	local detail = {}
+	local seenSettlers = {}
+	pcall(function()
+		local units = player:GetUnits()
+		if units == nil then return end
+		for _, unit in units:Members() do
+			scanned = scanned + 1
+			if IsSettlerUnit(unit) then
+				-- 【授权者 2026-10-17】排查"建城后飞来一个开拓者"：把每个开拓者的现场都打出来
+				local uid, ux, uy, alive, uType = '?', '?', '?', '?', '?'
+				pcall(function() uid = tostring(unit:GetID()) end)
+				pcall(function() uType = tostring(unit:GetType()) end)
+				pcall(function() ux, uy = unit:GetX(), unit:GetY() end)
+				pcall(function() alive = tostring(unit:IsAlive()) end)
+				table.insert(seenSettlers, 'unit=' .. uid .. ' type=' .. uType
+					.. ' pos=' .. tostring(ux) .. ',' .. tostring(uy)
+					.. ' alive=' .. alive .. ' 判定地图外=' .. tostring(IsUnitOffMap(unit)))
+			end
+			if IsSettlerUnit(unit) and IsUnitOffMap(unit) then
+				local unitID = nil
+				pcall(function() unitID = unit:GetID() end)
+				local ok, placed = pcall(function() return UnitManager.PlaceUnit(unit, iX, iY) end)
+				-- 位置在拉回来之后再读一次，作为"真的动了"的证据
+				local afterOffMap = IsUnitOffMap(unit)
+				if ok and not afterOffMap then
+					moved = moved + 1
+					table.insert(detail, tostring(unitID) .. '@已入城')
+				else
+					failed = failed + 1
+					table.insert(detail, tostring(unitID) .. '@失败(' .. tostring(ok)
+						.. ',' .. tostring(placed) .. ',仍在地图外=' .. tostring(afterOffMap) .. ')')
+				end
+			end
+		end
+	end)
+
+	if #seenSettlers > 0 then
+		print('[ModMiscTool][Ghost] 开拓者现场：player=' .. tostring(playerID)
+			.. ' 单位总数=' .. tostring(scanned)
+			.. ' 其中开拓者=' .. tostring(#seenSettlers)
+			.. ' | ' .. table.concat(seenSettlers, ' | ')
+			.. ' | 本次原因=' .. tostring(reason))
+	end
+	if moved == 0 and failed == 0 then return 0 end   -- 没有地图外开拓者 ⇒ 后面不吵日志
+	print('[ModMiscTool][Ghost] 开拓者归位：player=' .. tostring(playerID)
+		.. ' 扫描单位=' .. tostring(scanned)
+		.. ' 地图外开拓者→城市=' .. tostring(moved)
+		.. ' 失败=' .. tostring(failed)
+		.. ' 位置=' .. tostring(iX) .. ',' .. tostring(iY)
+		.. ' 原因=' .. tostring(reason)
+		.. (#detail > 0 and (' 明细=' .. table.concat(detail, '|')) or ''))
+	return moved
+end
+
+-- 建城/转城之后调用：事件没生效时兜一次（幂等 —— 已经在地图内就直接返回，不打印）
+-- 判据同 RelocateOffMapSettlersIntoCity：只看"有没有正常存活的负坐标开拓者"。
+function EnsureGhostSettlerInCity(playerID, iX, iY, reason)
+	if playerID == nil or iX == nil or iY == nil then return 0 end
+	local offMap = GetGhostOffMapSettlerCount(playerID)
+	if offMap <= 0 then return 0 end
+	print('[ModMiscTool][Ghost] 建城/转城后确保开拓者入城：player=' .. tostring(playerID)
+		.. ' 地图外开拓者=' .. tostring(offMap)
+		.. ' 位置=' .. tostring(iX) .. ',' .. tostring(iY)
+		.. ' 原因=' .. tostring(reason))
+	return RelocateOffMapSettlersIntoCity(playerID, iX, iY, reason)
+end
+
+-- 是不是幽灵（含"刚落地的前幽灵"）：城市落地那一刻池子已经把人摘掉了，
+-- 所以除了两个池子，还要看历史台账（进池子时记下的原身份）和"地图外还有开拓者"这个物理特征。
+function IsGhostOrFormerGhost(playerID)
+	if playerID == nil then return false end
+	if IsCityStateGhostPlayer(playerID) then return true end
+	if IsGhostPlayer(playerID) then return true end
+	if GetGhostOriginalIdentity(playerID) ~= nil then return true end
+	return GetGhostOffMapSettlerCount(playerID) > 0
+end
+
+-- 所有"曾经是幽灵"的玩家 ID（含已经落地的）：历史台账 + 两个池子，去重排序
+function GetKnownGhostPlayerIDs()
+	local seen, list = {}, {}
+	local function Add(playerID)
+		if playerID ~= nil and seen[playerID] ~= true then
+			seen[playerID] = true
+			table.insert(list, playerID)
+		end
+	end
+	pcall(function()
+		for playerID, _ in pairs(GetGhostOriginalIdentities()) do Add(playerID) end
+	end)
+	pcall(function()
+		for _, playerID in ipairs(GetGhostPlayers()) do Add(playerID) end
+		for _, playerID in ipairs(GetCityStateGhostPlayers()) do Add(playerID) end
+	end)
+	table.sort(list)
+	return list
+end
+
+-- 读档兜底：老存档里"已经有城、开拓者却还卡在地图外"的幽灵，就地归位。
+-- 新建城市全由 CityAddedToMap 事件负责；这里只在**载入后第一次回合开始**跑一遍（省得每回合扫单位）。
+local m_SettleSweepDone = false
+function SweepGhostOffMapSettlers(reason)
+	local fixed = 0
+	for _, playerID in ipairs(GetKnownGhostPlayerIDs()) do
+		if GetGhostOffMapSettlerCount(playerID) > 0 then
+			local city = nil
+			pcall(function()
+				local cities = Players[playerID]:GetCities()
+				if cities ~= nil then
+					city = cities:GetCapitalCity()
+					if city == nil then
+						for _, eachCity in cities:Members() do
+							city = eachCity
+							break
+						end
+					end
+				end
+			end)
+			if city ~= nil then
+				local cx, cy = nil, nil
+				pcall(function() cx, cy = city:GetX(), city:GetY() end)
+				if cx ~= nil and cy ~= nil and cx >= 0 and cy >= 0 then
+					if RelocateOffMapSettlersIntoCity(playerID, cx, cy, reason) > 0 then
+						fixed = fixed + 1
+					end
+				end
+			end
+		end
+	end
+	if fixed > 0 then
+		print('[ModMiscTool][Ghost] 开拓者归位兜底（' .. tostring(reason or '?')
+			.. '）：修好 ' .. tostring(fixed) .. ' 个玩家')
+	end
+	return fixed
+end
+
+-- 【授权者 2026-10-17 定案】城市添加到地图的事件里判断是否为幽灵：是 ⇒ 把地图外的开拓者移动进城市。
+-- 转城不一定触发 CityAddedToMap ⇒ 再挂一道 CityTransfered（新拥有者有地图外开拓者才处理）
+function HandleGhostCityTransfered(newOwnerID, cityID)
+	if newOwnerID == nil or cityID == nil then return end
+	-- 判据同上：只看有没有"正常存活的负坐标开拓者"
+	if GetGhostOffMapSettlerCount(newOwnerID) <= 0 then return end
+	local iX, iY = nil, nil
+	pcall(function()
+		local city = CityManager.GetCity(newOwnerID, cityID)
+		if city ~= nil then iX, iY = city:GetX(), city:GetY() end
+	end)
+	if iX == nil or iY == nil then return end
+	RelocateOffMapSettlersIntoCity(newOwnerID, iX, iY,
+		'城市转移事件 cityID=' .. tostring(cityID))
+end
+
+function HandleGhostCityAddedToMap(ownerID, cityID, iX, iY)
+	if ownerID == nil then return end
+	-- 【授权者 2026-10-17】排查用：城市落地事件一律留痕（这个事件很稀疏，不会吵）
+	local localID = nil
+	pcall(function() localID = Game.GetLocalPlayer() end)
+	print('[ModMiscTool][Ghost] 城市落地事件：owner=' .. tostring(ownerID)
+		.. ' cityID=' .. tostring(cityID)
+		.. ' pos=' .. tostring(iX) .. ',' .. tostring(iY)
+		.. ' 本地玩家=' .. tostring(localID)
+		.. ' 地图外开拓者=' .. tostring(GetGhostOffMapSettlerCount(ownerID)))
+	-- 【授权者 2026-10-17 定案】唯一判据：这个玩家名下有没有"正常存活的、坐标为负的开拓者"。
+	--   * 不按"是不是幽灵 / 是不是本地玩家"过滤 —— 幽灵建城那刻可能已被归到本地玩家名下；
+	--   * 正常玩家不可能有这种单位，所以这条判据本身就足够，而且不会误伤。
+	if GetGhostOffMapSettlerCount(ownerID) <= 0 then return end
+	if iX == nil or iY == nil or iX < 0 or iY < 0 then
+		pcall(function()
+			local city = CityManager.GetCity(ownerID, cityID)
+			if city ~= nil then iX, iY = city:GetX(), city:GetY() end
+		end)
+	end
+	if iX == nil or iY == nil or iX < 0 or iY < 0 then
+		print('[ModMiscTool][Ghost] 城市落地事件：拿不到城市坐标，跳过开拓者归位 owner='
+			.. tostring(ownerID) .. ' cityID=' .. tostring(cityID))
+		return
+	end
+	RelocateOffMapSettlersIntoCity(ownerID, iX, iY, '城市落地事件 cityID=' .. tostring(cityID))
+end
+
+-- transfer 之后旧 cityID 对应的 Lua 城市对象可能被销毁；用地块 index 找新城市，
+-- 不要再用旧的 CityManager.GetCity(owner, oldCityID)。
+local function FindCityByPlotIndex(playerID, plotIndex)
+	if playerID == nil or plotIndex == nil then return nil end
+
+	local plot = Map.GetPlotByIndex(plotIndex)
+	if plot ~= nil then
+		local city = Cities.GetPlotPurchaseCity(plot)
+		if city ~= nil then
+			local ownerOk, owner = pcall(function() return city:GetOwner() end)
+			if not ownerOk or owner == playerID then
+				return city
+			end
+		end
+	end
+
+	local player = Players[playerID]
+	if player ~= nil then
+		local cities = player:GetCities()
+		if cities ~= nil then
+			for _, city in cities:Members() do
+				local cityPlot = Map.GetPlot(city:GetX(), city:GetY())
+				if cityPlot ~= nil and cityPlot:GetIndex() == plotIndex then
+					return city
+				end
+			end
+		end
+	end
+	return nil
+end
+
 
 -- ===========================================================================
 -- 幽灵玩家列表（存档内持久化）
@@ -34,10 +401,182 @@ function GetGhostPlayers()
 	return ghosts
 end
 
+-- pcall 包一层：取值失败时返回 nil，别把脚本打断
+local function CallOrNil(fn)
+	local ok, value = pcall(fn)
+	if not ok then
+		return nil
+	end
+	return value
+end
+
+-- ===========================================================================
+-- 幽灵“原身份”台账（2026-10-15 授权者）
+--
+-- 背景：玩家创建时引擎会记下它的**原文明/原领袖**，之后我们改 PlayerConfigurations
+-- 也改不掉引擎记的那一份 —— 外交界面/议会之类的地方会按引擎记录显示，
+-- 于是“幽灵被改成别的文明”时容易出现显示冲突（和场上真正拥有该文明的玩家撞车）。
+--
+-- 所以：**进池子的那一刻**把每个幽灵的原文明/原领袖记下来（存档属性，随档走），
+-- 之后向幽灵池要“特定文明+领袖”时，优先挑**原身份就相符**的那个 ——
+-- 这样引擎记录与我们要显示的一致，外交界面不会冲突；顺带这种幽灵通常也不需要改身份，
+-- 于是“建立城市后的实际效果”也不需要读档（身份真被改过的仍需要读档，见 Vassal System）。
+-- ===========================================================================
+local GHOST_IDENTITY_PROPERTY = 'kocmoca_modmisctool_ghost_identities'
+
+function GetGhostOriginalIdentities()
+	local record = Game:GetProperty(GHOST_IDENTITY_PROPERTY)
+	if record == nil then return {} end
+	return record
+end
+
+function GetGhostOriginalIdentity(playerID)
+	if playerID == nil then return nil end
+	return GetGhostOriginalIdentities()[playerID]
+end
+
+-- 只在“第一次进池子”时记（之后无论怎么改身份，台账都是引擎那份原身份）
+function RecordGhostOriginalIdentity(playerID, reason)
+	if playerID == nil then return nil end
+	local record = Game:GetProperty(GHOST_IDENTITY_PROPERTY)
+	if record == nil then record = {} end
+	local existing = record[playerID]
+	if existing ~= nil then return existing end
+
+	local playerConfig = PlayerConfigurations[playerID]
+	local civType = nil
+	local leaderType = nil
+	if playerConfig ~= nil then
+		civType = CallOrNil(function() return playerConfig:GetCivilizationTypeName() end)
+		leaderType = CallOrNil(function() return playerConfig:GetLeaderTypeName() end)
+	end
+	local entry = { civ = civType, leader = leaderType, turn = Game.GetCurrentGameTurn(),
+		reason = reason or '' }
+	record[playerID] = entry
+	Game:SetProperty(GHOST_IDENTITY_PROPERTY, record)
+	print('[ModMiscTool][Ghost] 记录原身份：player=' .. tostring(playerID)
+		.. ' civ=' .. tostring(civType) .. ' leader=' .. tostring(leaderType)
+		.. '（' .. tostring(reason or '进池子') .. '）')
+	return entry
+end
+
+-- 给调用方打分用：原文明+原领袖全都相符 = 2、只中一个 = 1、不中或没台账 = nil
+function GetGhostOriginalIdentityScore(playerID, civType, leaderType)
+	local entry = GetGhostOriginalIdentity(playerID)
+	if entry == nil then return nil end
+	local score = 0
+	local considered = 0
+	if leaderType ~= nil and leaderType ~= '' then
+		considered = considered + 1
+		if entry.leader == leaderType then score = score + 1 end
+	end
+	if civType ~= nil and civType ~= '' then
+		considered = considered + 1
+		if entry.civ == civType then score = score + 1 end
+	end
+	if considered == 0 then return nil end
+	return score
+end
+
+-- ===========================================================================
+-- 幽灵玩家的“新鲜度”：拿到城市的玩家不再是幽灵
+--
+-- 【2026-10-15 授权者】幽灵被复活（拿到城市、回到地图上）之后，框架还把它当幽灵：
+--   * 外交界面/外交条被压制，看不到这个新附庸；
+--   * 点它的城市 banner 会去开领袖/外交场景，而该玩家又被当幽灵挡下 ⇒ 场景半开，
+--     引擎那边 BulkHide(true, "Diplomacy") 之后再也等不到 BulkHide(false) ⇒ HUD 五组全隐藏。
+-- 所以这里做两层：
+--   ① 兜底判定：**有城市 ⇒ 不是幽灵**（池子还没清干净也不会再被当幽灵）；
+--   ② 及时清池：激活/建城/转城之后立刻把它从两个池子里摘掉（RemoveGhostPlayerFromPool），
+--      另提供全量刷新 RefreshGhostPoolsFromCities 给其它 mod 与回合事件调用。
+-- ===========================================================================
+local m_GhostCityFallbackLogged = {}
+
+-- 该玩家现在有没有城市（有首都/任意城市都算：转移城市那一刻可能还没设首都）
+function PlayerOwnsCity(playerID)
+	if playerID == nil then return false end
+	local player = Players[playerID]
+	if player == nil then return false end
+	local cities = CallOrNil(function() return player:GetCities() end)
+	if cities == nil then return false end
+	local capital = CallOrNil(function() return cities:GetCapitalCity() end)
+	if capital ~= nil then return true end
+	-- 刚转移过来的城市可能还没被标成首都，再数一遍
+	local count = CallOrNil(function() return cities:GetCount() end)
+	return (count or 0) > 0
+end
+
+-- 池子成员是不是“还是幽灵”：有城市就不是了（并记一次日志，便于核对）
+local function GhostPoolEntryStillGhost(playerID, poolLabel)
+	if not PlayerOwnsCity(playerID) then return true end
+	if m_GhostCityFallbackLogged[playerID] ~= true then
+		m_GhostCityFallbackLogged[playerID] = true
+		print("[ModMiscTool][Ghost] " .. poolLabel .. " 池里的玩家 " .. tostring(playerID)
+			.. " 已经有城市 ⇒ 按“不是幽灵”处理，并会从池子里清掉")
+	end
+	return false
+end
+
+-- 把一个玩家从两个池子里摘掉（激活/复活后调用；幂等）
+function RemoveGhostPlayerFromPool(playerID, reason)
+	if playerID == nil then return false end
+	local removed = false
+	local majorGhosts = Game:GetProperty(GHOST_PLAYER_PROPERTY)
+	if majorGhosts ~= nil then
+		local kept = {}
+		for _, ghostID in ipairs(majorGhosts) do
+			if ghostID == playerID then removed = true else table.insert(kept, ghostID) end
+		end
+		if removed then Game:SetProperty(GHOST_PLAYER_PROPERTY, kept) end
+	end
+	local cityGhosts = Game:GetProperty(CITY_STATE_GHOST_PLAYER_PROPERTY)
+	if cityGhosts ~= nil then
+		local kept = {}
+		local removedCity = false
+		for _, ghostID in ipairs(cityGhosts) do
+			if ghostID == playerID then removedCity = true else table.insert(kept, ghostID) end
+		end
+		if removedCity then
+			Game:SetProperty(CITY_STATE_GHOST_PLAYER_PROPERTY, kept)
+			removed = true
+		end
+	end
+	ReleaseAnyGhostPlayer(playerID)
+	if removed then
+		print("[ModMiscTool][Ghost] 玩家 " .. tostring(playerID) .. " 已移出幽灵池（"
+			.. tostring(reason or "未说明") .. "）；主流池剩 " .. tostring(GetGhostPlayerCount())
+			.. "、城邦池剩 " .. tostring(GetCityStateGhostPlayerCount()))
+	end
+	return removed
+end
+
+-- 全量刷新：池子里凡是已经拿到城市的，全部摘掉（兜底 + 给其它 mod/回合事件调）
+function RefreshGhostPoolsFromCities(reason)
+	local stale = {}
+	local function Collect(pool)
+		for _, ghostID in ipairs(pool) do
+			if PlayerOwnsCity(ghostID) then table.insert(stale, ghostID) end
+		end
+	end
+	Collect(GetGhostPlayers())
+	Collect(GetCityStateGhostPlayers())
+	for _, ghostID in ipairs(stale) do
+		RemoveGhostPlayerFromPool(ghostID, reason or "已有城市")
+	end
+	if #stale > 0 then
+		print("[ModMiscTool][Ghost] 幽灵池刷新（" .. tostring(reason or "?") .. "）：清掉 "
+			.. tostring(#stale) .. " 个已有城市的玩家")
+	end
+	return #stale
+end
+
 function IsGhostPlayer(playerID)
 	if playerID == nil then return false end
 	for _, ghostID in ipairs(GetGhostPlayers()) do
-		if ghostID == playerID then return true end
+		if ghostID == playerID then
+			-- 兜底：已经有城市的“前幽灵”不再是幽灵（复活后必须立刻从外交压制里消失）
+			return GhostPoolEntryStillGhost(playerID, "主流")
+		end
 	end
 	return false
 end
@@ -127,6 +666,146 @@ function ReleaseGhostPlayer(playerID)
 	Game:SetProperty(GHOST_CLAIM_PROPERTY, claims)
 end
 
+-- 指定预约某个主流幽灵（给“优先找已有匹配领袖/文明”的调用方用）。
+function ClaimGhostPlayer(playerID)
+	if not IsGhostPlayerAvailable(playerID) then return false end
+	if IsGhostPlayerClaimed(playerID) then return false end
+	local claims = GetGhostPlayerClaims()
+	table.insert(claims, playerID)
+	Game:SetProperty(GHOST_CLAIM_PROPERTY, claims)
+	return true
+end
+
+-- ===========================================================================
+-- 城邦幽灵玩家池（与主流幽灵池分开维护）
+--
+-- 旧的 GetGhostPlayers / ClaimAvailableGhostPlayer / IsGhostPlayer 等接口
+-- 现在全部指“主流玩家幽灵”；需要城邦幽灵时走下面这一套。
+-- ===========================================================================
+
+function GetCityStateGhostPlayers()
+	local ghosts = Game:GetProperty(CITY_STATE_GHOST_PLAYER_PROPERTY)
+	if ghosts == nil then return {} end
+	return ghosts
+end
+
+function IsCityStateGhostPlayer(playerID)
+	if playerID == nil then return false end
+	for _, ghostID in ipairs(GetCityStateGhostPlayers()) do
+		if ghostID == playerID then
+			return GhostPoolEntryStillGhost(playerID, "城邦")
+		end
+	end
+	return false
+end
+
+function GetCityStateGhostPlayerCount()
+	return #GetCityStateGhostPlayers()
+end
+
+function IsCityStateGhostPlayerAvailable(playerID)
+	if not IsCityStateGhostPlayer(playerID) then return false end
+	local player = Players[playerID]
+	if player == nil then return false end
+	local cities = player:GetCities()
+	if cities ~= nil and cities:GetCapitalCity() ~= nil then return false end
+	return not PlayerHasOnMapUnit(playerID)
+end
+
+function GetAvailableCityStateGhostPlayers()
+	local available = {}
+	for _, playerID in ipairs(GetCityStateGhostPlayers()) do
+		if IsCityStateGhostPlayerAvailable(playerID) then
+			table.insert(available, playerID)
+		end
+	end
+	return available
+end
+
+function GetAvailableCityStateGhostPlayerCount()
+	return #GetAvailableCityStateGhostPlayers()
+end
+
+function GetAvailableCityStateGhostPlayerID()
+	local available = GetAvailableCityStateGhostPlayers()
+	return available[1]
+end
+
+local CITY_STATE_GHOST_CLAIM_PROPERTY = 'kocmoca_modmisctool_city_state_ghost_claims'
+
+function GetCityStateGhostPlayerClaims()
+	local claims = Game:GetProperty(CITY_STATE_GHOST_CLAIM_PROPERTY)
+	if claims == nil then return {} end
+	return claims
+end
+
+function IsCityStateGhostPlayerClaimed(playerID)
+	for _, claimedID in ipairs(GetCityStateGhostPlayerClaims()) do
+		if claimedID == playerID then return true end
+	end
+	return false
+end
+
+function ClaimAvailableCityStateGhostPlayer()
+	local claims = GetCityStateGhostPlayerClaims()
+	for _, playerID in ipairs(GetCityStateGhostPlayers()) do
+		if IsCityStateGhostPlayerAvailable(playerID)
+			and not IsCityStateGhostPlayerClaimed(playerID) then
+			table.insert(claims, playerID)
+			Game:SetProperty(CITY_STATE_GHOST_CLAIM_PROPERTY, claims)
+			return playerID
+		end
+	end
+	return nil
+end
+
+function ReleaseCityStateGhostPlayer(playerID)
+	local claims = GetCityStateGhostPlayerClaims()
+	for index = #claims, 1, -1 do
+		if claims[index] == playerID then
+			table.remove(claims, index)
+		end
+	end
+	Game:SetProperty(CITY_STATE_GHOST_CLAIM_PROPERTY, claims)
+end
+
+-- 指定预约某个城邦幽灵。
+function ClaimCityStateGhostPlayer(playerID)
+	if not IsCityStateGhostPlayerAvailable(playerID) then return false end
+	if IsCityStateGhostPlayerClaimed(playerID) then return false end
+	local claims = GetCityStateGhostPlayerClaims()
+	table.insert(claims, playerID)
+	Game:SetProperty(CITY_STATE_GHOST_CLAIM_PROPERTY, claims)
+	return true
+end
+
+-- 通用判定 / 释放：操作接口拿到的 ghostID 不一定来自哪个池。
+function GetGhostPlayerPoolType(playerID)
+	if IsGhostPlayer(playerID) then return 'major' end
+	if IsCityStateGhostPlayer(playerID) then return 'citystate' end
+	return nil
+end
+
+function IsKnownGhostPlayer(playerID)
+	return GetGhostPlayerPoolType(playerID) ~= nil
+end
+
+function IsKnownGhostPlayerAvailable(playerID)
+	local poolType = GetGhostPlayerPoolType(playerID)
+	if poolType == 'major' then return IsGhostPlayerAvailable(playerID) end
+	if poolType == 'citystate' then return IsCityStateGhostPlayerAvailable(playerID) end
+	return false
+end
+
+function ReleaseAnyGhostPlayer(playerID)
+	local poolType = GetGhostPlayerPoolType(playerID)
+	if poolType == 'major' then
+		ReleaseGhostPlayer(playerID)
+	elseif poolType == 'citystate' then
+		ReleaseCityStateGhostPlayer(playerID)
+	end
+end
+
 -- ===========================================================================
 -- 上/下地图
 -- ===========================================================================
@@ -159,7 +838,8 @@ function GetGhostifyBlockReason(playerID)
 	if player == nil then
 		return "no engine player"
 	end
-	-- 注意：本函数在文件前段（CallOrNil 还没声明），所以直接用 pcall，别用 CallOrNil
+	-- 这里仍直接用 pcall（历史上 CallOrNil 声明在本函数之后；现在虽然已经前移，
+	-- 但这段是“硬保护”路径，少一层间接更稳妥）
 	local ok, cities = pcall(function() return player:GetCities() end)
 	if not ok then
 		cities = nil
@@ -357,6 +1037,299 @@ local function GetDefaultLeaderType(civType)
 	return nil
 end
 
+-- ===========================================================================
+-- 其它 mod 接口：用幽灵玩家激活定制附庸 / 新建幽灵城市
+--
+-- 幽灵玩家都是开局搬到地图外的城邦玩家，本身还没有建城。把它们投入使用时，
+-- 关键顺序是：先在一个“可用且未预约”的幽灵上配置文明/领袖，再把城市交给它，
+-- 最后补一个定居者 —— 因为城市是 transfer 过去的，不是它自己建造的，
+-- 城市丢失后无法走正常复国流程，需要靠这个定居者重新落地。
+-- ===========================================================================
+
+-- 运行中把已存在的幽灵玩家切成主流文明时，WorldBuilder 的 SetPlayerLeader 有时
+-- 不会立刻把 PlayerConfigurations 侧的名字/文明/等级刷新给 UI；这里把已知的
+-- PlayerConfiguration setter 打包补一层，保证附庸面板能立刻读到新领袖/新文明。
+-- 方法存在性全部按单个 pcall 处理，避免某个平台缺某个 setter 时整体失败。
+local function ApplyPlayerConfigIdentity(playerID, civType, leaderType, civLevel)
+	local playerConfig = PlayerConfigurations[playerID]
+	if playerConfig == nil then return false end
+
+	local leaderName = nil
+	local leaderRow = GameInfo.Leaders[leaderType]
+	if leaderRow ~= nil then
+		leaderName = leaderRow.Name
+		if Locale ~= nil and Locale.Lookup ~= nil then
+			leaderName = Locale.Lookup(leaderRow.Name)
+		end
+	end
+
+	if leaderName ~= nil and playerConfig.SetLeaderName ~= nil then
+		pcall(function() playerConfig:SetLeaderName(leaderName) end)
+	end
+	if playerConfig.SetLeaderTypeName ~= nil then
+		pcall(function() playerConfig:SetLeaderTypeName(leaderType) end)
+	end
+	if civLevel == 'CIVILIZATION_LEVEL_FULL_CIV' then
+		if playerConfig.SetMajorCiv ~= nil then
+			pcall(function() playerConfig:SetMajorCiv() end)
+		end
+		if playerConfig.SetIsMinorCiv ~= nil then
+			pcall(function() playerConfig:SetIsMinorCiv(false) end)
+		end
+	end
+	if civType ~= nil and playerConfig.SetCivilizationTypeName ~= nil then
+		pcall(function() playerConfig:SetCivilizationTypeName(civType) end)
+	end
+
+	local readCivType, readLeaderType, readCivLevel = nil, nil, nil
+	local expectedLevelID = nil
+	if CivilizationLevelTypes ~= nil then
+		expectedLevelID = CivilizationLevelTypes[civLevel]
+	end
+	pcall(function() readCivType = playerConfig:GetCivilizationTypeName() end)
+	pcall(function() readLeaderType = playerConfig:GetLeaderTypeName() end)
+	pcall(function() readCivLevel = playerConfig:GetCivilizationLevelTypeID() end)
+	print('[ModMiscTool][Ghost] applied player config player=' .. tostring(playerID)
+		.. ' civ=' .. tostring(readCivType)
+		.. ' leader=' .. tostring(readLeaderType)
+		.. ' level=' .. tostring(readCivLevel)
+		.. ' requestedLevel=' .. tostring(civLevel)
+		.. ' expectedLevelID=' .. tostring(expectedLevelID))
+	return true
+end
+
+-- 配置幽灵玩家的文明 / 领袖 / 文明等级。
+-- 走 WorldBuilder 的 SetPlayerLeader（普通对局内已验证可用）；civLevel 省略时按文明表里的等级。
+-- 说明：这里用**全局**函数（ModTool.lua 的导出块看不到别的文件里的 local）
+function LocalPlayerHasMet(playerID)
+	if playerID == nil then return false end
+	local localPlayerID = Game.GetLocalPlayer()
+	if localPlayerID == nil or localPlayerID == playerID then return false end
+	local localPlayer = Players[localPlayerID]
+	if localPlayer == nil then return false end
+	local met = CallOrNil(function() return localPlayer:GetDiplomacy():HasMet(playerID) end)
+	return met == true
+end
+
+function ConfigureGhostPlayerIdentity(playerID, civType, leaderType, civLevel)
+	if playerID == nil then return false, 'no player' end
+	if not IsKnownGhostPlayer(playerID) then return false, 'player is not a ghost' end
+
+	-- 【2026-10-15 授权者定的硬规则】**主流 → 城邦**必须过滤“已经和本地玩家见过面”的。
+	-- 这里是所有改身份的**唯一收口**（Misc Tool 面板、Vassal System 的定制附庸都走它），
+	-- 所以过滤放在这里最保险：见面的玩家已经进了外交关系数据，转成城邦后官方城邦面板
+	-- 取不到关系透镜数据（DiplomaticState=nil）⇒ 面板打不开 ⇒ “给城邦派使者”回合拦截项
+	-- 卡死 ⇒ 无法进入下一回合（2026-10-15 实机定案）。
+	-- UI 侧（城邦面板加固补丁 / 见面幽灵转回主流按钮）只作为兜底，不承担这条规则。
+	local targetLevel = civLevel
+	if targetLevel == nil and civType ~= nil and civType ~= '' then
+		local targetCivRow = GameInfo.Civilizations[civType]
+		if targetCivRow ~= nil then targetLevel = targetCivRow.StartingCivilizationLevelType end
+	end
+	if targetLevel == 'CIVILIZATION_LEVEL_CITY_STATE'
+		and CallOrNil(function() return Players[playerID]:IsMajor() end) == true
+		and LocalPlayerHasMet(playerID) then
+		print('[ModMiscTool][Ghost] 拒绝把已见面的玩家转成城邦：player=' .. tostring(playerID)
+			.. ' civ=' .. tostring(civType) .. '（见面幽灵留在主流体系）')
+		return false, 'local player has already met this player (keep as major)'
+	end
+
+	local civRow = nil
+	if civType ~= nil and civType ~= '' then
+		civRow = GameInfo.Civilizations[civType]
+		if civRow == nil then return false, 'unknown civ type ' .. tostring(civType) end
+	end
+
+	if leaderType == nil or leaderType == '' then
+		if civType == nil then return false, 'no leader and no civ' end
+		leaderType = GetDefaultLeaderType(civType)
+	end
+	if leaderType == nil then return false, 'no default leader for ' .. tostring(civType) end
+	if GameInfo.Leaders[leaderType] == nil then
+		return false, 'unknown leader type ' .. tostring(leaderType)
+	end
+
+	local level = civLevel
+	if level == nil and civRow ~= nil then
+		level = civRow.StartingCivilizationLevelType
+	end
+	if level == nil then
+		level = 'CIVILIZATION_LEVEL_CITY_STATE'
+	end
+
+	-- 【授权者 2026-10-17】主流 → 城邦的转换已拦截（见 GHOST_ALLOW_MAJOR_TO_CITYSTATE 注释）
+	if level == 'CIVILIZATION_LEVEL_CITY_STATE'
+		and GHOST_ALLOW_MAJOR_TO_CITYSTATE ~= true
+		and CallOrNil(function() return Players[playerID]:IsMajor() end) == true then
+		print('[ModMiscTool][Ghost] 拒绝把主流玩家转成城邦（转换已拦截）：player=' .. tostring(playerID)
+			.. ' civ=' .. tostring(civType))
+		return false, 'major to city-state conversion blocked'
+	end
+
+	if WorldBuilder == nil or WorldBuilder.PlayerManager == nil then
+		return false, 'WorldBuilder PlayerManager unavailable'
+	end
+	local ok, err = pcall(function()
+		WorldBuilder.PlayerManager():SetPlayerLeader(playerID, leaderType, civType, level)
+	end)
+	if not ok then
+		print('[ModMiscTool][Ghost] ConfigureGhostPlayerIdentity failed player=' .. tostring(playerID)
+			.. ' civ=' .. tostring(civType) .. ' leader=' .. tostring(leaderType)
+			.. ' level=' .. tostring(level) .. ' err=' .. tostring(err))
+		return false, tostring(err)
+	end
+
+	ApplyPlayerConfigIdentity(playerID, civType, leaderType, level)
+
+	return true
+end
+
+-- 把 lordID 名下的一座城市转给一个可用幽灵，让它正式落地。
+-- 调用方在成功后应自己建立“附庸”关系（本 API 只负责启用幽灵和给定居者）。
+-- existingGhostID：可选。传入时表示该幽灵已经在“存档前”配置好身份，本次只做转移；
+-- 不传时沿用旧行为：内部 claim + 配置后再转移。
+function TransferCityToGhostPlayer(lordID, cityID, civType, leaderType, civLevel, existingGhostID, behavior)
+	local city = CityManager.GetCity(lordID, cityID)
+	if city == nil then return false, 'city not found', nil end
+	if Players[lordID] == nil then return false, 'lord player not found', nil end
+
+	-- transfer 会销毁旧城市对象，先把坐标和 plotIndex 记下来；之后只能靠 plotIndex 找新城市。
+	local oldX, oldY = city:GetX(), city:GetY()
+	local oldPlot = Map.GetPlot(oldX, oldY)
+	local plotIndex = oldPlot ~= nil and oldPlot:GetIndex() or nil
+
+	local ghostID = existingGhostID
+	local claimedHere = false
+	if ghostID == nil then
+		-- 【2026-10-17 授权者】**池子 = 附庸行为**（与文明类型/等级无关）：
+		--   普通行为（normal）      = 主流池（会扩张、正常建造）
+		--   保守行为（conservative）= 城邦池（不扩张、建造的区域也少）
+		-- 调用方给了 behavior 就用它；没给（老调用）才退回"按等级猜"，保持旧行为。
+		local useCityStatePool
+		if behavior == 'conservative' or behavior == 'citystate' then
+			useCityStatePool = true
+		elseif behavior == 'normal' or behavior == 'major' then
+			useCityStatePool = false
+		else
+			useCityStatePool = (civLevel == 'CIVILIZATION_LEVEL_CITY_STATE')
+		end
+		if useCityStatePool then
+			ghostID = ClaimAvailableCityStateGhostPlayer()
+		else
+			ghostID = ClaimAvailableGhostPlayer()
+		end
+		if ghostID == nil and GHOST_ALLOW_POOL_FALLBACK then
+			ghostID = useCityStatePool
+				and ClaimAvailableGhostPlayer() or ClaimAvailableCityStateGhostPlayer()
+			if ghostID ~= nil then
+				print('[ModMiscTool][Ghost] 目标池为空，跨池兜底取到幽灵 ' .. tostring(ghostID)
+					.. '（行为可能与所选不一致）')
+			end
+		end
+		if ghostID == nil then
+			return false, 'no available ghost player', nil
+		end
+		claimedHere = true
+
+		local configured, configErr = ConfigureGhostPlayerIdentity(ghostID, civType, leaderType, civLevel)
+		if not configured then
+			ReleaseGhostPlayer(ghostID)
+			return false, configErr, ghostID
+		end
+	else
+		if not IsKnownGhostPlayer(ghostID) then
+			return false, 'player is not a ghost', ghostID
+		end
+		if not IsKnownGhostPlayerAvailable(ghostID) then
+			return false, 'ghost player is not available', ghostID
+		end
+	end
+
+	local transferOk, transferErr = pcall(function()
+		CityManager.TransferCity(city, ghostID, BY_CULTURAL_IDENTITY)
+	end)
+	if not transferOk then
+		if claimedHere then
+			ReleaseAnyGhostPlayer(ghostID)
+		end
+		return false, tostring(transferErr), ghostID, nil
+	end
+
+	-- 转移已让幽灵不再“可用”，预约记录可以释放；城市本身会阻止它再次被取用。
+	ReleaseAnyGhostPlayer(ghostID)
+	-- 它已经有城市了 ⇒ 立刻从幽灵池摘掉（别再被当幽灵压制外交）
+	RemoveGhostPlayerFromPool(ghostID, "城市已转移给该玩家")
+
+	-- 旧 cityID 的城市对象在这个时候可能已销毁。用存档前记下的 plotIndex 找新城市；
+	-- 找不到也不影响给幽灵补定居者，落点用原地块坐标。
+	local newCity = nil
+	if plotIndex ~= nil then
+		newCity = FindCityByPlotIndex(ghostID, plotIndex)
+	end
+	if newCity == nil then
+		print('[ModMiscTool][Ghost] new city not found by plotIndex=' .. tostring(plotIndex)
+			.. ' ghost=' .. tostring(ghostID))
+	end
+
+	-- 开拓者归位：主路径是 CityAddedToMap / CityTransfered 事件；
+	-- 这里再"确保"一次（幂等：开拓者已经在地图内就什么都不做），免得事件路径没触发时漏掉。
+	do
+		local iX, iY = oldX, oldY
+		pcall(function()
+			if newCity ~= nil then iX, iY = newCity:GetX(), newCity:GetY() end
+		end)
+		EnsureGhostSettlerInCity(ghostID, iX, iY, '转城后确保开拓者入城')
+	end
+
+	print('[ModMiscTool][Ghost] activated ghost player ' .. tostring(ghostID)
+		.. ' by transferring city ' .. tostring(cityID)
+		.. ' plotIndex=' .. tostring(plotIndex)
+		.. ' lord=' .. tostring(lordID)
+		.. ' civ=' .. tostring(civType) .. ' leader=' .. tostring(leaderType))
+	return true, nil, ghostID, newCity
+end
+
+-- 在地图落点直接为幽灵玩家建城（用于单位操作面板：杀掉单位后原地 CreateCity）。
+-- plotIndex 为地图地块 index；开拓者归位由 CityAddedToMap 事件统一处理。
+function CreateCityForGhostPlayer(playerID, plotIndex, civType, leaderType, civLevel)
+	if playerID == nil or plotIndex == nil then return false, 'invalid args', nil end
+	if not IsKnownGhostPlayer(playerID) then return false, 'player is not a ghost', nil end
+	if not IsKnownGhostPlayerAvailable(playerID) then
+		return false, 'ghost player is not available', nil
+	end
+	if Players[playerID] == nil then return false, 'ghost player not found', nil end
+
+	local plot = Map.GetPlotByIndex(plotIndex)
+	if plot == nil then return false, 'invalid plot index ' .. tostring(plotIndex), nil end
+
+	if civType ~= nil or leaderType ~= nil then
+		local configured, configErr = ConfigureGhostPlayerIdentity(playerID, civType, leaderType, civLevel)
+		if not configured then
+			return false, configErr, nil
+		end
+	end
+
+	local createdCity = nil
+	local ok, err = pcall(function()
+		createdCity = WorldBuilder.CityManager():Create(playerID, plot)
+	end)
+	if not ok or createdCity == nil then
+		local reason = ok and 'WorldBuilder CityManager Create returned nil' or tostring(err)
+		print('[ModMiscTool][Ghost] CreateCityForGhostPlayer failed player=' .. tostring(playerID)
+			.. ' plotIndex=' .. tostring(plotIndex) .. ' err=' .. tostring(reason))
+		return false, reason, nil
+	end
+
+	-- 开拓者归位：主路径是 CityAddedToMap 事件；这里再"确保"一次（幂等，躲开事件不触发的情形）
+	EnsureGhostSettlerInCity(playerID, plot:GetX(), plot:GetY(), '建城后确保开拓者入城')
+	print('[ModMiscTool][Ghost] created city for ghost player ' .. tostring(playerID)
+		.. ' at plotIndex=' .. tostring(plotIndex)
+		.. ' civ=' .. tostring(civType) .. ' leader=' .. tostring(leaderType))
+	-- 已经落地建城 ⇒ 立刻从幽灵池摘掉（否则框架继续把它当幽灵：外交不显示、点 banner 会出问题）
+	RemoveGhostPlayerFromPool(playerID, "已建城")
+	return true, nil, createdCity
+end
+
 -- 空槽位：玩家配置里没有文明类型（EXera 的 FindEmptyPlayerSlot）
 local function FindEmptyPlayerSlot()
 	for playerID = 0, GameDefines.MAX_PLAYERS - 1 do
@@ -394,14 +1367,6 @@ local function SlotStatusName(status)
 	return SLOT_STATUS_NAMES[status] or ('#' .. tostring(status))
 end
 
--- pcall 包一层：取值失败时返回 nil，别把脚本打断
-local function CallOrNil(fn)
-	local ok, value = pcall(fn)
-	if not ok then
-		return nil
-	end
-	return value
-end
 
 local function MaxPlayerSlots()
 	local maxSlots = CallOrNil(function() return GameDefines.MAX_PLAYERS end)
@@ -409,6 +1374,337 @@ local function MaxPlayerSlots()
 		return 64
 	end
 	return maxSlots
+end
+
+-- ===========================================================================
+-- 城邦化：把“幽灵化的主要文明”改造成城邦（2026-10-15 补实现）
+--
+-- 【为什么需要】幽灵化的主流玩家仍是大文明 ⇒ 会走领袖场景那套外交（AI 来交涉、进外交界面）。
+-- 授权者定的做法：走**换领袖 + 换文明 + 文明等级**——就是地图编辑器/面板「应用」用的同一个
+-- 接口 WorldBuilder.PlayerManager():SetPlayerLeader(id, leader, civ, 'CIVILIZATION_LEVEL_CITY_STATE')。
+-- **不调用 StartCityState()**：给空槽位造玩家时它不生效，给已存在玩家用时又与一次
+-- “开局加载出错”同时出现过（属未定责的坑，见 API_Verification_Status 第 29/31 条）。
+--
+-- 【硬保护】已经有城市的玩家直接拒绝（移除全部城市会让玩家当场死亡，开拓者也救不回来）。
+-- 【时机】只能在游戏跑起来之后手动触发（面板按钮）。在加载过渡阶段批量改身份会把开局搞挂
+--        —— 实测两次复现，所以不要挂到 LoadGameViewStateDone 上。
+--
+-- 注：2026-10-15 之前这三个调用点（本函数、面板按钮、GHOST_CONVERT_MAJOR_TO_CITY_STATE 开关）
+--     引用的是一个**从未定义**的函数，所以「城邦化选中玩家」按钮一直是空点。
+-- ===========================================================================
+
+-- 地图上已经被占用的文明（挑城邦时避开，免得凭空多出重复城邦）
+local function CollectCivTypesInUse()
+	local used = {}
+	for playerID = 0, MaxPlayerSlots() - 1 do
+		local playerConfig = PlayerConfigurations[playerID]
+		if playerConfig ~= nil then
+			local civType = CallOrNil(function()
+				return playerConfig:GetCivilizationTypeName()
+			end)
+			if civType ~= nil and civType ~= '' then used[civType] = true end
+		end
+	end
+	return used
+end
+
+-- 挑一个还没人用的城邦文明；全被占了就退回第一个（允许重复，但会打日志）
+local function PickCityStateCivForConversion()
+	local used = CollectCivTypesInUse()
+	local fallback = nil
+	for _, civType in ipairs(GetCityStateCivTypes()) do
+		if used[civType] ~= true then return civType end
+		if fallback == nil then fallback = civType end
+	end
+	return fallback
+end
+
+-- ===========================================================================
+-- 城邦身份的**合规校验与修复**（2026-10-15 授权者报“官方城邦界面按钮点不开”后补）
+--
+-- 硬规则：一个玩家被当作城邦时，必须同时满足
+--   ① 文明是城邦级（StartingCivilizationLevelType = CIVILIZATION_LEVEL_CITY_STATE）
+--   ② 领袖是**小文明原型**（Leaders.InheritFrom 非空：SCIENTIFIC/TRADE/… 那一层）
+-- 为什么：官方城邦面板（Assets/UI/PartialScreens/CityStates.lua）用领袖原型查加成文本，
+--   查不到时 GetBonusText 只返回 "UNKNOWN"（Details 为 nil），而面板会无条件拼接
+--   `Bonuses[1].Title .. "[NEWLINE]" .. Bonuses[1].Details` ⇒ 拼接 nil 直接报错 ⇒
+--   **整个城邦面板打不开（按钮点了没反应）**。
+-- 我们的城邦化有一条兜底路径是“只把 PlayerConfigurations 标成 minor”，如果领袖没换成
+--   小文明原型，就会留下这种半成品状态 —— 所以这里既做校验也做修复。
+-- ===========================================================================
+
+local function IsCityStateLeaderArchetype(leaderType)
+	if leaderType == nil then return false end
+	local leaderRow = GameInfo.Leaders[leaderType]
+	return leaderRow ~= nil and leaderRow.InheritFrom ~= nil
+end
+
+local function IsCityStateLevelCivType(civType)
+	if civType == nil then return false end
+	local civRow = GameInfo.Civilizations[civType]
+	return civRow ~= nil
+		and civRow.StartingCivilizationLevelType == 'CIVILIZATION_LEVEL_CITY_STATE'
+end
+
+-- 读回玩家当前身份（读不到就是 nil）
+local function GetPlayerIdentityTypes(playerID)
+	local playerConfig = PlayerConfigurations[playerID]
+	if playerConfig == nil then return nil, nil end
+	local civType = CallOrNil(function() return playerConfig:GetCivilizationTypeName() end)
+	local leaderType = CallOrNil(function() return playerConfig:GetLeaderTypeName() end)
+	return civType, leaderType
+end
+
+-- 身份是否合规（对外暴露：面板/其它 mod 自检用）
+function IsLegalCityStateIdentity(playerID)
+	local civType, leaderType = GetPlayerIdentityTypes(playerID)
+	return IsCityStateLevelCivType(civType) and IsCityStateLeaderArchetype(leaderType)
+end
+
+-- 把某玩家改成合规的城邦身份（文明级 + 小文明原型领袖）；改不成返回 false
+local function ApplyLegalCityStateIdentity(playerID)
+	local civType = GetPlayerIdentityTypes(playerID)
+	local targetCiv = IsCityStateLevelCivType(civType) and civType or PickCityStateCivForConversion()
+	if targetCiv == nil then return false, 'no city-state civilization available' end
+	local targetLeader = GetDefaultLeaderType(targetCiv)
+	if not IsCityStateLeaderArchetype(targetLeader) then
+		return false, 'no archetype leader for ' .. tostring(targetCiv)
+	end
+	ApplyPlayerConfigIdentity(playerID, targetCiv, targetLeader, 'CIVILIZATION_LEVEL_CITY_STATE')
+	if not IsLegalCityStateIdentity(playerID) then
+		return false, 'identity still illegal after apply'
+	end
+	return true
+end
+
+-- 自检 + 修复：扫所有“城邦玩家”（非蛮族、非自由城市），把身份不合规的修好。
+-- 返回：合规数, 修复数, 失败数
+function RepairCityStatePlayerIdentities()
+	local okCount, repaired, failed = 0, 0, 0
+	local failedIDs = {}
+	for playerID = 0, MaxPlayerSlots() - 1 do
+		local player = Players[playerID]
+		if player ~= nil and CallOrNil(function() return player:IsMajor() end) == false then
+			local isBarbarian = CallOrNil(function() return player:IsBarbarian() end)
+			local civType = GetPlayerIdentityTypes(playerID)
+			local isFreeCity = civType ~= nil and string.find(civType, 'FREE_CITIES') ~= nil
+			-- 【空槽位】配置里连文明都没有 = 引擎没给这个槽位建玩家（IsMajor() 也会返回 false）
+			-- ⇒ 不是城邦，**不要修**（否则会把空槽位当城邦乱改）
+			local isEmptySlot = (civType == nil or civType == '')
+			if isBarbarian ~= true and not isFreeCity and not isEmptySlot then
+				if IsLegalCityStateIdentity(playerID) then
+					okCount = okCount + 1
+				else
+					local fixed, reason = ApplyLegalCityStateIdentity(playerID)
+					if fixed then
+						repaired = repaired + 1
+						print('[ModMiscTool][Ghost] 城邦身份已修复 player=' .. tostring(playerID)
+							.. ' civ=' .. tostring(select(1, GetPlayerIdentityTypes(playerID)))
+							.. ' leader=' .. tostring(select(2, GetPlayerIdentityTypes(playerID))))
+					else
+						failed = failed + 1
+						table.insert(failedIDs, tostring(playerID) .. '(' .. tostring(reason) .. ')')
+					end
+				end
+			end
+		end
+	end
+	print('[ModMiscTool][Ghost] 城邦身份自检：合规 ' .. tostring(okCount)
+		.. '、修复 ' .. tostring(repaired)
+		.. '、失败 ' .. tostring(failed)
+		.. (#failedIDs > 0 and ('（失败：' .. table.concat(failedIDs, '、') .. '）') or ''))
+	return okCount, repaired, failed
+end
+
+-- ===========================================================================
+-- 【2026-10-15 授权者】**已经和本地玩家见过面的幽灵不许留在城邦体系里**
+--
+-- 授权者定位：某个幽灵开局时被本地玩家看到（外交列表里显示为“被压制”），后来又被转成城邦，
+-- 于是官方城邦面板在它身上取外交关系透镜数据时拿到 nil：
+--   `CityStates_PHONE.lua:380  DIPLO_PIP_INFO[kCityState.DiplomaticState].IconName`
+--   （该玩家的外交状态是 -1 ⇒ DiplomaticState=nil ⇒ 索引 nil ⇒ 面板构建中断 ⇒ 打不开），
+-- 而城邦面板是“给城邦派使者”这个**回合拦截项**的出口 ⇒ 面板打不开 = 无法进入下一回合。
+--
+-- 处理：
+--   ① 已经见面的幽灵 → **转回主流玩家**（用进池子时记的原身份台账复原，见 RestoreMetGhostsAsMajorPlayers）；
+--   ② 以后主流转城邦时**过滤掉已见面的**（见 ConvertGhostPlayerToCityState 开头的检查）。
+-- ⚠️ 改身份不要在开局加载阶段批量做（实机撞过：加载会被中止）—— 所以①只挂在面板按钮上，
+--    由授权者手动触发，触发完按流程存档重读。
+-- ===========================================================================
+-- 把“已经和本地玩家见过面”的幽灵转回主流玩家（原身份台账复原）。
+-- 返回：恢复数, 跳过数（本来就是主流）, 失败数
+function RestoreMetGhostsAsMajorPlayers()
+	local restored, skipped, failed = 0, 0, 0
+	local notes = {}
+	local record = GetGhostOriginalIdentities()
+	for playerID, entry in pairs(record) do
+		local player = Players[playerID]
+		if player ~= nil and LocalPlayerHasMet(playerID) then
+			local isMajor = CallOrNil(function() return player:IsMajor() end)
+			if isMajor == true then
+				skipped = skipped + 1
+			else
+				local civType, leaderType = entry.civ, entry.leader
+				if civType == nil or leaderType == nil then
+					failed = failed + 1
+					table.insert(notes, tostring(playerID) .. '(台账缺文明/领袖)')
+				else
+					ApplyPlayerConfigIdentity(playerID, civType, leaderType, 'CIVILIZATION_LEVEL_FULL_CIV')
+					if CallOrNil(function() return player:IsMajor() end) == true then
+						restored = restored + 1
+						table.insert(notes, tostring(playerID) .. '=' .. tostring(civType))
+						print('[ModMiscTool][Ghost] 见面幽灵转回主流：player=' .. tostring(playerID)
+							.. ' civ=' .. tostring(civType) .. ' leader=' .. tostring(leaderType))
+					else
+						failed = failed + 1
+						table.insert(notes, tostring(playerID) .. '(转回失败)')
+					end
+				end
+			end
+		end
+	end
+	print('[ModMiscTool][Ghost] 见面幽灵转回主流：恢复 ' .. tostring(restored)
+		.. '、本来就是主流 ' .. tostring(skipped) .. '、失败 ' .. tostring(failed)
+		.. (#notes > 0 and ('（' .. table.concat(notes, '、') .. '）') or ''))
+	return restored, skipped, failed
+end
+
+function ConvertGhostPlayerToCityState(playerID, civType)
+	if playerID == nil then return false, 'no player' end
+	if Players[playerID] == nil then return false, 'player not found' end
+	-- 【授权者 2026-10-17】主流 → 城邦的转换已拦截
+	if GHOST_ALLOW_MAJOR_TO_CITYSTATE ~= true then
+		print('[ModMiscTool][Ghost] 拒绝城邦化 player=' .. tostring(playerID)
+			.. '：主流→城邦的转换已按授权者要求拦截')
+		return false, 'major to city-state conversion blocked'
+	end
+
+	-- 硬保护：已经有城市 ⇒ 拒绝（拆城 = 玩家死亡）
+	local blockReason = GetGhostifyBlockReason(playerID)
+	if blockReason ~= nil then
+		print('[ModMiscTool][Ghost] 拒绝城邦化玩家 ' .. tostring(playerID) .. '：' .. tostring(blockReason))
+		return false, blockReason
+	end
+
+	-- 本来就是城邦（IsMajor() == false）⇒ 视为已完成；但身份不合规要顺手修好
+	-- （老版本留下的“城邦玩家 + 主流领袖”半成品会让官方城邦面板打不开）
+	local isMajor = CallOrNil(function() return Players[playerID]:IsMajor() end)
+	if isMajor == false then
+		if IsLegalCityStateIdentity(playerID) then
+			print('[ModMiscTool][Ghost] 玩家 ' .. tostring(playerID) .. ' 已经是城邦，跳过')
+			return true, 'already city-state'
+		end
+		local fixed, reason = ApplyLegalCityStateIdentity(playerID)
+		print('[ModMiscTool][Ghost] 玩家 ' .. tostring(playerID)
+			.. ' 已是城邦但身份不合规，修复=' .. tostring(fixed) .. '（' .. tostring(reason or 'ok') .. '）')
+		if fixed then return true, 'already city-state (identity repaired)' end
+		return false, 'illegal city-state identity: ' .. tostring(reason)
+	end
+
+	-- 【2026-10-15 授权者】已经和本地玩家见过面的**不许**转城邦：
+	-- 见面的玩家进了外交关系数据，转成城邦后官方城邦面板取关系透镜数据拿到 nil ⇒ 面板打不开
+	-- ⇒ “给城邦派使者”这个回合拦截项卡死 ⇒ 无法进入下一回合。见面的要留在主流体系里。
+	if LocalPlayerHasMet(playerID) then
+		print('[ModMiscTool][Ghost] 拒绝城邦化玩家 ' .. tostring(playerID)
+			.. '：本地玩家已经见过它（见面幽灵留在主流体系）')
+		return false, 'local player has already met this player (keep as major)'
+	end
+
+	if civType == nil then civType = PickCityStateCivForConversion() end
+	if civType == nil then return false, 'no city state civilization in database' end
+	local leaderType = GetDefaultLeaderType(civType)
+	if leaderType == nil then
+		return false, 'no leader for ' .. tostring(civType)
+	end
+
+	-- 主路径：世界编辑器那套（与面板「应用」同一个接口）
+	local applied = false
+	if WorldBuilder ~= nil and WorldBuilder.PlayerManager ~= nil then
+		applied = CallOrNil(function()
+			WorldBuilder.PlayerManager():SetPlayerLeader(playerID, leaderType, civType,
+				'CIVILIZATION_LEVEL_CITY_STATE')
+			return true
+		end) == true
+	end
+	if not applied then
+		print('[ModMiscTool][Ghost] SetPlayerLeader 不可用，退回只改 PlayerConfigurations')
+	end
+
+	-- 判定标准（授权者定）：转换后 player:IsMajor() 是否变成 false
+	local stillMajor = CallOrNil(function() return Players[playerID]:IsMajor() end)
+	if stillMajor ~= false then
+		ApplyPlayerConfigIdentity(playerID, civType, leaderType, 'CIVILIZATION_LEVEL_CITY_STATE')
+		-- 【硬规则】只有身份合规（文明级 + 小文明原型领袖）才允许补 minor 标记：
+		-- 否则会留下“城邦玩家 + 主流领袖”的半成品，官方城邦面板取不到加成文本 ⇒ 面板打不开。
+		if IsLegalCityStateIdentity(playerID) then
+			local playerConfig = PlayerConfigurations[playerID]
+			if playerConfig ~= nil and playerConfig.SetIsMinorCiv ~= nil then
+				pcall(function() playerConfig:SetIsMinorCiv(true) end)
+			end
+		else
+			print('[ModMiscTool][Ghost] 玩家 ' .. tostring(playerID)
+				.. ' 身份不合规（领袖不是小文明原型），拒绝只打 minor 标记')
+		end
+		stillMajor = CallOrNil(function() return Players[playerID]:IsMajor() end)
+	end
+
+	-- 二次校验：已经是城邦但身份不合规 ⇒ 强修；修不好就撤回 minor 标记（宁可不成，也别留半成品）
+	if stillMajor == false and not IsLegalCityStateIdentity(playerID) then
+		local fixed, reason = ApplyLegalCityStateIdentity(playerID)
+		if not fixed then
+			print('[ModMiscTool][Ghost] 城邦化玩家 ' .. tostring(playerID)
+				.. ' 身份修不好（' .. tostring(reason) .. '），撤回 minor 标记')
+			local playerConfig = PlayerConfigurations[playerID]
+			if playerConfig ~= nil and playerConfig.SetIsMinorCiv ~= nil then
+				pcall(function() playerConfig:SetIsMinorCiv(false) end)
+			end
+			return false, 'illegal city-state identity: ' .. tostring(reason)
+		end
+	end
+
+	local ok = (stillMajor == false) and IsLegalCityStateIdentity(playerID)
+	print('[ModMiscTool][Ghost] 城邦化玩家 ' .. tostring(playerID)
+		.. ' civ=' .. tostring(civType) .. ' leader=' .. tostring(leaderType)
+		.. ' setPlayerLeader=' .. tostring(applied)
+		.. ' IsMajor=' .. tostring(stillMajor)
+		.. ' 身份合规=' .. tostring(IsLegalCityStateIdentity(playerID))
+		.. ' => ' .. (ok and 'OK' or 'FAILED'))
+	if ok then return true end
+	-- 注意别写 `return ok, ok and nil or '...'`：Lua 里 nil 为假，成功时也会返回那个字符串
+	return false, 'city-state conversion failed (IsMajor=' .. tostring(stillMajor)
+		.. ', legalIdentity=' .. tostring(IsLegalCityStateIdentity(playerID)) .. ')'
+end
+
+-- 一键：把所有“还在池子里且仍是 off-map”的主流幽灵都城邦化
+-- （已经有城市的会被顺手移出池子；被带回地图使用中的会跳过）
+function ConvertAllGhostMajorPlayersToCityState()
+	local snapshot = {}
+	for _, ghostID in ipairs(GetGhostPlayers()) do
+		table.insert(snapshot, ghostID)
+	end
+	local converted, failed, skipped = 0, 0, 0
+	for _, ghostID in ipairs(snapshot) do
+		if PlayerOwnsCity(ghostID) then
+			RemoveGhostPlayerFromPool(ghostID, "已有城市（不再算主流幽灵）")
+			skipped = skipped + 1
+		elseif not IsGhostPlayerAvailable(ghostID) then
+			skipped = skipped + 1
+		elseif LocalPlayerHasMet(ghostID) then
+			-- 【2026-10-15 授权者】已经见过面的幽灵**不转城邦**：见了面就进了外交关系数据，
+			-- 转成城邦后官方城邦面板取不到关系透镜数据 ⇒ 面板打不开 ⇒ 回合被拦截项卡死。
+			-- 这些留在主流体系里（要转回主流用 RestoreMetGhostsAsMajorPlayers）。
+			print('[ModMiscTool][Ghost] 批量城邦化跳过 player=' .. tostring(ghostID)
+				.. '：本地玩家已经见过它')
+			skipped = skipped + 1
+		else
+			local ok = ConvertGhostPlayerToCityState(ghostID)
+			if ok then converted = converted + 1 else failed = failed + 1 end
+		end
+	end
+	print('[ModMiscTool][Ghost] 批量城邦化完成：converted=' .. tostring(converted)
+		.. ' failed=' .. tostring(failed) .. ' skipped=' .. tostring(skipped)
+		.. '（池子里共 ' .. tostring(#snapshot) .. ' 个）')
+	return converted, failed, skipped
 end
 
 -- CityStates 表里该城邦文明对应的城邦类型（EXera 会额外设这一个字段）
@@ -695,7 +1991,9 @@ end
 -- 把候选里“超出 keepOnMap”的部分搬到地图外并入池子。
 -- 从末尾往前取：引擎给玩家原本配置的槽位 id 更小，留在地图上的就是玩家自己选的那批。
 -- beforeMove：可选钩子，在“搬离地图”之前对该玩家做一次加工（主要文明用它做城邦化）
-local function AddGhostsFromCandidates(candidates, keepOnMap, tag, skipPlayerID, beforeMove)
+-- ghostLimit：可选申报上限（nil = 不限额）——申报多少就最多搬多少
+local function AddGhostsFromCandidates(candidates, keepOnMap, tag, skipPlayerID, beforeMove,
+	ghostLimit)
 	local ghosts = GetGhostPlayers()
 	local knownGhosts = {}
 	for _, ghostID in ipairs(ghosts) do
@@ -703,6 +2001,7 @@ local function AddGhostsFromCandidates(candidates, keepOnMap, tag, skipPlayerID,
 	end
 
 	local ghostCount = math.min(#candidates - keepOnMap, GHOST_PLAYER_MAX)
+	if ghostLimit ~= nil and ghostCount > ghostLimit then ghostCount = ghostLimit end
 	if ghostCount <= 0 then
 		print("[ModMiscTool][Ghost] " .. tag .. ": nothing to move (candidates="
 			.. tostring(#candidates) .. " keep=" .. tostring(keepOnMap) .. ")")
@@ -714,6 +2013,8 @@ local function AddGhostsFromCandidates(candidates, keepOnMap, tag, skipPlayerID,
 	for index = #candidates, #candidates - ghostCount + 1, -1 do
 		local playerID = candidates[index]
 		if playerID ~= skipPlayerID and not knownGhosts[playerID] then
+			-- 进池子前先记“引擎那份原身份”（之后改身份也不影响台账）
+			RecordGhostOriginalIdentity(playerID, tag)
 			-- 先加工再搬：主要文明城邦化后如果生成了单位，会被紧接着的 MovePlayerOffMap 清掉
 			if beforeMove ~= nil and beforeMove(playerID) then
 				processed = processed + 1
@@ -765,24 +2066,52 @@ end
 --
 -- 开局时所有玩家都还没建城，所以不用考虑城市的影响（授权者确认）；
 -- 城邦玩家一旦落地就有首都，MovePlayerOffMap 的“有城市就拒绝”保护也不会误伤。
+--
+-- ghostPoolLimit：城邦幽灵的**申报上限**（建局侧按 mod 申报算好后随档传进来）。
+--   * 0    → 没有 mod 申报城邦幽灵：整个 pass 直接跳过，一个都不产生；
+--   * N    → 最多搬 N 个（申报多少就最多多少）；
+--   * nil  → 没这道数据（老档/老前端）：不限额，沿用旧行为。
 -- ===========================================================================
-function InitializeGhostPlayers(cityStateCount, majorPlayerCount)
+function InitializeGhostPlayers(cityStateCount, majorPlayerCount, ghostPoolLimit)
 	if cityStateCount == nil then return end
+
+	m_CityStateGhostPoolLimit = nil
+	if ghostPoolLimit ~= nil then
+		m_CityStateGhostPoolLimit = math.max(0, math.floor(tonumber(ghostPoolLimit) or 0))
+		if m_CityStateGhostPoolLimit <= 0 then
+			-- 【硬规则】没申报就不产生城邦幽灵 —— 但**已经建好的池子不动**
+			--（读档时池子由存档属性带着走，这里只是不再新增）。
+			print("[ModMiscTool][Ghost] 城邦幽灵未申报（计划 0 个）→ 跳过城邦幽灵 pass"
+				.. " (已有池子 " .. tostring(GetCityStateGhostPlayerCount()) .. " 个)")
+			return
+		end
+	end
 
 	LogCityStateCivTypes()
 
 	local keepCityStates = math.max(0, math.floor(cityStateCount))
 	local keepMajors = math.max(1, math.floor(majorPlayerCount or 1))
-	local boundary = keepMajors + keepCityStates - 1
 	local maxSlot = MaxPlayerSlots() - 1
 
+	-- 边界不再用“玩家原本选择的主要文明数”，而是运行时实际创建的主要玩家数：
+	-- 主流幽灵池启用后，引擎会先创建多出来的主要文明，城邦槽位整体后移。
+	local actualMajorCount = 0
+	for playerID = 0, maxSlot do
+		local player = Players[playerID]
+		if player ~= nil and CallOrNil(function() return player:IsMajor() end) == true then
+			actualMajorCount = actualMajorCount + 1
+		end
+	end
+	local boundary = actualMajorCount + keepCityStates - 1
+
 	print("[ModMiscTool][Ghost] city state ghost pass: keepMajors=" .. tostring(keepMajors)
+		.. " actualMajorCount=" .. tostring(actualMajorCount)
 		.. " keepCityStates=" .. tostring(keepCityStates)
 		.. " -> on-map ids 0.." .. tostring(boundary)
 		.. " | ghost ids " .. tostring(boundary + 1) .. ".." .. tostring(maxSlot)
 		.. " (skip 62/63)")
 
-	local ghosts = GetGhostPlayers()
+	local ghosts = GetCityStateGhostPlayers()
 	local knownGhosts = {}
 	for _, ghostID in ipairs(ghosts) do
 		knownGhosts[ghostID] = true
@@ -792,6 +2121,13 @@ function InitializeGhostPlayers(cityStateCount, majorPlayerCount)
 	local skipped = {}
 	local emptySlotCount = 0
 	for playerID = boundary + 1, maxSlot do
+		-- 申报多少就最多产生多少（m_CityStateGhostPoolLimit 为 nil 时表示不限额）
+		if m_CityStateGhostPoolLimit ~= nil and added >= m_CityStateGhostPoolLimit then
+			print("[ModMiscTool][Ghost] 城邦幽灵已达申报上限 "
+				.. tostring(m_CityStateGhostPoolLimit) .. " → 不再搬（stop at slot "
+				.. tostring(playerID) .. ")")
+			break
+		end
 		if playerID ~= 62 and playerID ~= 63 and not knownGhosts[playerID] then
 			local player = Players[playerID]
 			-- 空槽位先剔掉：Players[id] 不是 nil 但内部是空的，
@@ -813,6 +2149,7 @@ function InitializeGhostPlayers(cityStateCount, majorPlayerCount)
 				local isSpecial = (string.find(civType, 'BARBARIAN') ~= nil)
 					or (string.find(civType, 'FREE_CITIES') ~= nil)
 				if isMajor == false and isBarbarian ~= true and not isSpecial then
+					RecordGhostOriginalIdentity(playerID, '城邦幽灵')
 					if MovePlayerOffMap(playerID) then
 						table.insert(ghosts, playerID)
 						knownGhosts[playerID] = true
@@ -828,13 +2165,24 @@ function InitializeGhostPlayers(cityStateCount, majorPlayerCount)
 		end
 	end
 
-	Game:SetProperty(GHOST_PLAYER_PROPERTY, ghosts)
-	print("[ModMiscTool][Ghost] ghost pass done: newlyOffMap=" .. tostring(added)
-		.. " poolTotal=" .. tostring(#ghosts)
-		.. " emptySlots=" .. tostring(emptySlotCount))
+	Game:SetProperty(CITY_STATE_GHOST_PLAYER_PROPERTY, ghosts)
+	print("[ModMiscTool][Ghost] city state ghost pass done: newlyOffMap=" .. tostring(added)
+		.. " cityStatePoolTotal=" .. tostring(#ghosts)
+		.. " emptySlots=" .. tostring(emptySlotCount)
+		.. " plannedLimit=" .. tostring(m_CityStateGhostPoolLimit))
 	if #skipped > 0 then
 		print("[ModMiscTool][Ghost]   skipped slots: " .. table.concat(skipped, ' '))
 	end
+end
+
+-- 语义化别名：InitializeGhostPlayers 现在只负责城邦幽灵池。
+function InitializeCityStateGhostPlayers(cityStateCount, majorPlayerCount, ghostPoolLimit)
+	return InitializeGhostPlayers(cityStateCount, majorPlayerCount, ghostPoolLimit)
+end
+
+-- 诊断/面板用：本局城邦幽灵的申报上限（nil = 不限额，0 = 不产生）
+function GetCityStateGhostPoolLimit()
+	return m_CityStateGhostPoolLimit
 end
 
 -- 主要文明候选：还没建城的主要文明，排除本机玩家（不能把自己搬到地图外）
@@ -865,8 +2213,19 @@ end
 -- 前端 hook 把参与玩家数抬到槽位预算允许的上限后，引擎会在开局多建一批主要文明；
 -- 这里把超出的部分搬到地图外当幽灵，玩家自己的对手数量保持不变。
 -- 只搬“还没建城”的：本机玩家与已经落地的对手一律不动。
-function InitializeGhostMajorPlayers(originalCount)
+function InitializeGhostMajorPlayers(originalCount, ghostPoolLimit)
 	if originalCount == nil then return end
+
+	m_MajorGhostPoolLimit = nil
+	if ghostPoolLimit ~= nil then
+		m_MajorGhostPoolLimit = math.max(0, math.floor(tonumber(ghostPoolLimit) or 0))
+		if m_MajorGhostPoolLimit <= 0 then
+			-- 【硬规则】没申报就不产生主流幽灵 —— 已有池子不动（读档时由存档属性带着走）
+			print("[ModMiscTool][Ghost] 主流幽灵未申报（计划 0 个）→ 跳过主流幽灵 pass"
+				.. " (已有池子 " .. tostring(GetGhostPlayerCount()) .. " 个)")
+			return
+		end
+	end
 
 	local candidates = GetUnsettledMajorPlayerIDs()
 	if #candidates == 0 then return end
@@ -880,13 +2239,19 @@ function InitializeGhostMajorPlayers(originalCount)
 		print("[ModMiscTool][Ghost] major ghost conversion disabled by switch")
 	end
 	local added, poolTotal, converted = AddGhostsFromCandidates(candidates, keepOnMap,
-		'major players', Game.GetLocalPlayer(), beforeMove)
+		'major players', Game.GetLocalPlayer(), beforeMove, m_MajorGhostPoolLimit)
 
 	print("[ModMiscTool][Ghost] unsettled major players=" .. tostring(#candidates)
 		.. " player choice=" .. tostring(keepOnMap + 1)
 		.. " newly off-map=" .. tostring(added)
 		.. " converted-to-city-state=" .. tostring(converted)
-		.. " pool total=" .. tostring(poolTotal))
+		.. " pool total=" .. tostring(poolTotal)
+		.. " plannedLimit=" .. tostring(m_MajorGhostPoolLimit))
+end
+
+-- 诊断/面板用：本局主流幽灵的申报上限（nil = 不限额，0 = 不产生）
+function GetMajorGhostPoolLimit()
+	return m_MajorGhostPoolLimit
 end
 
 -- 面板用：一行统计，直接看引擎到底建了多少玩家、幽灵池还剩多少可用
@@ -896,6 +2261,89 @@ function GetPlayerSlotSummary()
 		.. " minor=" .. tostring(stats.minor)
 		.. " engine=" .. tostring(stats.enginePlayers)
 		.. " empty=" .. tostring(#stats.emptySlots)
-		.. " pool=" .. tostring(GetGhostPlayerCount())
-		.. " free=" .. tostring(GetAvailableGhostPlayerCount())
+		.. " majorPool=" .. tostring(GetGhostPlayerCount())
+		.. " majorFree=" .. tostring(GetAvailableGhostPlayerCount())
+		.. " majorPlan=" .. tostring(m_MajorGhostPoolLimit)
+		.. " cityStatePool=" .. tostring(GetCityStateGhostPlayerCount())
+		.. " cityStateFree=" .. tostring(GetAvailableCityStateGhostPlayerCount())
+		.. " cityStatePlan=" .. tostring(m_CityStateGhostPoolLimit)
+end
+
+-- ===========================================================================
+-- 【2026-10-15 授权者】自动批量城邦化：时机 = **本地玩家建立第一座城市时**
+--
+-- 为什么这个时机：
+--   * 城邦化让幽灵不再带“大文明外交footprint”（外交界面/世界议会都不受影响，已实机验证）；
+--   * 开局就做、且只做一次，之后玩家再要附庸时池子里已经是“城邦幽灵”，
+--     原身份相符的还能免读档直接落地（见 Vassal_Script 的 immediate 判定）；
+--   * 城市建立这个时刻是正常对局流程，不在加载过渡阶段（那阶段批量改身份会把开局搞挂）。
+-- 【授权者 2026-10-17】默认**关闭**：这一步做的正是"主流→城邦"的转换（已拦截）。
+-- 需要恢复时把 GHOST_AUTO_CONVERT_ON_FIRST_CITY 改成 true。
+-- ===========================================================================
+local GHOST_AUTO_CONVERT_ON_FIRST_CITY = false
+-- 目标池为空时是否允许跨池兜底（默认关：行为语义要严格 —— 选保守就该给保守幽灵）
+GHOST_ALLOW_POOL_FALLBACK = false
+local GHOST_AUTO_CONVERT_PROPERTY = 'kocmoca_modmisctool_ghost_autoconvert_done'
+
+function IsGhostAutoConvertDone()
+	return Game:GetProperty(GHOST_AUTO_CONVERT_PROPERTY) == true
+end
+
+-- 返回：是否执行了批量城邦化
+function TryAutoConvertGhostsOnFirstCity(playerID)
+	if not GHOST_AUTO_CONVERT_ON_FIRST_CITY then return false end
+	if IsGhostAutoConvertDone() then return false end
+	if playerID == nil or playerID ~= Game.GetLocalPlayer() then return false end
+
+	-- 只在“第一座城”那一刻做：已经有多座城说明是读老档/其它路径，不再补做
+	local player = Players[playerID]
+	if player == nil then return false end
+	local cities = CallOrNil(function() return player:GetCities() end)
+	local cityCount = 0
+	if cities ~= nil then
+		cityCount = CallOrNil(function() return cities:GetCount() end) or 0
+	end
+	if cityCount > 1 then
+		Game:SetProperty(GHOST_AUTO_CONVERT_PROPERTY, true)
+		return false
+	end
+	if GetGhostPlayerCount() <= 0 then
+		Game:SetProperty(GHOST_AUTO_CONVERT_PROPERTY, true)
+		return false
+	end
+
+	Game:SetProperty(GHOST_AUTO_CONVERT_PROPERTY, true)
+	print('[ModMiscTool][Ghost] 本地玩家建立第一座城 ⇒ 自动批量城邦化（池子 '
+		.. tostring(GetGhostPlayerCount()) .. ' 个）')
+	ConvertAllGhostMajorPlayersToCityState()
+	return true
+end
+
+if Events ~= nil and Events.CityAddedToMap ~= nil then
+	Events.CityAddedToMap.Add(function(ownerID, cityID, iX, iY)
+		pcall(TryAutoConvertGhostsOnFirstCity, ownerID)
+		-- 【授权者定案】城市落地 ⇒ 若拥有者是幽灵，把它地图外的开拓者移动进这座城
+		pcall(HandleGhostCityAddedToMap, ownerID, cityID, iX, iY)
+	end)
+end
+
+if Events ~= nil and Events.CityTransfered ~= nil then
+	Events.CityTransfered.Add(function(newOwnerID, cityID)
+		pcall(HandleGhostCityTransfered, newOwnerID, cityID)
+	end)
+end
+
+-- ===========================================================================
+-- 回合开始的轻量刷新：谁已经拿到城市就不再是幽灵
+-- （激活那一刻已经会立刻出池；这里是“漏网”的兜底，保证外交压制不会滞后一整个回合）
+-- ===========================================================================
+if Events ~= nil and Events.LocalPlayerTurnBegin ~= nil then
+	Events.LocalPlayerTurnBegin.Add(function()
+		pcall(function() RefreshGhostPoolsFromCities("回合开始") end)
+		-- 【授权者定案】新建城市由 CityAddedToMap 事件统一处理；这里只给老档兜一次底
+		if not m_SettleSweepDone then
+			m_SettleSweepDone = true
+			pcall(SweepGhostOffMapSettlers, "载入后首次回合开始")
+		end
+	end)
 end
