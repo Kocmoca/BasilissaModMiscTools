@@ -744,6 +744,8 @@ function Initialize()
 	ExposedMembers.ModMiscToolScript.DamageToUnit = DamageToUnit
 	ExposedMembers.ModMiscToolScript.AoeAllUnitsForPlot = AoeAllUnitsForPlot
 	ExposedMembers.ModMiscToolScript.GetPlotsInRange = GetPlotsInRange
+	ExposedMembers.ModMiscToolScript.playerAssetsInfo = playerAssetsInfo
+	ExposedMembers.ModMiscToolScript.playerPlotsInfo = playerPlotsInfo
 	-- 暴露给其它 mod 的几组 API：**逐组 pcall** —— 某一组缺模块只打一行日志，
 	-- 不会像以前那样把 Initialize 整段中断（那会把后面所有暴露一起带走）。
 	local exposeGroups = {
