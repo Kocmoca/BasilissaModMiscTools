@@ -86,8 +86,10 @@ end
 --   * 有台账 + 原文明**不是**城邦文明 ⇒ 主流转出来的城邦 ⇒ 摘掉（隐形占位）；
 --   * 有台账 + 原文明**是**城邦文明 ⇒ 城邦幽灵池出身 ⇒ 豁免，正常显示；
 --   * 没台账 ⇒ 不是幽灵出身（原生城邦 / 正常玩家）⇒ 正常显示。
--- 另配套：主流→城邦的**转换本身已拦截**（ModTool_GhostPlayers.lua 的
---   GHOST_ALLOW_MAJOR_TO_CITYSTATE），所以这条过滤只是给老存档/边角情况兜底。
+-- 另配套：主流→城邦只剩**"建首城自动批量"这一个入口**（ModTool_GhostPlayers.lua 的
+--   GHOST_AUTO_CONVERT_ON_FIRST_CITY；手动入口 GHOST_ALLOW_MANUAL_MAJOR_TO_CITY_STATE 仍为 false）。
+--   这条过滤同时兜住：① 2026-10-17 之前老存档里手动转出来的；② 2026-10-26 起首城自动
+--   转出来的主流幽灵 —— 它们都不是引擎认可的完整城邦，摘掉才不会让官方城邦面板崩。
 -- ===========================================================================
 local function ModMiscToolIsConvertedMajorCityState(iPlayer)
 	if iPlayer == nil then return false end;

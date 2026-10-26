@@ -1170,7 +1170,16 @@ local function GetPlayerOnMapUnits(playerID)
         local playerUnits = player:GetUnits()
         if playerUnits == nil then return end
         for _, unit in playerUnits:Members() do
-            if unit ~= nil then table.insert(units, unit) end
+            if unit ~= nil then
+                -- 【必须过滤坐标】幽灵玩家的单位在地图外（-1,-1）。不过滤的话
+                -- PresetAndMoveNonGhostUnits 会把幽灵的开拓者当“图上单位”传送到出生点，
+                -- 等于把幽灵拉回地图（2026-10-21 实机：外星图地形改造后城邦被拉回落地）。
+                local ux, uy = -1, -1
+                pcall(function() ux, uy = unit:GetX(), unit:GetY() end)
+                if ux ~= nil and uy ~= nil and ux >= 0 and uy >= 0 then
+                    table.insert(units, unit)
+                end
+            end
         end
     end)
     if not ok then
@@ -1181,9 +1190,16 @@ local function GetPlayerOnMapUnits(playerID)
 end
 
 local function IsNonGhostPlayer(playerID)
-    if IsGhostPlayer == nil then return true end
+    if IsGhostPlayer == nil and IsCityStateGhostPlayer == nil then return true end
     local isGhost = false
-    pcall(function() isGhost = IsGhostPlayer(playerID) == true end)
+    if IsGhostPlayer ~= nil then
+        pcall(function() isGhost = IsGhostPlayer(playerID) == true end)
+    end
+    -- 城邦幽灵是**另一个池子**（IsGhostPlayer 只查主流池）。不认城邦池的话，
+    -- 城邦幽灵会被当成“非幽灵”预设出生格、传送回地图（2026-10-21 实机）。
+    if not isGhost and IsCityStateGhostPlayer ~= nil then
+        pcall(function() isGhost = IsCityStateGhostPlayer(playerID) == true end)
+    end
     return not isGhost
 end
 
@@ -1309,7 +1325,11 @@ local function PresetAndMoveNonGhostUnits(width, height, land, unitSpawnKey, won
     end
 
     local playerCount, movedUnits = 0, 0
+    local ghostsSkipped = 0
     for playerID = 0, GameDefines.MAX_PLAYERS - 1 do
+        if Players ~= nil and Players[playerID] ~= nil and not IsNonGhostPlayer(playerID) then
+            ghostsSkipped = ghostsSkipped + 1
+        end
         if Players ~= nil and Players[playerID] ~= nil and IsNonGhostPlayer(playerID) then
             local units = GetPlayerOnMapUnits(playerID)
             if #units > 0 then
@@ -1359,12 +1379,17 @@ local function PresetAndMoveNonGhostUnits(width, height, land, unitSpawnKey, won
     end
     pcall(function() Game:SetProperty(unitSpawnKey, spawns) end)
     Log("非幽灵出生地：players=" .. tostring(playerCount)
-        .. " movedUnits=" .. tostring(movedUnits))
+        .. " movedUnits=" .. tostring(movedUnits)
+        .. " ghostsSkipped=" .. tostring(ghostsSkipped))
     return playerCount, movedUnits
 end
 
+-- 构建标记（只用于日志核对：确认本局加载的是哪一版 ModTool_MapRebuild）。
+local MR_BUILD = "2026-10-21-spawnfix"
+
 function MR.RebuildMap(options)
     options = options or {}
+    Log("RebuildMap build=" .. MR_BUILD)
     local wb = options.WorldBuilder or WorldBuilderAPI
     if wb == nil or wb.SetTerrainType == nil then
         return false, "WorldBuilderAPI 不可用"

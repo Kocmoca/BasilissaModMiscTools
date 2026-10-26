@@ -606,9 +606,9 @@ InitializeGhostMajorPlayers(originalCount, ghostPoolLimit)
         引擎只在开局按“参与玩家数”创建主要文明，所以前端 hook 会先把这个数抬到
         槽位预算允许的上限（见下），这里再把富余的收进幽灵池。
 
-ConvertGhostPlayerToCityState(playerID)
+ConvertGhostPlayerToCityState(playerID[, civType[, conversionSource]])
   返回：boolean（转换是否生效）
-  说明：[待验证] 把幽灵化的“主要文明”改造成城邦，避免它继续参与外交
+  说明：把幽灵化的“主要文明”改造成城邦，避免它继续参与外交
         （AI 会来交涉、出现在外交界面）。
         做法（授权者指定）：走“设置领袖 + 文明”，即面板「应用」用的同一个接口
           WorldBuilderAPI.SetPlayerLeader(playerID, <城邦领袖>, <城邦文明>,
@@ -619,9 +619,57 @@ ConvertGhostPlayerToCityState(playerID)
         选城邦时优先挑地图上没人用的文明，避免凭空多出重复城邦（日志里的 unusedCityStates）。
         硬保护：已经有城市的玩家直接拒绝（见 MovePlayerOffMap 条目）。
         判定标准：转换后 player:IsMajor() 是否变成 false。
+        入口授权（2026-10-26 恢复 A 方案）：只有 conversionSource = 'auto_first_city'
+        （本地玩家建首城自动批量）会真正执行；不给来源 = 手动（面板 / 其它 mod），
+        直接返回 false + 'major to city-state conversion blocked'（见 §2.8c-2）。
         注意与 CreateGhostPlayerFromEmptySlot 的区别【已验证失败】：那条路是给空槽位造玩家，
         引擎不生成玩家对象；这里换的是已经存在的玩家的身份，才有机会生效。
         player:IsMinor() 在 gameplay 层不可用，不要用它做判定。
+
+GetGhostPlayerDebugList()
+  返回：table（每个幽灵一条：playerID / pool / civType / leaderType / isMajor /
+        available / claimed / hasCity / hasOnMapUnit / met / originalCivType / originalLeaderType）
+  说明：幽灵 debug 面板（§2.8c-3）的数据源；主流池在前、城邦池在后。
+
+GetPlayerDebugList()
+  返回：table（幽灵条目同 GetGhostPlayerDebugList，另加 isGhost 字段；后面追加所有存活玩家：
+         pool = 'player'、isGhost = false，字段为 playerID / civType / leaderType / isMajor /
+         hasCity / hasOnMapUnit / met）
+  说明：调试面板的数据源（2026-10-26 授权者要求）——把「杀死幽灵」扩成「杀死任意选中玩家」。
+        蛮族 / 叛军 / 自由城市玩家不进列表；GetGhostPlayerDebugList 的原有语义保持不变。
+
+RestoreGhostPlayerAsMajor(playerID)
+  返回：boolean, reason（'ok' / 'already_major' / 'no_identity' / 'unknown_identity' / 'still_city_state' …）
+  说明：把幽灵改回主流文明。优先用“进池时记的原身份台账”（GetGhostOriginalIdentity），
+        没有台账才用它当前的配置身份；等级设成 CIVILIZATION_LEVEL_FULL_CIV。
+        **只改身份/等级，不动池子归属**（面板里可能显示“城邦幽灵池 · 主流”）。
+
+FoundCityForGhostPlayer(playerID)
+  返回：boolean, reason, x, y
+  说明：给幽灵自动选址建城。锚点 = 本地玩家首都 → 地图中心；按环状半径 1..12 找
+        “陆地 + 无城市/区域 + 无主 + 无单位”的地块，逐个尝试 WorldBuilder 建城；
+        成功后该玩家立刻出池（与 CreateCityForGhostPlayer 一致）。
+
+RemoveGhostPlayerByKillingUnits(playerID)
+  返回：boolean, reason, killedCount
+  说明：移除幽灵 = 杀掉它名下**所有单位**（含地图外开拓者），然后清池、清预约、清原身份台账。
+        杀单位走 2026-10-12 定的路线：伤害 >= 100 跳过，否则 SetDamage(100) 再 UnitManager.Kill。
+        **已经有城市的玩家会被拒绝**（拆城 = 玩家死亡）。
+
+KillSelectedPlayer(playerID)
+  返回：boolean, reason, transferredCities, failedCities, remainingUnits
+  说明：调试面板的「杀死玩家」（2026-10-26 授权者要求）。做法对齐 GrayFox 的 BanPlayer：
+        有城市 ⇒ 逐座 CityManager.TransferCityToFreeCities(city) 转成自由城市；
+        **不杀单位**——授权者的 Levithan 局里杀该玩家单位会触发引擎侧卡死（Lua/日志无输出），
+        转走城市已足够；剩余单位原样保留，数量在返回值里回报。
+        reason：'ok' / 'no_city'（只清池与台账）/ 'no_player' /
+                'not_killable'（蛮族 / 叛军 / 自由城市）/ 'no_api'（本版本没有转城接口）。
+
+ConvertUnmetMajorGhostsToCityState()
+  返回：converted, failed, skipped
+  说明：救档用批量入口 —— 把**还没和本地玩家见过面、当前仍是主流**的池内幽灵转成城邦；
+        复用 ConvertAllGhostMajorPlayersToCityState('debug_panel', { skipNonMajor = true })，
+        已见面的 / 不可用的 / 已经城邦化的都计入 skipped。
 
 —— 幽灵玩家的“新鲜度”：复活后必须立刻不再是幽灵（2026-10-15）——
 
@@ -689,7 +737,8 @@ ConvertGhostPlayerToCityState(playerID)
 `TryAutoConvertGhostsOnFirstCity`，只做一次、写 `kocmoca_modmisctool_ghost_autoconvert_done` 落档）：
   * 城邦化后幽灵不再带“大文明外交 footprint”（外交界面 / 世界议会都不受影响，已实机验证）；
   * 开局就做完，之后玩家要附庸时池子里已经是“城邦幽灵”，配合原身份匹配多数请求可免读档；
-  * 老档（本地玩家已有 >1 城）不补做，只标记完成；开关 `GHOST_AUTO_CONVERT_ON_FIRST_CITY` 可关。
+  * 老档（本地玩家已有 >1 城）不补做，只标记完成；开关 `GHOST_AUTO_CONVERT_ON_FIRST_CITY`
+    2026-10-26 恢复为 true —— 这是唯一放行的城邦化入口（见 §2.8c-2）。
 
 —— 【2026-10-17 授权者】开拓者归位：城市落地时把**地图外的开拓者移动进城市** ——
 
@@ -791,9 +840,10 @@ GetPlayerSlotSummary()
     上限，**0 = 一个都不产生**）。
   * 局内先搬多出来的主流玩家（InitializeGhostMajorPlayers），再搬城邦
     （InitializeCityStateGhostPlayers）；两个 pass 都受各自的申报上限约束。
-  * [待验证] 幽灵化的主要文明可被城邦化（GHOST_CONVERT_MAJOR_TO_CITY_STATE 开关，
-    ModTool_GhostPlayers.lua 顶部）；日志里看 `converted-to-city-state=N` 与
-    `IsMajor true => false`。
+  * 幽灵化的主要文明在**建首城时**自动城邦化（2026-10-26 恢复，见 §2.8c-2）；
+    开局阶段那条 `GHOST_CONVERT_MAJOR_TO_CITY_STATE` 保持关闭（实测会把开局搞挂）。
+    日志里开局 pass 的 `converted-to-city-state=N` 恒为 0；首城那一刻看
+    `首城自动城邦化结果：converted=N`。
 
 —— 幽灵池的槽位预算（前端 hook，UI/Replacements/Civ6Common.lua）——
   * MAX_PLAYERS = 64，减去野蛮人与自由城市两个固定槽位 → 62 个可用槽位；
@@ -1089,22 +1139,26 @@ DB 桩按 Vassal System 的声明 SQL 喂行；自选 4 主流 + 6 城邦、`max
 要测保守行为把声明方那边的 `GHOST_CITY_STATE_DEMAND` 改成 8（见 §2.8b ①）。
 
 **①c 批量城邦化改为自动**：本地玩家**建立第一座城市**时自动执行一次（见 §2.7 末“自动城邦化”），
-不再需要手动点面板按钮（按钮仍保留，便于手动补做/复测）。
+不需要手动点面板按钮（按钮仍保留，但**手动入口按 2026-10-17 定案拦截**，见 §2.8c-2）。
 
 **② 面板两个压测按钮**（WorldBuilder 测试面板）
-  * **「主流幽灵全部城邦化」** → `ConvertAllGhostMajorPlayersToCityState()`：
+  * **「主流幽灵全部城邦化」** → `ConvertAllGhostMajorPlayersToCityState()`（面板按钮走手动入口，
+    2026-10-26 起会被 §2.8c-2 的入口授权拦下；自动路径由 `TryAutoConvertGhostsOnFirstCity`
+    传入 `'auto_first_city'`）：
     把池子里**仍在 off-map** 的主流幽灵逐个城邦化（已经有城市的会被顺手移出池子；
     已被带回地图使用中的跳过）。返回 `(converted, failed, skipped)`。
   * **「外交压制自检」**：把两类幽灵池里每个玩家的 `压制 / 可用 / 有城市` 逐条列出
     （压制判定用的就是外交 UI 那个入口 `IsDiplomacyGhostPlayerUI`），用来核对压测结果。
 
-**③ 城邦化的实现契约**（`ConvertGhostPlayerToCityState(playerID[, civType])`）
+**③ 城邦化的实现契约**（`ConvertGhostPlayerToCityState(playerID[, civType[, conversionSource]])`）
   * 走 `WorldBuilder.PlayerManager():SetPlayerLeader(id, leader, civ, 'CIVILIZATION_LEVEL_CITY_STATE')`
     （与面板「应用」同一个接口）；**不调用 StartCityState()**（见 §10 第 29/31 条）。
   * 判定标准：转换后 `player:IsMajor()` 是否为 false；没变再补 `SetIsMinorCiv(true)` 配置标记。
   * 挑城邦文明时避开地图上已被占用的（避免重复城邦），全被占了就轮第一个并打日志。
   * **硬保护**：已经有城市的玩家直接拒绝（移除全部城市 = 玩家当场死亡）。
-  * **时机**：只能在游戏跑起来之后手动触发（面板按钮）；加载过渡阶段批量改身份会把开局搞挂。
+  * **时机**：只能在游戏跑起来之后执行；加载过渡阶段批量改身份会把开局搞挂。
+  * **入口授权（2026-10-26 恢复 A 方案）**：`conversionSource = 'auto_first_city'`
+    （本地玩家建首城自动批量）是唯一放行入口；不给来源 = 手动（面板 / 其它 mod）⇒ 按 §2.8c-2 拦截。
   * 注：2026-10-15 之前这个函数**从未被定义**（面板按钮与 `GHOST_CONVERT_MAJOR_TO_CITY_STATE`
     开关都指向 nil），这次一并补上了。
 
@@ -1139,16 +1193,30 @@ DB 桩按 Vassal System 的声明 SQL 喂行；自选 4 主流 + 6 城邦、`max
 修复过的每个玩家另打一行 `城邦身份已修复 player=… civ=… leader=…`（修复 0 就说明没有半成品身份，
 城邦面板打不开就是别的原因 —— 这时要看 Lua.log 里 `CityStates` 相关报错）。
 
-### 2.8c-2 主流→城邦的转换已拦截 + 面板过滤改为"豁免型"（2026-10-17 授权者）
+### 2.8c-2 主流→城邦：只放行"建首城自动批量"（2026-10-17 拦截 → 2026-10-26 恢复 A 方案）
 
-**拦截**：把一个**主流玩家**造成城邦，引擎只会认下等级，外交/使者那套数据不会跟着建
-⇒ 官方城邦面板取关系数据拿到 nil（行渲染报错、使者按钮失效），玩家处于半城邦状态。
-城邦幽灵池本来就是在开局时由**真正的城邦**转过来的，不需要再做转换，所以这条路直接关掉：
+**背景（2026-10-17 定案）**：把一个**主流玩家**造成城邦，引擎只会认下等级，
+外交/使者那套数据不会跟着建 ⇒ 官方城邦面板取关系数据拿到 nil（行渲染报错、使者按钮失效），
+玩家处于半城邦状态。城邦幽灵池本来就是在开局时由**真正的城邦**转过来的，不需要再做转换。
 
-* `ModTool_GhostPlayers.lua` 顶部开关 `GHOST_ALLOW_MAJOR_TO_CITYSTATE = false`（需要恢复就改它）；
-* `ConvertGhostPlayerToCityState` / `ConvertAllGhostMajorPlayersToCityState` 一律拒绝；
-* `ConfigureGhostPlayerIdentity` 拒绝把主流玩家下发成 `CIVILIZATION_LEVEL_CITY_STATE`；
-* 本地玩家建第一座城时的自动批量城邦化 `GHOST_AUTO_CONVERT_ON_FIRST_CITY = false`（它做的就是这件事）。
+**2026-10-26 授权者恢复 A 方案**：只恢复**唯一验证过安全时机**的入口 —— 本地玩家
+**建立第一座城市**时自动批量城邦化；其它入口仍然拦截：
+
+* `ModTool_GhostPlayers.lua` 顶部：`GHOST_AUTO_CONVERT_ON_FIRST_CITY = true`（自动入口开）；
+  `GHOST_ALLOW_MANUAL_MAJOR_TO_CITY_STATE = false`（手动入口关）；
+  `GHOST_CONVERT_MAJOR_TO_CITY_STATE = false`（开局阶段那条仍关，实测会把开局加载搞挂）。
+* 入口判定集中在 `IsMajorToCityStateConversionAllowed(conversionSource)`：只有
+  `'auto_first_city'` 放行；`ConvertGhostPlayerToCityState` /
+  `ConvertAllGhostMajorPlayersToCityState` 拿到别的来源（或 nil）一律拒绝并打日志
+  `拒绝城邦化 player=…：入口=manual（主流→城邦只对"建首城自动批量"开放）`。
+* `ConfigureGhostPlayerIdentity` 仍拒绝把主流玩家下发成 `CIVILIZATION_LEVEL_CITY_STATE`
+  （Vassal System 的定制附庸走这条）。
+* 已经见过面的幽灵照旧跳过（§2.8c 的硬规则没有变化）。
+* 日志核对：模块加载行
+  `autoCityStateConvert=false autoConvertOnFirstCity=true manualConvert=false`；
+  首城那一刻 `本地玩家建立第一座城 ⇒ 自动批量城邦化（… 入口=auto_first_city）`，
+  随后 `首城自动城邦化结果：converted=… failed=… skipped=…`。
+  全失败时**不落**“已完成”标记，下一座城会再试一次。
 
 **面板过滤（豁免型）**：`CityStates_ModMiscGhost.lua` 仍然把"主流转出来的城邦"从官方列表里摘掉
 （隐形占位，避免基座崩溃），但**城邦幽灵池出身的一律豁免、照常显示**：
@@ -1161,6 +1229,48 @@ DB 桩按 Vassal System 的声明 SQL 喂行；自选 4 主流 + 6 城邦、`max
 
 判定用 Misc Tool 存档里的"原身份台账"（`GetGhostOriginalIdentity`），随存档走、不依赖运行时状态。
 桩测试：`Basilissa Mod Misc Tools/.harness/citystates_patch_test.lua`（含三条豁免/摘除用例）。
+
+### 2.8c-3 幽灵玩家 debug 面板（2026-10-26 授权者要求）
+
+**面板**：`UI/GhostDebugPanel.xml` + `UI/GhostDebugPanel.lua`，`AddUserInterfaces id="GhostDebugPanel"`
+（LoadOrder -1）。侧栏按钮**只在场上存在幽灵玩家时注册**：重试时机 =
+`LoadGameViewStateDone` / `LocalPlayerTurnBegin` / `LocalPlayerChanged` / `LuaEvents.ModMiscToolUIReady`；
+幽灵池为空就不注册（正常对局不会看到这个按钮）。
+> 注：左侧栏目前没有“反注册”接口，所以一旦注册、之后把幽灵全部移除，按钮会留到本局结束；
+> 这时面板里显示“本局没有幽灵玩家”（`LOC_MODMISC_GHOST_DEBUG_EMPTY`）。
+
+**交互（2026-10-26 授权者改版）**：滚动栏**只显示信息**，不再每行放按钮；
+**点一行选中**该条目（幽灵或存活玩家；选中行标题前缀 `> `、颜色变金色），底部按钮全部作用于“选中的那个”。
+顶部一行显示当前选中（`LOC_MODMISC_GHOST_DEBUG_SELECTED` / 未选中时 `..._SELECTED_NONE`）；
+没有选中时四个操作按钮置灰；选中的不是幽灵时，城邦化 / 主流化 / 建城 置灰，只有「杀死玩家」可用。
+
+**列表**（`GetPlayerDebugList`：幽灵池在前、其余存活玩家在后）每行显示：
+玩家 ID · 池 · 当前引擎身份（主流/城邦）；第二行显示文明/领袖、`已见面 / 可用 / 使用中 / 已预约 /
+已有城市 / 有地图上单位` 标记（可用 / 使用中 / 已预约只对幽灵显示），以及与原身份台账不同时的“原身份”。
+
+**底部按钮**（全部走 gameplay API，UI 只转发选中玩家的 ID）：
+
+| 按钮 | API | 说明 |
+|---|---|---|
+| 城邦化 | `ConvertGhostPlayerToCityState(id, nil, 'debug_panel')` | 仅幽灵；入口授权表里 `debug_panel = true`；见面的幽灵照旧拒绝 |
+| 主流化 | `RestoreGhostPlayerAsMajor(id)` | 仅幽灵；用原身份台账复原；只改身份，不动池归属 |
+| 建城 | `FoundCityForGhostPlayer(id)` | 仅幽灵；自动选址（本地首都附近 → 地图中心）；建完出池 |
+| 杀死玩家 | `KillSelectedPlayer(id)` | 任意玩家；名下城市全部转自由城市（对齐 GrayFox BanPlayer），**不杀单位** |
+| 救档 | `ConvertUnmetMajorGhostsToCityState()` | **一键**把“还没见面、当前仍是主流、可用”的主流幽灵全部转城邦；结果给 converted/failed/skipped |
+
+> 救档口径：已见面的、不可用的、已经城邦化的都计入 `skipped`；它是
+> `ConvertAllGhostMajorPlayersToCityState('debug_panel', { skipNonMajor = true })` 的薄封装，
+> 所以“未见面主流”这条规则仍然只在一个地方判定。
+
+**日志**（排障直接看）：
+`[ModMiscTool][GhostDebug] 左侧栏入口已注册（幽灵 N 个，可杀死玩家 M 个）`、
+`[ModMiscTool][Ghost] 主流化 player=…`、`[ModMiscTool][Ghost] 幽灵建城 player=… at X,Y`、
+`[ModMiscTool][Ghost] 杀死玩家 player=…：转自由城市 N、失败 M；剩余单位 K（未杀单位）`、
+`[ModMiscTool][Ghost] 移除幽灵 player=…：杀死单位 N、失败 M`（旧接口，面板已不再调用）、
+`[ModMiscTool][Ghost] 救档（未见面主流→城邦）：converted=… failed=… skipped=…`。
+
+**回归桩**：`.harness/ghost_debug_panel_test.lua`（49 项：列表字段 / 面板城邦化 / 手动仍拦 /
+原身份复原 / 自动选址建城 / 杀单位移除（旧接口）/ 救档批量 / 列表扩展 / 转自由城市杀死 / 无城市只清池）。
 
 ### 2.8d 城邦面板打不开会把回合卡死 —— 自愈（2026-10-15 授权者定位）
 
@@ -1258,6 +1368,7 @@ DB 桩按 Vassal System 的声明 SQL 喂行；自选 4 主流 + 6 城邦、`max
      （`civType == nil or ''`），不再误报“失败”。
   3. 该局 `autoCityStateConvert=false`（自动城邦化没开）⇒ 那些城邦化是**手动面板按钮**触发的，
      所以“见面过的幽灵被转成城邦”是可以人为造成的，必须在转换入口上就挡掉。
+     （2026-10-26 起首城自动路径已恢复；手动入口仍关，见 §2.8c-2。）
 
 **结论（授权者定的语义）**：**已经和本地玩家见过面的幽灵不许进/留在城邦体系** ——
   见了面就进了外交关系数据，转成城邦后官方城邦面板取不到关系透镜数据 ⇒ 面板打不开 ⇒

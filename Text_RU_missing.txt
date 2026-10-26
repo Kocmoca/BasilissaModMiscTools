@@ -285,4 +285,34 @@ LOC_MODMISC_SAVEPANEL_INTAKE_DONE	Events pulled: {1_Count} ({2_How})
 LOC_MODMISC_SAVEPANEL_INTAKE_DETAIL	Events addressed to this game's save node are moved into the turn-event list; they fire at their accept turn (overdue ones fire next turn).
 LOC_MODMISC_SAVEPANEL_DELETE	Delete selected
 LOC_MODMISC_SAVEPANEL_DELETE_CONFIRM	Delete this save? {1_Name}
-LOC_MODMISC_SAVEPANEL_DELETED	Deleted {1_Name}
+LOC_MODMISC_SAVEPANEL_DELETED	Deleted {1_Name}LOC_MODMISC_GHOST_DEBUG_TITLE	Ghost Player Debug
+LOC_MODMISC_GHOST_DEBUG_TOOLTIP	Inspect ghost players: city-state / major conversion, found a city, remove a ghost.
+LOC_MODMISC_GHOST_DEBUG_HINT	Click a ghost to select it, then use the buttons below. The rescue button converts all unmet majors at once.
+LOC_MODMISC_GHOST_DEBUG_REFRESH	Refresh
+LOC_MODMISC_GHOST_DEBUG_EMPTY	No ghost players in this game.
+LOC_MODMISC_GHOST_DEBUG_STATUS	Major pool: {1_Major} · City-state pool: {2_CityState} · Available: {3_Available} · Claimed: {4_Claimed}
+LOC_MODMISC_GHOST_DEBUG_ROW_TITLE	P{1_ID} · {2_Pool} · {3_State}
+LOC_MODMISC_GHOST_DEBUG_POOL_MAJOR	major ghost pool
+LOC_MODMISC_GHOST_DEBUG_POOL_CITYSTATE	city-state ghost pool
+LOC_MODMISC_GHOST_DEBUG_STATE_MAJOR	major
+LOC_MODMISC_GHOST_DEBUG_STATE_CITYSTATE	city-state
+LOC_MODMISC_GHOST_DEBUG_STATE_UNKNOWN	unknown
+LOC_MODMISC_GHOST_DEBUG_FLAG_AVAILABLE	available
+LOC_MODMISC_GHOST_DEBUG_FLAG_IN_USE	in use
+LOC_MODMISC_GHOST_DEBUG_FLAG_CLAIMED	claimed
+LOC_MODMISC_GHOST_DEBUG_FLAG_HAS_CITY	has city
+LOC_MODMISC_GHOST_DEBUG_FLAG_ON_MAP_UNIT	on-map unit
+LOC_MODMISC_GHOST_DEBUG_FLAG_MET	met
+LOC_MODMISC_GHOST_DEBUG_ORIGINAL	orig: {1_Civ}
+LOC_MODMISC_GHOST_DEBUG_ACTION_CITYSTATE	City-state
+LOC_MODMISC_GHOST_DEBUG_ACTION_MAJOR	Major
+LOC_MODMISC_GHOST_DEBUG_ACTION_FOUND_CITY	Found city
+LOC_MODMISC_GHOST_DEBUG_ACTION_REMOVE	Remove
+LOC_MODMISC_GHOST_DEBUG_RESULT_OK	P{1_ID}: {2_Action} done.
+LOC_MODMISC_GHOST_DEBUG_RESULT_FAIL	P{1_ID}: {2_Action} failed ({3_Reason}).
+LOC_MODMISC_GHOST_DEBUG_RESULT_CITY	P{1_ID}: city founded at ({2_X}, {3_Y}).
+LOC_MODMISC_GHOST_DEBUG_RESULT_REMOVE	P{1_ID}: removed (units killed: {2_Count}).
+LOC_MODMISC_GHOST_DEBUG_SELECTED_NONE	No ghost selected.
+LOC_MODMISC_GHOST_DEBUG_SELECTED	Selected: P{1_ID} · {2_Pool} · {3_State} · {4_Civ}
+LOC_MODMISC_GHOST_DEBUG_ACTION_RESCUE	Rescue: unmet majors -> city-state
+LOC_MODMISC_GHOST_DEBUG_RESULT_RESCUE	Rescue done: converted {1_Converted}, failed {2_Failed}, skipped {3_Skipped}.

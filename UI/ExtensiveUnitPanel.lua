@@ -461,13 +461,10 @@ function RefreshPanelContent()
             local instance = m_CustomButtonColumnIMs[colIdx]:GetInstance()
             if btnData.icon ~= nil then
                 if string.sub(btnData.icon, 1, 5) == "ICON_" then
-                    local textureOffsetX, textureOffsetY, textureSheet =
-                        IconManager:FindIconAtlasNearestSize(btnData.icon, 64, true)
-                    if textureOffsetX ~= nil then
-                        instance.ButtonIcon:SetTexture(textureOffsetX, textureOffsetY, textureSheet)
-                    else
-                        instance.ButtonIcon:SetIcon(btnData.icon)
-                    end
+                    -- 图标一律走 SetIcon（2026-10-20 授权者）：图集偏移那套
+                    -- FindIconAtlasNearestSize + SetTexture 在按钮尺寸/图集档位
+                    -- 不一致时会漂移（项目图标图集没有 64 档，取到 80/50 就对不齐）。
+                    instance.ButtonIcon:SetIcon(btnData.icon)
                 else
                     instance.ButtonIcon:SetTexture(btnData.icon)
                 end

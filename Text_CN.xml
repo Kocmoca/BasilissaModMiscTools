@@ -909,6 +909,106 @@
 		<Replace Tag="LOC_MODMISC_SAVEPANEL_DELETED" Language="zh_Hans_CN">
 			<Text>已删除 {1_Name}</Text>
 		</Replace>
+		<!-- 幽灵玩家 debug 面板（2026-10-26 授权者要求） -->
+		<Replace Tag="LOC_MODMISC_GHOST_DEBUG_TITLE" Language="zh_Hans_CN">
+			<Text>幽灵玩家调试</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_GHOST_DEBUG_TOOLTIP" Language="zh_Hans_CN">
+			<Text>查看幽灵与存活玩家：城邦化 / 主流化、建城、杀死玩家。</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_GHOST_DEBUG_HINT" Language="zh_Hans_CN">
+			<Text>先点选一个条目（幽灵或存活玩家）；「杀死」会把名下城市全部转为自由城市，不杀单位。</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_GHOST_DEBUG_REFRESH" Language="zh_Hans_CN">
+			<Text>刷新</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_GHOST_DEBUG_EMPTY" Language="zh_Hans_CN">
+			<Text>本局没有幽灵玩家。</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_GHOST_DEBUG_STATUS" Language="zh_Hans_CN">
+			<Text>主流池：{1_Major} · 城邦池：{2_CityState} · 可用：{3_Available} · 已预约：{4_Claimed} · 其他玩家：{5_Players}</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_GHOST_DEBUG_ROW_TITLE" Language="zh_Hans_CN">
+			<Text>P{1_ID} · {2_Pool} · {3_State}</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_GHOST_DEBUG_POOL_MAJOR" Language="zh_Hans_CN">
+			<Text>主流幽灵池</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_GHOST_DEBUG_POOL_CITYSTATE" Language="zh_Hans_CN">
+			<Text>城邦幽灵池</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_GHOST_DEBUG_POOL_PLAYER" Language="zh_Hans_CN">
+			<Text>普通玩家</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_GHOST_DEBUG_STATE_MAJOR" Language="zh_Hans_CN">
+			<Text>主流</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_GHOST_DEBUG_STATE_CITYSTATE" Language="zh_Hans_CN">
+			<Text>城邦</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_GHOST_DEBUG_STATE_UNKNOWN" Language="zh_Hans_CN">
+			<Text>未知</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_GHOST_DEBUG_FLAG_AVAILABLE" Language="zh_Hans_CN">
+			<Text>可用</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_GHOST_DEBUG_FLAG_IN_USE" Language="zh_Hans_CN">
+			<Text>使用中</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_GHOST_DEBUG_FLAG_CLAIMED" Language="zh_Hans_CN">
+			<Text>已预约</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_GHOST_DEBUG_FLAG_HAS_CITY" Language="zh_Hans_CN">
+			<Text>已有城市</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_GHOST_DEBUG_FLAG_ON_MAP_UNIT" Language="zh_Hans_CN">
+			<Text>有地图上单位</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_GHOST_DEBUG_FLAG_MET" Language="zh_Hans_CN">
+			<Text>已见面</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_GHOST_DEBUG_ORIGINAL" Language="zh_Hans_CN">
+			<Text>原身份：{1_Civ}</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_GHOST_DEBUG_ACTION_CITYSTATE" Language="zh_Hans_CN">
+			<Text>城邦化</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_GHOST_DEBUG_ACTION_MAJOR" Language="zh_Hans_CN">
+			<Text>主流化</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_GHOST_DEBUG_ACTION_FOUND_CITY" Language="zh_Hans_CN">
+			<Text>建城</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_GHOST_DEBUG_ACTION_REMOVE" Language="zh_Hans_CN">
+			<Text>杀死玩家</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_GHOST_DEBUG_RESULT_OK" Language="zh_Hans_CN">
+			<Text>P{1_ID}：{2_Action}完成。</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_GHOST_DEBUG_RESULT_FAIL" Language="zh_Hans_CN">
+			<Text>P{1_ID}：{2_Action}失败（{3_Reason}）。</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_GHOST_DEBUG_RESULT_CITY" Language="zh_Hans_CN">
+			<Text>P{1_ID}：已在 ({2_X}, {3_Y}) 建城。</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_GHOST_DEBUG_RESULT_REMOVE" Language="zh_Hans_CN">
+			<Text>P{1_ID}：已把 {2_Cities} 座城市转为自由城市（失败 {3_Failed}）；未处理单位 {4_Units} 个（不杀单位）。</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_GHOST_DEBUG_RESULT_REMOVE_NO_CITY" Language="zh_Hans_CN">
+			<Text>P{1_ID}：名下没有城市，只清幽灵台账；未处理单位 {2_Units} 个（不杀单位）。</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_GHOST_DEBUG_SELECTED_NONE" Language="zh_Hans_CN">
+			<Text>未选中条目。</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_GHOST_DEBUG_SELECTED" Language="zh_Hans_CN">
+			<Text>已选中：P{1_ID} · {2_Pool} · {3_State} · {4_Civ}</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_GHOST_DEBUG_ACTION_RESCUE" Language="zh_Hans_CN">
+			<Text>救档：未见面主流 → 城邦</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_GHOST_DEBUG_RESULT_RESCUE" Language="zh_Hans_CN">
+			<Text>救档完成：转换 {1_Converted}、失败 {2_Failed}、跳过 {3_Skipped}。</Text>
+		</Replace>
 </LocalizedText>
 
 

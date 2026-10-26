@@ -604,7 +604,8 @@ function Initialize()
 	ExposedMembers.ModMiscToolScript.RefreshGhostPoolsFromCities = RefreshGhostPoolsFromCities
 	ExposedMembers.ModMiscToolScript.PlayerOwnsCity = PlayerOwnsCity
 	ExposedMembers.ModMiscToolScript.ConvertGhostPlayerToCityState = ConvertGhostPlayerToCityState
-	-- 一键把所有主流幽灵城邦化（面板「主流幽灵全部城邦化」按钮与压测用）
+	-- 一键把所有主流幽灵城邦化（面板按钮 = 手动入口，2026-10-26 起被拦截；
+	-- 建首城自动路径由 TryAutoConvertGhostsOnFirstCity 传 'auto_first_city' 放行）
 	ExposedMembers.ModMiscToolScript.ConvertAllGhostMajorPlayersToCityState = ConvertAllGhostMajorPlayersToCityState
 	-- 幽灵“原身份”台账 + 自动城邦化（Vassal System 取幽灵时按原身份优先匹配）
 	ExposedMembers.ModMiscToolScript.GetGhostOriginalIdentities = GetGhostOriginalIdentities
@@ -614,6 +615,17 @@ function Initialize()
 	ExposedMembers.ModMiscToolScript.TryAutoConvertGhostsOnFirstCity = TryAutoConvertGhostsOnFirstCity
 	ExposedMembers.ModMiscToolScript.IsGhostAutoConvertDone = IsGhostAutoConvertDone
 	ExposedMembers.ModMiscToolScript.GetGhostifyBlockReason = GetGhostifyBlockReason
+	-- 【授权者 2026-10-26】幽灵 debug 面板：列表快照 + 主流化 / 建城 / 移除
+	ExposedMembers.ModMiscToolScript.GetGhostPlayerDebugList = GetGhostPlayerDebugList
+	ExposedMembers.ModMiscToolScript.RestoreGhostPlayerAsMajor = RestoreGhostPlayerAsMajor
+	ExposedMembers.ModMiscToolScript.FoundCityForGhostPlayer = FoundCityForGhostPlayer
+	ExposedMembers.ModMiscToolScript.RemoveGhostPlayerByKillingUnits = RemoveGhostPlayerByKillingUnits
+	-- 【授权者 2026-10-26】调试面板扩展：列出全部存活玩家；对任意玩家执行“杀死”
+	--   （有城市 ⇒ 全部转自由城市；不杀单位，见 ModTool_GhostPlayers.lua 的注释）
+	ExposedMembers.ModMiscToolScript.GetPlayerDebugList = GetPlayerDebugList
+	ExposedMembers.ModMiscToolScript.KillSelectedPlayer = KillSelectedPlayer
+	-- 救档：一键把未见面主流幽灵转成城邦（批量入口，来源 debug_panel）
+	ExposedMembers.ModMiscToolScript.ConvertUnmetMajorGhostsToCityState = ConvertUnmetMajorGhostsToCityState
 	ExposedMembers.ModMiscToolScript.ConfigureGhostPlayerIdentity = ConfigureGhostPlayerIdentity
 	ExposedMembers.ModMiscToolScript.TransferCityToGhostPlayer = TransferCityToGhostPlayer
 	ExposedMembers.ModMiscToolScript.CreateCityForGhostPlayer = CreateCityForGhostPlayer

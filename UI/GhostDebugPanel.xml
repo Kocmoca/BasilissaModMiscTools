@@ -1,0 +1,88 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  幽灵玩家 debug 面板（2026-10-26 授权者要求）
+
+  入口：左侧栏按钮 —— **只有本局存在幽灵玩家时才注册**（见 GhostDebugPanel.lua 的
+        TryRegisterSidebarButton；幽灵池为空就不注册）。
+  交互：上方滚动栏**只显示信息**；点一条选中它（幽灵 + 其余存活玩家），再用底部按钮执行：
+        幽灵：城邦化 / 主流化 / 建城；
+        任何玩家：「杀死」= 名下城市全部转成自由城市（对齐 GrayFox），**不杀单位**；
+        另有「救档」= 一键把**还没见面**的主流幽灵全部转成城邦。
+
+  尺寸/字号是设计基准（900x840），打开面板与屏幕变化时按实际屏幕等比缩放；
+  列表行由 InstanceManager 按当前 scale 动态创建。
+-->
+<Context>
+    <Container ID="GhostDebugRoot" Anchor="C,C" Size="900,840" ConsumeMouse="1" Hidden="1">
+        <Box Anchor="C,C" Size="parent,parent" Color="20,20,30,248">
+            <Grid Anchor="C,C" Size="parent+16,parent+16" Style="ScreenFrame" />
+
+            <Grid ID="GhostDebugHeader" Anchor="L,T" Size="parent,56"
+                  Texture="TopBar_Bar" SliceCorner="28,8" SliceTextureSize="57,29">
+                <Label ID="GhostDebugTitle" Anchor="L,C" Offset="24,0" Size="760,44"
+                       FontSize="32" FontStyle="glow" ColorSet="ShellHeader"
+                       String="LOC_MODMISC_GHOST_DEBUG_TITLE" />
+                <Button ID="GhostDebugClose" Anchor="R,C" Offset="-14,0" Size="44,44"
+                        Texture="Controls_CloseButton" Style="ButtonNormalText" ConsumeMouse="1" />
+            </Grid>
+
+            <Label ID="GhostDebugStatus" Anchor="L,T" Offset="20,64" Size="parent-40,32"
+                   FontSize="22" Color="225,225,225,255" WrapWidth="860" VerticalAlignment="Center" />
+
+            <Label ID="GhostDebugHint" Anchor="L,T" Offset="20,100" Size="parent-40,26"
+                   FontSize="19" Color="170,190,210,255" WrapWidth="860" VerticalAlignment="Center"
+                   String="LOC_MODMISC_GHOST_DEBUG_HINT" />
+
+            <!-- 只显示信息的滚动列表：点一行 = 选中 -->
+            <Container ID="GhostDebugListFrame" Anchor="L,T" Offset="20,132" Size="parent-40,420"
+                       ConsumeMouse="1">
+                <Box Anchor="L,T" Size="parent,parent" Color="10,18,28,235">
+                    <Grid Anchor="C,C" Size="parent+8,parent+8" Style="ScreenFrame" />
+                    <ScrollPanel ID="GhostDebugScroll" Anchor="C,T" Size="parent-8,parent-8"
+                                 Vertical="1" AutoScrollBar="0">
+                        <Stack ID="GhostDebugList" StackGrowth="Bottom" Anchor="C,T" StackPadding="2" />
+                        <ScrollBar Anchor="R,C" Size="11,parent" Offset="2,0" AnchorSide="O,I" Style="ScrollVerticalBar" />
+                    </ScrollPanel>
+                </Box>
+            </Container>
+
+            <!-- 当前选中 -->
+            <Label ID="GhostDebugSelection" Anchor="L,T" Offset="20,556" Size="parent-40,36"
+                   FontSize="22" Color="190,215,240,255" WrapWidth="860" VerticalAlignment="Center" />
+
+            <!-- 底部操作：全部作用于“选中的那个幽灵” -->
+            <GridButton ID="GhostDebugActionCityState" Anchor="L,T" Offset="20,598" Size="205,56"
+                        Style="ButtonControl" FontSize="22"
+                        String="LOC_MODMISC_GHOST_DEBUG_ACTION_CITYSTATE" />
+            <GridButton ID="GhostDebugActionMajor" Anchor="L,T" Offset="240,598" Size="205,56"
+                        Style="ButtonControl" FontSize="22"
+                        String="LOC_MODMISC_GHOST_DEBUG_ACTION_MAJOR" />
+            <GridButton ID="GhostDebugActionFoundCity" Anchor="L,T" Offset="460,598" Size="205,56"
+                        Style="ButtonControl" FontSize="22"
+                        String="LOC_MODMISC_GHOST_DEBUG_ACTION_FOUND_CITY" />
+            <GridButton ID="GhostDebugActionRemove" Anchor="L,T" Offset="680,598" Size="205,56"
+                        Style="ButtonControl" FontSize="22"
+                        String="LOC_MODMISC_GHOST_DEBUG_ACTION_REMOVE" />
+
+            <GridButton ID="GhostDebugRescue" Anchor="L,T" Offset="20,662" Size="420,56"
+                        Style="ButtonControl" FontSize="20"
+                        String="LOC_MODMISC_GHOST_DEBUG_ACTION_RESCUE" />
+            <GridButton ID="GhostDebugRefresh" Anchor="L,T" Offset="460,662" Size="420,56"
+                        Style="ButtonControl" FontSize="22"
+                        String="LOC_MODMISC_GHOST_DEBUG_REFRESH" />
+
+            <Label ID="GhostDebugResult" Anchor="L,T" Offset="20,726" Size="parent-40,80"
+                   FontSize="20" Color="200,220,235,255" WrapWidth="860" VerticalAlignment="Top" />
+        </Box>
+    </Container>
+
+    <!-- 列表行：只放信息（点整行 = 选中）；选中态在 Lua 里用颜色 + "> " 前缀标出 -->
+    <Instance Name="GhostDebugEntry">
+        <GridButton ID="EntryRoot" Anchor="C,T" Size="840,100" Style="ButtonControl">
+            <Label ID="EntryTitle" Anchor="L,T" Offset="14,8" Size="812,28"
+                   FontSize="23" Color="235,235,235,255" TruncateWidth="806" />
+            <Label ID="EntrySub" Anchor="L,T" Offset="14,38" Size="812,58"
+                   FontSize="18" Color="175,195,215,255" WrapWidth="806" VerticalAlignment="Top" />
+        </GridButton>
+    </Instance>
+</Context>

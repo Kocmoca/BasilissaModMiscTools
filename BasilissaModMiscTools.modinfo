@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!-- 对外发布号：1.54 → 1.6（开发期内部编号 v1.55…v3.10，见 API_Verification_Status.md §19.34） -->
-<Mod id="a1b2c3d4-5e6f-7a8b-9c0d-1e2f3a4b5c6d" version="1.71">
+<Mod id="a1b2c3d4-5e6f-7a8b-9c0d-1e2f3a4b5c6d" version="1.73">
     <Properties>
         <Name>Basilissa Mod Misc Tools</Name>
         <Description>LOC_MODMISC_MOD_DESCRIPTION</Description>
@@ -150,6 +150,17 @@
             </Properties>
             <File>UI/Support_UI.xml</File>
         </AddUserInterfaces>
+        <!-- 幽灵玩家 debug 面板（2026-10-26 授权者要求）：滚动栏只显示幽灵列表（点行选中），
+             底部按钮对选中玩家执行「城邦化 / 主流化 / 建城 / 移除」，另有「救档」一键把
+             未见面主流转城邦。左侧栏入口**只在场上存在幽灵玩家时注册**
+             （见 UI/GhostDebugPanel.lua 的 TryRegisterSidebarButton）。 -->
+        <AddUserInterfaces id="GhostDebugPanel">
+            <Properties>
+                <Context>InGame</Context>
+                <LoadOrder>-1</LoadOrder>
+            </Properties>
+            <File>UI/GhostDebugPanel.xml</File>
+        </AddUserInterfaces>
         <AddUserInterfaces id="MapButtonUI">
             <Properties>
                 <Context>InGame</Context>
@@ -251,6 +262,8 @@
         <File>UI/AutomationTestPanel.lua</File>
         <File>UI/WorldBuilderTestPanel.xml</File>
         <File>UI/WorldBuilderTestPanel.lua</File>
+        <File>UI/GhostDebugPanel.xml</File>
+        <File>UI/GhostDebugPanel.lua</File>
         <File>UI/ModMiscDebugUI.xml</File>
         <File>UI/ModMiscDebugUI.lua</File>
         <File>UI/ButtonAdjust.xml</File>

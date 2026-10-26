@@ -234,7 +234,11 @@ RemoveAllData()        -- 清空整张存储（返回删掉的键数）
 
 | 见面幽灵留在主流（2026-10-15 授权者定的语义） | `[待实机确认]` 新规则：**和本地玩家见过面的幽灵不许转/留在城邦体系**（见面即进外交关系数据，转城邦后官方城邦面板取不到关系滤镜数据 ⇒ 面板打不开 ⇒ “给城邦派使者”回合拦截项卡死 ⇒ 无法进入下一回合）。实现：`LocalPlayerHasMet`（导出）在 `ConvertGhostPlayerToCityState` 开头拒绝 + 批量入口过滤并计入 skipped；新增 `RestoreMetGhostsAsMajorPlayers()`（用原身份台账转回主流，`CIVILIZATION_LEVEL_FULL_CIV`），只挂面板按钮「见面的幽灵转回主流」（`WorldBuilderTestRestoreMetGhosts`，EN/CN 文案同批加）——批量改身份不在加载阶段做（实机撞过加载中止）。验证步骤：读档 → 面板按该按钮（日志 `见面幽灵转回主流：恢复 N…`）→ 存档并重读 → 城邦面板应能打开、回合可继续。 |
 | 兼容性核对 | 见 `API_Documentation.txt` §2.9b：两个外交补丁是 `ReplaceUIScript` + include 当前层，**跟版本走**（四个目标函数在手机/PC 两套基座的桌面版与 `_PHONE` 版里都存在，已核对）；`Civ6Common.lua` 整体取代是**手机基座副本**（含 ASPYR 段），手机版正确但版本绑定、官方更新后需重新同步，直接给 PC 版用会把平台行为串味。 |
-| 时机风险（剩余） | 批量城邦化：在**游戏跑起来之后**由面板按钮触发（一次就够，下一回合生效）；不要在加载过渡阶段批量改身份（实测会把开局搞挂，见第 29/31 条）；不要在权威场合重复刷（身份改动会让引擎重算外交）。 |
+| 时机风险（剩余） | 批量城邦化：**游戏跑起来之后、本地玩家建第一座城时**自动触发（2026-10-26 恢复；一次就够，下一回合生效）；手动按钮入口保持拦截；不要在加载过渡阶段批量改身份（实测会把开局搞挂，见第 29/31 条）；不要在权威场合重复刷（身份改动会让引擎重算外交）。 |
+
+| **2026-10-26 幽灵玩家 debug 面板** | `[桩验证通过]` 新增 `UI/GhostDebugPanel.xml` + `.lua`：左侧栏**只在存在幽灵时注册**；滚动栏只显示信息，**点行选中**，底部「城邦化 / 主流化 / 建城 / 移除」作用于选中玩家，另有「救档」一键把未见面主流转城邦。gameplay 侧新增 `GetGhostPlayerDebugList` / `RestoreGhostPlayerAsMajor` / `FoundCityForGhostPlayer` / `RemoveGhostPlayerByKillingUnits` / `ConvertUnmetMajorGhostsToCityState`，入口授权新增 `debug_panel = true`（其它 mod 的 manual 仍拦）。桩测试 `.harness/ghost_debug_panel_test.lua` 31 项通过（列表字段 / 面板城邦化 / 手动仍拦 / 原身份复原 / 自动选址建城 / 杀单位移除 / 救档批量）。仍需实机：选中高亮、按钮置灰、救档结果。 |
+
+| **2026-10-26 恢复 A 方案：主流幽灵城邦化** | `[桩验证通过]` 现象：`Lua.log` 里 `major ghost conversion disabled by switch` + `converted-to-city-state=0`，开局 / 首城自动 / 手动 API 三条路全关，面板入口也未注册。处置：只恢复“本地玩家建第一座城自动批量”这一个入口（`GHOST_AUTO_CONVERT_ON_FIRST_CITY=true`），手动入口保持拦截（`GHOST_ALLOW_MANUAL_MAJOR_TO_CITY_STATE=false`），开局阶段仍关。回归桩 `.harness/ghost_citystate_entry_test.lua`：29 项通过（手动拦截 / 自动放行 / 见面跳过 / 只做一次 / 全失败不落标记）。仍需实机：一局里建首城后看 `首城自动城邦化结果：converted=N`。 |
 
 ## 4. WorldBuilder（地图编辑器）接口
 
