@@ -2711,3 +2711,28 @@ bash devs/BasilissaModMiscTools/Tools/sweep.sh      # 一条命令跑完全部�
 `ExposedMembers.ModMiscToolUI.*` 可能还挂着**上一局上下文**的函数对象，调用它就会炸；
 而文件作用域一抛错，该文件后面的 `ExposeUIAPI()` 就不再执行。修法在调用方：跨上下文一律
 `pcall`，文件作用域那一段整块 `pcall`。
+
+### 19.36 单位类型索引 + 间谍行动查询（2026-10-26，**桩验证，待实机**）
+
+给 Plana and Arona 的“间谍在干什么”面板补两个辅助函数，顺手修掉索引本身的三个坑：
+
+* `ModTool.lua → allUnitsTypeTable`（`allUnitsTypeTable[playerID][unitType][unitID] = unitData`）：
+  - 原 `InitializeAllUnitsTypeTable` 把**两层表当一层**遍历（`for playerID, unitID in pairs(allUnitData)`），
+    且**没有任何调用点** ⇒ 读档后索引恒为空。现改为两层遍历、跳过 `removed`，并在
+    `Initialize()` 里 `LoadData()` 之后调用（原地清空重建，`ExposedMembers` 拿到的引用不变）。
+  - 索引原来只写不删：死亡/伤害 >= 100/离场/升级换 ID 的单位会永远留在桶里（读的人会看到尸体）。
+    现在 `UnitDeathHandler` 与 `RefreshUnitData` 的三条提前返回都调 `RemoveUnitFromTypeTable`，
+    `WriteUnitDataToTypeTable` 自身也拒绝写入 `removed == true`。
+  - `removed` 改为**显式写 false**：之前只有 `true`/`nil`，外部 `unitData.removed == false` 恒为假
+    （Plana and Arona 的间谍列表就是这么被筛空的）。
+  - 坏档防御：`allUnitData` 里混进非表数据时跳过，不抛错。
+* `ModTool_Support_UI.lua → GetSpyOperations(playerID, unitID)`：取数与基座
+  `UnitPanel.lua → ReadCustomUnitStats` 的 Espionage 段一致；间谍判定用
+  `GameInfo.Units[type].Spy == true`（不写死 `'UNIT_SPY'`，自定义/复制间谍单位也认）。
+  返回 `operationIndex, 剩余回合, 总回合`；不是间谍 / 非 `ACTIVITY_OPERATION` / `GetSpyOperation()=-1`
+  一律 `nil, nil, nil`。经 `ExposedMembers.ModMiscToolUI.GetSpyOperations` 暴露。
+
+**桩验证**：`.harness/unit_type_table_test.lua` 35 项全过（含读档重建幂等、坏档跳过、
+升级换 ID、自定义间谍单位）。另做 4 组变异验证（回退 `removed` 写法 / 去掉死亡摘除 /
+把重建改回一层遍历 / 间谍判定写死 `UNIT_SPY`），分别被 1–3 项用例抓到 ⇒ 用例不是空转。
+实机待验：读档后首批间谍是否立刻出现在 `allUnitsTypeTable` 里。

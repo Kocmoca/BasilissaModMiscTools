@@ -187,6 +187,8 @@ ExposedMembers.ModMiscToolUI.IsVassalCustomVassalEnabledUI = IsVassalCustomVassa
 ExposedMembers.ModMiscToolUI.GetCityProductionHashUI = GetCityProductionHashUI
 ExposedMembers.ModMiscToolUI.GetCityProductionInfoUI = GetCityProductionInfoUI
 ExposedMembers.ModMiscToolUI.GetUnsettledCityStatePlayerIDsUI = GetUnsettledCityStatePlayerIDsUI
+-- 间谍正在执行的行动（实现在 ModTool_Support_UI.lua）：返回 operationIndex, 剩余回合, 总回合
+ExposedMembers.ModMiscToolUI.GetSpyOperations = GetSpyOperations
 local GHOST_CITY_STATE_CUSTOM_DATA_KEY = "ModMiscToolCityStateCount"
 local GHOST_MAJOR_PLAYER_CUSTOM_DATA_KEY = "ModMiscToolMajorPlayerCount"
 -- 前端 hook 没记下数量时的兜底：按标准图默认的城邦数量保留在图上，多出来的当幽灵

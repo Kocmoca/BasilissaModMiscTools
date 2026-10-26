@@ -201,6 +201,35 @@ function GetUnitMoveToPathUI(playerID, unitID, plotIndex)
 	return plots
 end
 
+-- ===========================================================================
+-- 间谍（特工）正在执行的行动：给“间谍在干什么”这类面板用
+--   （Plana and Arona → AssistantTopics.lua 通过 ExposedMembers.ModMiscToolUI 调）
+--
+-- 取数逻辑与原版 `UnitPanel.lua → ReadCustomUnitStats` 的 Espionage 段逐行对齐：
+--   行动类型 = ACTIVITY_OPERATION → GetSpyOperation()（-1 = 没在干活）→
+--   剩余回合 = GetSpyOperationEndTurn() - Game.GetCurrentGameTurn()；
+--   总回合 = UnitManager.GetTimeToComplete(operationIndex, unit)。
+-- 与原版唯一的差别是**间谍判定**：原版用 `GameInfo.Units[type].Spy == true`，
+--   这里也照抄，而不是写死 'UNIT_SPY'（复制/自定义间谍单位、其它规则集都能认）。
+--
+-- 返回：spyOperation (UnitOperations.Index), spyRemainingTurns, spyTotalTurns
+--       不是间谍 / 没在执行行动 ⇒ nil, nil, nil
+-- ===========================================================================
+function GetSpyOperations(playerID, unitID)
+	local unit = UnitManager.GetUnit(playerID, unitID)
+	if unit == nil then return nil, nil, nil end
+	local unitTypeIndex = unit:GetType()
+	local unitInfo = unitTypeIndex ~= nil and GameInfo.Units[unitTypeIndex] or nil
+	if unitInfo == nil or unitInfo.Spy ~= true then return nil, nil, nil end
+	local activityType = UnitManager.GetActivityType(unit)
+	if activityType ~= ActivityTypes.ACTIVITY_OPERATION then return nil, nil, nil end
+	local spyOperation = unit:GetSpyOperation()
+	if spyOperation == nil or spyOperation == -1 then return nil, nil, nil end
+	local spyRemainingTurns = unit:GetSpyOperationEndTurn() - Game.GetCurrentGameTurn()
+	local spyTotalTurns = UnitManager.GetTimeToComplete(spyOperation, unit)
+	return spyOperation, spyRemainingTurns, spyTotalTurns
+end
+
 
 function ShowLoadWarningPopup(messageKey)
     local message = Locale.Lookup(messageKey or "LOC_DIPLOMACY_REWORK_VASSAL_CONFLICT")

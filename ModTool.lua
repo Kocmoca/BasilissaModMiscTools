@@ -1,6 +1,6 @@
 -- 构建标记：用来在 Lua.log 里确认“游戏里跑的到底是哪一版”，排查加载类问题必备。
 -- 三个阶段各打一次（gameplay 脚本 / InGame UI / 前端 hook），日志停在哪一步一目了然。
-MODMISC_BUILD_TAG = "2026-10-15-RELEASE"   -- 发布态（此前 A：两类幽灵都按 mod 申报设上限）
+MODMISC_BUILD_TAG = "2026-10-26-A"   -- 单位类型索引 + 间谍行动查询（桩验证，待实机）
 print("[ModMiscTool] gameplay scripts loading, build=" .. tostring(MODMISC_BUILD_TAG))
 
 include('ModTool_Support_Functions.lua')
@@ -19,6 +19,12 @@ include('ModTool_TurnEventHandlers.lua')
 local playerCitiesInfo = {}
 local defeatedPlayers = {}
 local allUnitData = {}
+-- 按单位类型（UnitType 文本，如 'UNIT_SPY'）建的**派生索引**：
+--   allUnitsTypeTable[playerID][unitTypeText][unitID] = unitData（与 allUnitData 同一张子表）
+-- 只服务“按类型找单位”的查询（目前是间谍列表）。它**不落盘**：读档后由
+-- InitializeAllUnitsTypeTable() 从 allUnitData 全量重建。写入口只有 WriteUnitDataToTypeTable，
+-- 死单位/离场单位必须在 UnitDeathHandler / RefreshUnitData 里同步摘掉，否则索引里会留尸体。
+local allUnitsTypeTable = {}
 local playerPlotsInfo = {}
 local playerAssetsInfo = {}
 
@@ -58,6 +64,65 @@ function InitializeBuildingsOfDistrict()
 			table.insert(buildingsOfDistrict[districtType], buildingType)
 		end
 	end
+end
+
+-- ===========================================================================
+-- 单位类型索引（allUnitsTypeTable）
+--
+-- 需求：外部 mod（Plana and Arona 的“间谍在干什么”面板）要按类型拿单位，直接翻
+--   allUnitData[playerID] 得按 unitID 逐个看 unitData.unitType，不方便。
+-- 约定：
+--   * 只存**活单位**（unitData.removed ~= true）；
+--   * 值就是 allUnitData 里那张子表（同一份引用，读写都一致，不复制）；
+--   * 索引不落盘，读档后重建（见 Initialize 里的 InitializeAllUnitsTypeTable）。
+-- ===========================================================================
+
+function WriteUnitDataToTypeTable(playerID, unitID)
+	local playerUnitData = allUnitData[playerID]
+	if type(playerUnitData) ~= 'table' then return false end   -- 坏档防御：存档里的脏数据不炸索引
+	local unitData = playerUnitData[unitID]
+	if type(unitData) ~= 'table' then return false end
+	local unitTypeText = unitData.unitType
+	if unitTypeText == nil then return false end
+	-- 死单位不进索引；之前进过的顺手摘掉（战斗死亡、晋升换 ID 都会走到这里）
+	if unitData.removed == true then
+		RemoveUnitFromTypeTable(playerID, unitID)
+		return false
+	end
+	if allUnitsTypeTable[playerID] == nil then allUnitsTypeTable[playerID] = {} end
+	if allUnitsTypeTable[playerID][unitTypeText] == nil then allUnitsTypeTable[playerID][unitTypeText] = {} end
+	allUnitsTypeTable[playerID][unitTypeText][unitID] = unitData
+	return true
+end
+
+function RemoveUnitFromTypeTable(playerID, unitID)
+	local playerTypeTable = allUnitsTypeTable[playerID]
+	if playerTypeTable == nil then return end
+	-- 扫全部类型桶：单位升级换了类型、或 unitData 里类型文本缺失时，也能摘干净
+	for _, typeTable in pairs(playerTypeTable) do
+		if typeTable[unitID] ~= nil then typeTable[unitID] = nil end
+	end
+end
+
+-- 读档后全量重建：allUnitsTypeTable 不随存档保存，只由 allUnitData 派生。
+-- 注意两点：① 原地清空（ExposedMembers 里挂的是这个表的引用，重新赋值会让外部拿到旧表）；
+--           ② 跳过 removed 的单位（历史记录仍留在 allUnitData 里，供事件查询用）。
+function InitializeAllUnitsTypeTable()
+	for playerID in pairs(allUnitsTypeTable) do
+		allUnitsTypeTable[playerID] = nil
+	end
+	local unitCount = 0
+	for playerID, playerUnitData in pairs(allUnitData) do
+		if type(playerUnitData) == 'table' then
+			for unitID, unitData in pairs(playerUnitData) do
+				if type(unitData) == 'table' and unitData.removed ~= true
+					and WriteUnitDataToTypeTable(playerID, unitID) then
+					unitCount = unitCount + 1
+				end
+			end
+		end
+	end
+	print("[ModMiscTool][UnitTypeTable] 重建完成：活单位=" .. tostring(unitCount))
 end
 
 --city data record
@@ -148,7 +213,11 @@ function RefreshUnitData(playerID, unitID)
 	allUnitData[playerID][unitID] = {}
 	local unitData = allUnitData[playerID][unitID]
 	local unit = Players[playerID]:GetUnits():FindID(unitID)
-	if unit == nil then unitData.removed = true return end
+	if unit == nil then
+		unitData.removed = true
+		RemoveUnitFromTypeTable(playerID, unitID)
+		return
+	end
 	if unitData.removed == true then return end
 	if unitData.unitType == nil then
 		local unitTypeIndex = unit:GetType()
@@ -156,7 +225,11 @@ function RefreshUnitData(playerID, unitID)
 		unitData.promotionClass = GameInfo.Units[unitTypeIndex].PromotionClass
 	end
 	local plotIndex, iX, iY = GetUnitPlotIndexAndCoordinate(unit)
-	if plotIndex == nil then unitData.removed = true return end
+	if plotIndex == nil then
+		unitData.removed = true
+		RemoveUnitFromTypeTable(playerID, unitID)
+		return
+	end
 	-- 【实机 2026-10-06】UI 侧的 ExposedMembers 是**后发布**的：gameplay 早一步调用就会
 	-- “function expected instead of nil”（ModTool.lua:159）。所以这里防御式调用，拿不到就当没经验。
 	local expPoint, promotions = 0, nil
@@ -178,7 +251,10 @@ function RefreshUnitData(playerID, unitID)
 	unitData.promotions = promotions
 	unitData.militaryFormation = unit:GetMilitaryFormation()
 	unitData.damage = unit:GetDamage()
-	if unitData.damage >= 100 then unitData.removed = true end
+	-- 显式写 false：外部 mod 用 `unitData.removed == false` 判“活着”（之前只有 true/nil，
+	-- 那种写法会永远判假 —— Plana and Arona 的间谍列表就踩过这个坑）
+	unitData.removed = unitData.damage >= 100
+	WriteUnitDataToTypeTable(playerID, unitID)
 end
 
 function OnUnitRemovedFromMap(playerID, unitID)
@@ -191,6 +267,8 @@ function UnitDeathHandler(playerID, unitID)
 	local unitData = allUnitData[playerID][unitID] or {}
 	unitData.removed = true
 	allUnitData[playerID][unitID] = unitData
+	-- 索引只放活单位：死亡/被移除立刻出表（allUnitData 里的历史记录保留）
+	RemoveUnitFromTypeTable(playerID, unitID)
 end
 
 function OnUnitPromoted(playerID, unitID)
@@ -525,6 +603,8 @@ end
 
 function Initialize()
 	LoadData()
+	-- 索引不落盘：读档后从 allUnitData 重建（新局 allUnitData 为空，等事件增量写入）
+	InitializeAllUnitsTypeTable()
 	InitializeBuildingsOfDistrict()
 	-- 【自检】城邦身份合规：修掉“城邦玩家 + 主流领袖”这类会让官方城邦面板打不开的状态
 	pcall(RepairCityStatePlayerIdentities)
@@ -641,6 +721,8 @@ function Initialize()
 	ExposedMembers.ModMiscToolScript.IsGhostOrFormerGhost = IsGhostOrFormerGhost
 	ExposedMembers.ModMiscToolScript.GetKnownGhostPlayerIDs = GetKnownGhostPlayerIDs
 	ExposedMembers.ModMiscToolScript.allUnitData = allUnitData
+	-- 派生索引：allUnitsTypeTable[playerID][unitTypeText][unitID] = unitData（只含活单位）
+	ExposedMembers.ModMiscToolScript.allUnitsTypeTable = allUnitsTypeTable
 	ExposedMembers.ModMiscToolScript.defeatedPlayers = defeatedPlayers
 	ExposedMembers.ModMiscToolScript.playerCitiesInfo = playerCitiesInfo
 	ExposedMembers.ModMiscToolScript.buildingsOfDistrict = buildingsOfDistrict

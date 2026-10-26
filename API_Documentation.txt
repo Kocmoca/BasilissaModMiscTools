@@ -212,6 +212,13 @@ ModMiscToolScript.allUnitData
         removed, upgradeTo, upgradeFrom, combatDeathX, combatDeathY }
   说明：所有单位的运行时数据缓存，由 ModTool.lua 维护
 
+ModMiscToolScript.allUnitsTypeTable
+  类型：table  结构：allUnitsTypeTable[playerID][unitTypeText][unitID] = unitData
+        （unitTypeText 如 'UNIT_SPY'；unitData 就是 allUnitData 里那张子表，同一份引用）
+  说明：allUnitData 的**派生索引**，只收活单位（removed ~= true），供“按类型找单位”用。
+        不随存档落盘 —— 读档后由 InitializeAllUnitsTypeTable() 从 allUnitData 重建；
+        单位死亡/离场/升级换 ID 时同步摘除。新局开局索引为空，随单位事件增量写入。
+
 ModMiscToolScript.defeatedPlayers
   类型：table (array)  元素：playerID (number)
   说明：已被击败的玩家ID列表
@@ -1677,6 +1684,14 @@ GetUnitIconAndName(unitIndex)
 CanUnitTypeGetExp(unitIndex)
   返回：boolean
   说明：判断该单位类型是否可获得经验值（仅在UI环境可用）
+
+GetSpyOperations(playerID, unitID)
+  返回：spyOperation (number), spyRemainingTurns (number), spyTotalTurns (number)
+        —— 不是间谍、没在执行行动（ACTIVITY_OPERATION）或 GetSpyOperation() = -1 时返回 nil, nil, nil
+  说明：间谍正在执行的行动与剩余/总回合（仅在UI环境可用）。
+        取数与基座 UnitPanel.lua 的 Espionage 段一致：GetSpyOperation() /
+        GetSpyOperationEndTurn() - Game.GetCurrentGameTurn() / UnitManager.GetTimeToComplete()。
+        间谍判定用 GameInfo.Units[type].Spy == true（不写死 'UNIT_SPY'）。
 
 ------------------------------------------------------------------------------
 ### 3.9 跨存档存储（ModMiscStore）
