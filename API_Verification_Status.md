@@ -17,7 +17,7 @@
 
 | # | 接口 / 方法 | 状态 | 证据与备注 |
 |---|---|---|---|
-| 1 | `PlayerManager():AddPlayer()` 运行时新增玩家 | `[已验证失败]` | **原生闪退** `signal 11 SIGSEGV … GameCore::AI::Diplomatic::GetDiplomaticStateIndex(PlayerTypes) const+12`。运行时加玩家会让 AI 外交子系统空指针；此后也绝不能传 `-1` 玩家 id。<br>**2026-10-28 补充（已走到终点）**：先按玩家生命周期补了 `WorldBuilderAPI.InitializePlayer` / `SetPlayerSlotStatus` / `AddPlayerAndInitialize`（接口来自官方调试面板 `Debug/WorldBuilder.ltp`，见 §4 #26b~26e）。<br>**同日实机：补了初始化照样闪退在同一符号** ⇒ 空指针来自引擎**开局建玩家时**才构造的 AI 外交子系统，不是「玩家对象没初始化」，Lua 侧没有接口能补。**结论：运行时造玩家不可行，此路关闭**（测试面板入口重新关闭、按钮改 Hidden）。详见 §19.37。 |
+| 1 | `PlayerManager():AddPlayer()` 运行时新增玩家 | `[已验证失败]` | **原生闪退** `signal 11 SIGSEGV … GameCore::AI::Diplomatic::GetDiplomaticStateIndex(PlayerTypes) const+12`。运行时加玩家会让 AI 外交子系统空指针；此后也绝不能传 `-1` 玩家 id。<br>**2026-10-28 补充（已走到终点）**：先按玩家生命周期补了 `WorldBuilderAPI.InitializePlayer` / `SetPlayerSlotStatus` / `AddPlayerAndInitialize`（接口来自官方调试面板 `Debug/WorldBuilder.ltp`，见 §4 #26b~26e）。<br>**同日实机：补了初始化照样闪退在同一符号** ⇒ 空指针来自引擎**开局建玩家时**才构造的 AI 外交子系统，不是「玩家对象没初始化」，Lua 侧没有接口能补。**结论：运行时造玩家不可行，此路关闭**（测试面板入口重新关闭、按钮改 Hidden）。完整 tombstone（`fault addr 0x10`、`Thread-7`、符号 `+12`）与判定见 §19.37。 |
 | 2 | `PlayerConfigurations[slot]` 的 `SetCivilizationTypeName` / `SetLeaderTypeName` / `SetIsMinorCiv` / `SetSlotStatus` | `[部分可用]` | 调用成功、**回读也正确**，但引擎**不会**因此生成玩家对象（见第 3 条）。仅能改“配置”，不能造“玩家”。 |
 | 3 | `Players[slot]:StartCityState()`（运行时补建槽位，抄 EXera 的 `CreateCityStatePlayer`） | `[已验证失败]` | 日志 `slot N configured but not created by engine`：`Players[slot]` 恒为 `nil`。城邦、主要文明两条路都试过，结论一致。EXera 里 `CreateCityStatePlayer` / `ReuseExistingCityState` **全工程零调用点（死代码）**，它真正在用的是 `ConvertCityToCityState`（转换已有玩家的城市，从不创建玩家）。 |
 | 4 | `UnitManager.InitUnit(playerID, 'UNIT_SETTLER', -1, -1)` 造地图外单位 | `[已验证可用]` | 日志 `offMapSettlerCreated=true`；幽灵玩家全程有单位，不会被判灭亡。 |
@@ -2798,7 +2798,25 @@ bash devs/BasilissaModMiscTools/Tools/sweep.sh      # 一条命令跑完全部�
     GameCore::AI::Diplomatic::GetDiplomaticStateIndex(PlayerTypes) const
 
 也就是说：调用顺序、槽位状态、`InitializePlayer`、两个探针都按官方调试面板的做法走了，
-**空指针依旧**。结论：
+**空指针依旧**。
+
+原始证据（授权者机器 tombstone，2026-10-28 15:12）：
+
+```
+signal 11 (SIGSEGV), code 1 (SEGV_MAPERR), fault addr 0x0000000000000010
+Cause: null pointer dereference
+pid: 3471, tid: 3639, name: Thread-7  >>> com.aspyr.civvi <<<
+backtrace:
+  #00 pc 0000000001400c64  libGameCore_XP2_FinalRelease.so
+      (GameCore::AI::Diplomatic::GetDiplomaticStateIndex(GameCore::PlayerTypes) const+12)
+```
+
+读数：`fault addr = 0x10` ⇒ 取 `this` 之后某个成员指针为 0 再按 +0x10 偏移读；`x1 = 0`
+（传进 `GetDiplomaticStateIndex` 的玩家参数是 0）。**崩溃线程是 `Thread-7` 而不是 UI 主线程**
+—— 说明这次不是界面查外交查崩的，而是**引擎工作线程跑 AI 回合**时走进外交子系统才炸，
+进一步印证「缺的是 AI 侧对象」而不是「玩家对象没初始化」。
+
+结论：
 
 * 缺的不是「玩家对象初始化」，而是引擎**开局建玩家时**才构造的那套 AI 外交子系统；
   `InitializePlayer` 建的是玩家本体，补不了 AI 侧对象；
