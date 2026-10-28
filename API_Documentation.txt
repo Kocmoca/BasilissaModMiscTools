@@ -384,19 +384,25 @@ PlayerManager（文明 / 领袖 / 时代 / 金币 / 信仰 / 科技 / 市政 / �
   SetPlayerStartingPosition / ClearPlayerStartingPosition / ClearStartingPosition
   GetStartPositionInfo / GetStartPositionPlayer
 
-—— 玩家生命周期：AddPlayer 之后必须补 InitializePlayer（2026-10-28 补）——
+—— 玩家生命周期：AddPlayer 之后补 InitializePlayer（2026-10-28 补，**同日实机否掉**）——
 
   原版地图编辑器的玩家是三段式：AddPlayer（建槽位）→ SetPlayerLeader（给身份）
   → InitializePlayer（把玩家的运行期对象建出来）。编辑器里第三步由 SetPlayerLeader
-  顺带完成，所以原版 Lua 从不显式调用它；直接调 AddPlayer 而不初始化，玩家只有
-  配置没有运行期对象，进对局后引擎 AI 外交子系统空指针闪退：
+  顺带完成，所以原版 Lua 从不显式调用它。
+
+  ⛔ **实机结论：这条路走不通。** 补上 InitializePlayer 之后，运行时新增玩家
+     **仍然原生闪退在同一符号**：
 
       signal 11 SIGSEGV …
       GameCore::AI::Diplomatic::GetDiplomaticStateIndex(PlayerTypes) const
 
-  接口本身早就存在（官方调试面板 Debug/WorldBuilder.ltp 的
+     说明空指针来自引擎**开局建玩家时**才构造的 AI 外交子系统，不是「玩家对象没初始化」。
+     所以下面的接口不构成“运行时造玩家”的方案，**不要再用来在对局中加玩家**；
+     要更多玩家只有超编开局 + 幽灵玩家（§2.7）那条路。
+
+  接口本身确实存在（官方调试面板 Debug/WorldBuilder.ltp 的
   「Initialize Player As Human / As AI」就是 SetPlayerSlotStatus + InitializePlayer），
-  本轮把它补成对外 API。推荐直接用一站式入口：
+  调用顺序与防护都是对的（桩测试 37 项通过），保留下来给“换个思路复测”用：
 
   AddPlayerAndInitialize(isAI, leaderType, civType, civLevel, meetEveryone)
     返回：一张表（跨 context 多返回值不可靠，所以只回一个 table）
@@ -421,10 +427,10 @@ PlayerManager（文明 / 领袖 / 时代 / 金币 / 信仰 / 科技 / 市政 / �
   是**历史名**，现行 SlotStatus 表里没有（传 nil 等于没设），别照抄；
   WorldBuilderAPI.GetPlayerSlotStatusValue(isAI) 会按 isAI 映射到 SS_COMPUTER / SS_TAKEN。
 
-  ⚠️ 未实机验证：InitializePlayer 是否真的会把 AI 外交子系统一起建起来，只有实机
-     才能确认。判据看测试面板「添加玩家」的返回与日志：wbInit / engineInit 任一为真
-     ⇒ 初始化成立；若之后仍然闪退在同一符号，说明缺的是 AI 侧对象（引擎建玩家时构造，
-     Lua 无接口），只能继续走幽灵玩家路线。
+  实机记录（2026-10-28，测试面板「添加玩家（含初始化）」）：点下去直接闪退在
+  GameCore::AI::Diplomatic::GetDiplomaticStateIndex ⇒ 初始化探针即使为真也挡不住崩溃。
+  该按钮已改成 Hidden="1"，测试面板侧栏入口也已关闭（开关 MODMISC_WB_TEST_ENTRY_ENABLED
+  = false）。完整判定见 API_Verification_Status.md §19.37。
   SetRandomMajorStartingPosition / SetRandomMinorStartingPosition
   SetLeaderStartingPosition / SetCivilizationStartingPosition
 
@@ -1504,10 +1510,13 @@ DB 桩按 Vassal System 的声明 SQL 喂行；自选 4 主流 + 6 城邦、`max
 
 ### 3.0 关于 WorldBuilder 测试面板（开发用；**发布态只关侧栏入口**）
 
-> **当前状态（2026-10-28 授权者）**：WorldBuilder 调试面板**已重新启用**
-> （`UI/WorldBuilderTestPanel.lua` 的 `MODMISC_WB_TEST_ENTRY_ENABLED = true`，
-> `modinfo` 的 `AddUserInterfaces` 一直在注册）。本轮用途：验证「添加玩家 + 玩家初始化」。
-> 要收起来：把开关改回 `false`（面板仍旧加载，只是侧栏没有入口）。
+> **当前状态（2026-10-28 授权者）**：WorldBuilder 调试面板**入口已关闭**
+> （`UI/WorldBuilderTestPanel.lua` 的 `MODMISC_WB_TEST_ENTRY_ENABLED = false`；
+> `modinfo` 的 `AddUserInterfaces` 一直注册，面板本体仍加载，只是侧栏没有入口）。
+> 关闭原因：本轮验证的「运行时添加玩家 + InitializePlayer」被实机否掉（补了初始化
+> 仍然闪退在 `GameCore::AI::Diplomatic::GetDiplomaticStateIndex`），
+> 结论见 `API_Verification_Status.md §19.37`。
+> 要再进来看幽灵状态：把开关改回 `true`；但**别再点「添加玩家」**（已 `Hidden="1"`）。
 
 `UI/WorldBuilderTestPanel.xml/.lua` 是开发期的测试面板（选择器 + 建城/建单位/放开拓者/
 幽灵相关按钮 + 本轮新增的「添加玩家（含初始化）」）。
@@ -1518,7 +1527,8 @@ DB 桩按 Vassal System 的声明 SQL 喂行；自选 4 主流 + 6 城邦、`max
 |---|---|---|
 | 删除 | 补建幽灵槽位、设时代 | `API_Verification_Status.md` #3（`Players[slot]` 恒 nil）、#48（对局内改年代不生效） |
 | 隐藏（`Hidden="1"`，代码保留） | 激活幽灵、回收幽灵、更改文明/领袖、建城、建单位、放开拓者、清起始点、金币、信仰、全图、玩家槽位统计 | 均为已验证可用的通道 / 纯读诊断；要复测去掉 XML 里的 `Hidden` 即可 |
-| 可见 | 添加玩家（含初始化）、删除玩家、城邦化选中玩家、主流幽灵全部城邦化、修复城邦身份、见面的幽灵转回主流、外交压制自检、幽灵删除方式、提示信息 | 未验证 / 本轮要测 / 互斥清理入口 |
+| 隐藏（实机否掉，代码保留） | 添加玩家（含初始化） | §19.37：补了 `InitializePlayer` 仍闪退在 AI 外交子系统 ⇒ 运行时造玩家不可行 |
+| 可见 | 删除玩家、城邦化选中玩家、主流幽灵全部城邦化、修复城邦身份、见面的幽灵转回主流、外交压制自检、幽灵删除方式、提示信息 | 未验证 / 互斥清理入口 |
 
 看幽灵状态的两个入口（都在这个面板里）：
   * **玩家列表**：每个玩家条目直接标出「主流幽灵 / 城邦幽灵」（走

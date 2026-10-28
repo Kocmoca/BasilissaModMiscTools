@@ -25,11 +25,13 @@
 --   WorldBuilder.CityManager():Create(player, plot)
 --   WorldBuilder.MapManager():SetTerrainType(plot, terrainIndex)
 --
--- 【2026-10-28 补】玩家生命周期少了 InitializePlayer 这一步：
---   原版地图编辑器 AddPlayer 之后由 SetPlayerLeader 顺带完成初始化，直接调
---   AddPlayer 就拿不到运行期对象（AI 外交子系统没建），进对局会原生闪退。
---   现在提供 API.InitializePlayer / API.SetPlayerSlotStatus，
---   以及一站式 API.AddPlayerAndInitialize(...)（见下面「玩家初始化」一节）。
+-- 【2026-10-28 补 / 同日实机否掉】玩家生命周期补了 InitializePlayer 这一步
+--   （原版地图编辑器 AddPlayer 之后由 SetPlayerLeader 顺带完成初始化）。
+--   实机结论：补了初始化**仍然原生闪退**在 AI 外交子系统
+--   （GameCore::AI::Diplomatic::GetDiplomaticStateIndex）⇒ 运行时造玩家这条路不可行，
+--   缺的是引擎开局建玩家时才构造的 AI 对象，Lua 侧没有接口能补。
+--   接口保留（调用顺序与防护都对，换思路复测可直接复用），但**不要再用来在运行中加玩家**。
+--   细节见 API_Verification_Status.md §19.37 / #1。
 -- ===========================================================================
 
 WorldBuilderAPI = WorldBuilderAPI or {}
@@ -74,10 +76,13 @@ end
 -- SetPlayerSlotStatus + InitializePlayer 这个组合（原版 Lua 从不显式调用它，
 -- 因为编辑器里的 SetPlayerLeader 会顺带完成初始化）。
 --
--- 【为什么必须补】只 AddPlayer 不 InitializePlayer，玩家只有配置没有运行期对象，
+-- 【为什么当时以为要补】只 AddPlayer 不 InitializePlayer，玩家只有配置没有运行期对象，
 -- 进对局后引擎 AI 外交子系统空指针闪退：
 --   signal 11 SIGSEGV … GameCore::AI::Diplomatic::GetDiplomaticStateIndex(PlayerTypes) const
--- （证据见 API_Verification_Status.md 第 1 条）。
+--
+-- ⚠️ **2026-10-28 实机：补了这一步照样闪退在同一符号** ⇒ 空指针来自引擎开局建玩家时
+--    构造的 AI 外交对象，不是「玩家没初始化」。本组接口因此不构成运行时造玩家的方案
+--    （证据见 API_Verification_Status.md §19.37 / 第 1 条）。
 -- ---------------------------------------------------------------------------
 
 -- 引擎的布尔返回值有时是 0/1，这里统一归一化（只把明确的真值算真）

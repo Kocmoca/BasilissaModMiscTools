@@ -17,7 +17,7 @@
 
 | # | 接口 / 方法 | 状态 | 证据与备注 |
 |---|---|---|---|
-| 1 | `PlayerManager():AddPlayer()` 运行时新增玩家 | `[已验证失败]` | **原生闪退** `signal 11 SIGSEGV … GameCore::AI::Diplomatic::GetDiplomaticStateIndex(PlayerTypes) const+12`。运行时加玩家会让 AI 外交子系统空指针；此后也绝不能传 `-1` 玩家 id。<br>**2026-10-28 补充**：查明缺的是玩家生命周期最后一步 —— 只 `AddPlayer` 不 `InitializePlayer`，玩家只有配置没有运行期对象。现已补 `WorldBuilderAPI.InitializePlayer` / `SetPlayerSlotStatus` / `AddPlayerAndInitialize`（见 §4 的 #26b~26e），接口本身来自官方调试面板 `Debug/WorldBuilder.ltp`。**是否真能消除这条崩溃仍待实机**（桩测试只证明调用顺序与防护，证明不了引擎内部状态）。 |
+| 1 | `PlayerManager():AddPlayer()` 运行时新增玩家 | `[已验证失败]` | **原生闪退** `signal 11 SIGSEGV … GameCore::AI::Diplomatic::GetDiplomaticStateIndex(PlayerTypes) const+12`。运行时加玩家会让 AI 外交子系统空指针；此后也绝不能传 `-1` 玩家 id。<br>**2026-10-28 补充（已走到终点）**：先按玩家生命周期补了 `WorldBuilderAPI.InitializePlayer` / `SetPlayerSlotStatus` / `AddPlayerAndInitialize`（接口来自官方调试面板 `Debug/WorldBuilder.ltp`，见 §4 #26b~26e）。<br>**同日实机：补了初始化照样闪退在同一符号** ⇒ 空指针来自引擎**开局建玩家时**才构造的 AI 外交子系统，不是「玩家对象没初始化」，Lua 侧没有接口能补。**结论：运行时造玩家不可行，此路关闭**（测试面板入口重新关闭、按钮改 Hidden）。详见 §19.37。 |
 | 2 | `PlayerConfigurations[slot]` 的 `SetCivilizationTypeName` / `SetLeaderTypeName` / `SetIsMinorCiv` / `SetSlotStatus` | `[部分可用]` | 调用成功、**回读也正确**，但引擎**不会**因此生成玩家对象（见第 3 条）。仅能改“配置”，不能造“玩家”。 |
 | 3 | `Players[slot]:StartCityState()`（运行时补建槽位，抄 EXera 的 `CreateCityStatePlayer`） | `[已验证失败]` | 日志 `slot N configured but not created by engine`：`Players[slot]` 恒为 `nil`。城邦、主要文明两条路都试过，结论一致。EXera 里 `CreateCityStatePlayer` / `ReuseExistingCityState` **全工程零调用点（死代码）**，它真正在用的是 `ConvertCityToCityState`（转换已有玩家的城市，从不创建玩家）。 |
 | 4 | `UnitManager.InitUnit(playerID, 'UNIT_SETTLER', -1, -1)` 造地图外单位 | `[已验证可用]` | 日志 `offMapSettlerCreated=true`；幽灵玩家全程有单位，不会被判灭亡。 |
@@ -246,9 +246,9 @@ RemoveAllData()        -- 清空整张存储（返回删掉的键数）
 |---|---|---|---|
 | 26 | `WorldBuilder.IsActive()` / `WorldBuilder.<X>Manager():Method()`（gameplay 层直调） | `[已验证可用]` | 参数顺序与原版一致；`ModTool_WorldBuilderAPI.lua` 里 82 个封装全部直调，不做探测。 |
 | 27 | 在 UI 层做 WorldBuilder API 存在性探测 | `[已验证失败]` | 早期误判的根源：UI 层看不到这些接口，于是“探测不到 → 以为不可用”。已全部移除。 |
-| 26b | `WorldBuilder.PlayerManager():InitializePlayer(playerID)` | `[接口存在·待实机]` | **玩家生命周期的最后一步**：`AddPlayer` 只建槽位/配置，`InitializePlayer` 才把运行期对象建出来。出处：社区 API 表（Civ VI Modding Companion `Objects` 表，`A-WorldBuilderPlayerManagerInitializePlayer`，ACTION / gameplay 上下文）+ 官方调试面板 `Civ6PC/Debug/WorldBuilder.ltp:27-41`（「Initialize Player As Human / As AI」）。**原版 Lua 从不显式调用它** —— 编辑器里由 `SetPlayerLeader` 顺带完成，所以直接 `AddPlayer` 就漏了这一步。参数只有 `playerID`（调试面板里就是 `g_PlacementSettings.Player`）。 |
+| 26b | `WorldBuilder.PlayerManager():InitializePlayer(playerID)` | `[接口存在·不能解决问题]` | **玩家生命周期的最后一步**：`AddPlayer` 只建槽位/配置，`InitializePlayer` 才把运行期对象建出来。出处：社区 API 表（Civ VI Modding Companion `Objects` 表，`A-WorldBuilderPlayerManagerInitializePlayer`，ACTION / gameplay 上下文）+ 官方调试面板 `Civ6PC/Debug/WorldBuilder.ltp:27-41`（「Initialize Player As Human / As AI」）。**原版 Lua 从不显式调用它** —— 编辑器里由 `SetPlayerLeader` 顺带完成，所以直接 `AddPlayer` 就漏了这一步。参数只有 `playerID`（调试面板里就是 `g_PlacementSettings.Player`）。<br>**2026-10-28 实机**：调用本身不报错，但**补了它之后运行时加玩家仍然闪退**在 `GetDiplomaticStateIndex` ⇒ 它补的是“玩家对象”，补不了“AI 外交子系统”。 |
 | 26c | `WorldBuilder.PlayerManager():SetPlayerSlotStatus(playerID, slotStatus)` | `[接口存在·待实机]` | 同上出处。⚠️ 调试面板写的是 `SlotStatus.HUMAN` / `SlotStatus.AI` —— 那是**历史名**，现行枚举只有 `SS_OPEN(0)/SS_COMPUTER(1)/SS_CLOSED(2)/SS_TAKEN(3)/SS_OBSERVER(4)`（`Modding Companion` 的 `Enumerations` 表 + 全库 253 处 `SlotStatus.` 用法全是 `SS_*`）。照抄会传 `nil`，本 mod 用 `SS_COMPUTER`（AI）/ `SS_TAKEN`（人类）。编辑器自身从没调用过它（`AddPlayer(isAI)` 已经设好），这里只是保证 `InitializePlayer` 之前槽位状态正确。 |
-| 26d | `WorldBuilderAPI.AddPlayerAndInitialize(...)`（本 mod 封装） | `[桩验证通过·待实机]` | 顺序 `AddPlayer → SetPlayerSlotStatus → SetPlayerLeader → InitializePlayer → 探针`；`AddPlayer` 返回 -1 或抛错时立刻返回、后续接口一个不碰；两个探针（`IsPlayerInitialized` / `Players[id]:IsInitialized()`）任一为真才算成功；可选 `MeetAllAlivePlayers` 双向 `SetHasMet`。回归桩 `.harness/worldbuilder_player_init_test.lua` **37 项通过**。 |
+| 26d | `WorldBuilderAPI.AddPlayerAndInitialize(...)`（本 mod 封装） | `[已验证失败]`（就“运行时加玩家”而言） | 顺序 `AddPlayer → SetPlayerSlotStatus → SetPlayerLeader → InitializePlayer → 探针`；`AddPlayer` 返回 -1 或抛错时立刻返回、后续接口一个不碰；两个探针（`IsPlayerInitialized` / `Players[id]:IsInitialized()`）任一为真才算成功；可选 `MeetAllAlivePlayers` 双向 `SetHasMet`。回归桩 `.harness/worldbuilder_player_init_test.lua` **37 项通过**。<br>**2026-10-28 实机**：面板「添加玩家（含初始化）」点下去直接闪退在 `GameCore::AI::Diplomatic::GetDiplomaticStateIndex` —— 顺序/防护都对，但路线本身不可行。按钮已改 `Hidden="1"`、面板入口已关闭；封装保留仅供换思路复测。 |
 | 26e | `SetPlayerEra` 在普通对局里 | `[已验证失败]` | 见 §13.2 #48。**测试面板的「设时代」按钮已删除**（2026-10-28）。 |
 | 26f | `CreateGhostPlayerFromEmptySlot` / `StartCityState` 补建槽位 | `[已验证失败]` | 见 §1 #3。**测试面板的「补建幽灵槽位」按钮已删除**（2026-10-28）。 |
 
@@ -2742,7 +2742,7 @@ bash devs/BasilissaModMiscTools/Tools/sweep.sh      # 一条命令跑完全部�
 把重建改回一层遍历 / 间谍判定写死 `UNIT_SPY`），分别被 1–3 项用例抓到 ⇒ 用例不是空转。
 实机待验：读档后首批间谍是否立刻出现在 `allUnitsTypeTable` 里。
 
-### 19.37 玩家初始化 + 测试面板整理（2026-10-28，**桩验证，待实机**）
+### 19.37 玩家初始化 + 测试面板整理（2026-10-28，**实机否掉：运行时造玩家不可行**）
 
 授权者要求：「补充上玩家初始化，并重开测试面板，测试面板中已实证可以工作按钮隐藏，
 实证不能工作的移除」。
@@ -2790,8 +2790,33 @@ bash devs/BasilissaModMiscTools/Tools/sweep.sh      # 一条命令跑完全部�
   删掉 4 个只属于已删按钮的键（`SET_ERA` / `CREATE_GHOST` / `GHOST_CREATED` / `GHOST_CREATE_FAILED`）。
   校验脚本：XML 控件 ID 与 Lua `Controls.*` 双向无缺失、三语言键无缺失。
 
-**实机待验清单**（面板「添加玩家（含初始化）」）：
-1. 点按钮 → 日志 `add player: step=…` 六行齐全，且 `IsPlayerInitialized` / `PlayerIsInitialized` 至少一个 `true`；
-2. 之后跑几回合、开外交界面/城邦面板都不闪退 ⇒ 初始化确实补齐；
-3. 若仍闪退在同一符号 ⇒ 缺的是 AI 侧对象（引擎建玩家时构造），Lua 无接口，
-   只能继续走幽灵玩家路线（§2.7）。
+**实机结果（2026-10-28，授权者）—— 线路否掉**
+
+点面板「添加玩家（含初始化）」→ **直接闪退**，还是同一个符号：
+
+    signal 11 SIGSEGV …
+    GameCore::AI::Diplomatic::GetDiplomaticStateIndex(PlayerTypes) const
+
+也就是说：调用顺序、槽位状态、`InitializePlayer`、两个探针都按官方调试面板的做法走了，
+**空指针依旧**。结论：
+
+* 缺的不是「玩家对象初始化」，而是引擎**开局建玩家时**才构造的那套 AI 外交子系统；
+  `InitializePlayer` 建的是玩家本体，补不了 AI 侧对象；
+* Civ6 的 Lua 里没有任何接口能构造它（§4 全表 + `PlayerDiplomacy` / `AiDiplomacy` /
+  `DiplomaticAI` 的 90 余个方法里没有初始化入口，外交初始状态只由数据库
+  `DiplomaticStartStates` 在开局播种）；
+* ⇒ **运行时造玩家这条路彻底关闭**。要更多玩家只有：超编开局 + 幽灵玩家（§2.7），
+  也就是本 mod 一直在用的方案。
+
+**收尾处置**：
+
+| 对象 | 处置 |
+|---|---|
+| 测试面板侧栏入口 | **重新关闭**：`MODMISC_WB_TEST_ENTRY_ENABLED = false`（面板本体仍注册，modinfo 不动） |
+| 「添加玩家（含初始化）」按钮 | XML 改 `Hidden="1"` + 警告注释（留着代码，换思路复测时复用；不删除是因为顺序/防护/桩测试都对） |
+| `WorldBuilderAPI.InitializePlayer` / `SetPlayerSlotStatus` / `AddPlayerAndInitialize` / `MeetAllAlivePlayers` | **保留**为普通封装，但文档明确标注“不构成运行时造玩家方案” |
+| modinfo | 版本 1.74 → **1.75**；WorldBuilder 面板注释改成“入口重新关闭” |
+| 文案 | 3 个 `ADD_PLAYER*` 键保留（按钮还在，只是 Hidden） |
+
+桩测试 `.harness/worldbuilder_player_init_test.lua` 仍然 37 项通过 —— 它测的是调用顺序
+与防护，**不代表这条路线可用**；把它留在仓库里，是为了以后换方案时不用重写一遍这些断言。

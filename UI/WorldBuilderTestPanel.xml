@@ -1,7 +1,9 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- 开发用的测试面板（2026-10-28 起重新启用：modinfo 里 AddUserInterfaces 生效 +
-     入口开关 MODMISC_WB_TEST_ENTRY_ENABLED = true）。
-     按钮分三段，见下面「操作按钮」上方的说明：待验证可见 / 已实证可用 Hidden /
+<!-- 开发用的测试面板。**2026-10-28 入口已关闭**（侧栏开关
+     MODMISC_WB_TEST_ENTRY_ENABLED = false；面板本体仍由 modinfo 注册）：
+     本轮验证的「运行时添加玩家」被实机否掉 —— 补了 InitializePlayer 仍然闪退在
+     GameCore::AI::Diplomatic::GetDiplomaticStateIndex。结论见 API_Verification_Status.md §19.37。
+     按钮分三段，见下面「操作按钮」上方的说明：待验证可见 / 已实证可用或已否掉 Hidden /
      已实证失败已删除。功能本身仍然通过 ExposedMembers 暴露给其它 mod。 -->
 <Context>
     <!-- 注意：控件 ID 不能与上下文/文件名（WorldBuilderTestPanel）同名。
@@ -60,15 +62,21 @@
 
             <!-- ============ 操作按钮 ============
                  2026-10-28 按授权者要求整理成三段：
-                   ① 待验证 —— 还没实机证实的功能，保持可见（本次新增的「添加玩家」在这里）
-                   ② 已实证可用 —— 保留代码，Hidden="1"；要复测把那行的 Hidden 去掉即可
+                   ① 待验证 —— 还没实机证实的功能，保持可见
+                      （「添加玩家」已被实机否掉，改到下面 Hidden 段，见那里的警告）
+                   ② 已实证可用 / 已实机否掉但留代码 —— Hidden="1"，去掉那行的 Hidden 即可复测
                    ③ 已实证失败 —— 直接删除（连同 Lua 回调与文案），依据
                       API_Verification_Status.md：
                         · 补建幽灵槽位（StartCityState）→ #3：Players[slot] 恒为 nil
                         · 设时代（对局内 SetPlayerEra）  → #48：调得到，但改了不生效 -->
 
             <!-- —— ① 待验证 —— -->
-            <GridButton ID="WorldBuilderTestAddPlayer" Anchor="L,T" Offset="20,448" Size="280,60"
+            <!-- ⚠️ 已实机否掉（2026-10-28）：补 InitializePlayer 后点这个按钮**仍然原生闪退**
+                 在 GameCore::AI::Diplomatic::GetDiplomaticStateIndex ⇒ 运行时造玩家这条路
+                 补不上 AI 外交子系统。改成 Hidden="1" 而不是删除：留着代码方便以后换成
+                 别的思路复测（比如改成人类玩家 / 先 SetHasMet 再初始化）。
+                 要复测：去掉 Hidden，并确认愿意承担闪退。 -->
+            <GridButton ID="WorldBuilderTestAddPlayer" Hidden="1" Anchor="L,T" Offset="20,448" Size="280,60"
                         Style="ButtonControl" FontSize="22" String="LOC_MODMISC_WB_TEST_ADD_PLAYER" />
             <GridButton ID="WorldBuilderTestRemove" Anchor="L,T" Offset="310,448" Size="280,60"
                         Style="ButtonControl" FontSize="24" String="LOC_MODMISC_WB_TEST_REMOVE" />

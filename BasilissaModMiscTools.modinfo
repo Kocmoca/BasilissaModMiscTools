@@ -1,7 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!-- 对外发布号：1.54 → 1.6（开发期内部编号 v1.55…v3.10，见 API_Verification_Status.md §19.34）
-     1.74：补玩家初始化接口（AddPlayer → InitializePlayer）+ 重开 WorldBuilder 测试面板 -->
-<Mod id="a1b2c3d4-5e6f-7a8b-9c0d-1e2f3a4b5c6d" version="1.74">
+     1.74：补玩家初始化接口（AddPlayer → InitializePlayer）+ 重开 WorldBuilder 测试面板
+     1.75：实机否掉运行时造玩家（补了初始化仍闪退在 AI 外交子系统）⇒ 测试面板入口重新关闭 -->
+<Mod id="a1b2c3d4-5e6f-7a8b-9c0d-1e2f3a4b5c6d" version="1.75">
     <Properties>
         <Name>Basilissa Mod Misc Tools</Name>
         <Description>LOC_MODMISC_MOD_DESCRIPTION</Description>
@@ -188,12 +189,13 @@
             <File>UI/AutomationTestPanel.xml</File>
         </AddUserInterfaces>
         -->
-        <!-- WorldBuilder 测试面板：**2026-10-28 重新启用**（授权者要求验证「添加玩家 + 玩家初始化」）。
-             侧栏入口开关：UI/WorldBuilderTestPanel.lua 的 MODMISC_WB_TEST_ENTRY_ENABLED = true。
-             按钮已按实证结论整理：已实证可用 → Hidden="1"（代码保留）；实证不能工作 → 删除
-             （补建幽灵槽位 / 对局内设时代，见 API_Verification_Status.md #3、#48）。
-             当前可见：添加玩家（含初始化）、删除玩家、城邦化选中玩家、主流幽灵全部城邦化、
-             修复城邦身份、见面的幽灵转回主流、外交压制自检、幽灵删除方式、提示信息。
+        <!-- WorldBuilder 测试面板：**2026-10-28 入口重新关闭**
+             （侧栏开关 UI/WorldBuilderTestPanel.lua 的 MODMISC_WB_TEST_ENTRY_ENABLED = false，
+              面板本体照旧注册）。
+             关闭原因：「运行时添加玩家」线路被实机否掉 —— 补了 InitializePlayer 仍闪退在
+             GameCore::AI::Diplomatic::GetDiplomaticStateIndex，结论见 API_Verification_Status.md §19.37。
+             按钮分级沿用上一轮：已实证可用 → Hidden="1"（代码保留）；实证失败 → 删除；
+             「添加玩家」同样 Hidden="1" 并带警告注释。
              Automation 测试面板（对局内创建新局/换地图）**仍然收起**（2026-10-07 授权者要求）。 -->
         <AddUserInterfaces id="WorldBuilderTestPanel">
             <Properties>

@@ -1,8 +1,15 @@
 -- ===========================================================================
 -- Mod Misc Tool: WorldBuilder（地图编辑器）接口测试面板
 --
--- 2026-10-28 重新启用（modinfo 的 AddUserInterfaces 生效 + 下面入口开关 = true），
--- 并按下述规则整理了按钮：已实证可用 → Hidden="1"（代码保留）；实证不能工作 → 删除。
+-- 【2026-10-28 授权者：入口关闭】面板本体仍由 modinfo 的 AddUserInterfaces 注册，
+-- 但侧栏入口开关 = false（下面 MODMISC_WB_TEST_ENTRY_ENABLED）。
+-- 关闭原因：本轮验证的「运行时添加玩家」线路已被实机否掉 ——
+-- 补了 InitializePlayer 之后仍然原生闪退在同一符号
+-- （GameCore::AI::Diplomatic::GetDiplomaticStateIndex）⇒ 运行时造玩家不可行。
+-- 结论见 API_Verification_Status.md §19.37 / #1；要再进来看状态时把开关改回 true。
+--
+-- 按钮分级（上一轮按实证结论整理）：已实证可用 → Hidden="1"（代码保留）；
+-- 实证不能工作 → 删除；「添加玩家」已被实机否掉，同样改成 Hidden="1" 并加了警告注释。
 -- 面板功能本身仍然通过 ExposedMembers 暴露给其它 mod 调用
 -- （ExposedMembers.ModMiscToolScript.* / ExposedMembers.ModMiscToolUI.*）。
 --
@@ -12,9 +19,8 @@
 --   * 选择器：收起状态是一个按钮（显示当前选择），点击后在本面板内展开选项列表，
 --     选中即收起（列表自绘，不依赖引擎下拉弹窗，面板被 reparent 到 /InGame 也能用）
 --   * 玩家 / 文明 / 领袖 / 玩家类型（主要文明·城邦）/ 放置范围（2·4·6 格）
---   * 添加玩家：AddPlayer → SetPlayerSlotStatus → SetPlayerLeader → InitializePlayer
---     一条龙（缺最后一步会让 AI 外交子系统空指针闪退，见 API_Verification_Status #1）；
---     加完自动进入“放置开拓者”流程，免得新玩家下回合被判无单位/无城市
+--   * 添加玩家（已隐藏，实机否掉）：AddPlayer → SetPlayerSlotStatus → SetPlayerLeader
+--     → InitializePlayer 一条龙；补了初始化照样闪退在 AI 外交子系统，别再用
 --   * 创建城市 / 创建单位 / 放置开拓者：点按钮后在地图上显示地块按键，
 --     点中某个地块按键即在该地块执行（复用 UI/MapButton_UI.lua 的地图按键）
 --   * 操作结果与提示放在“提示信息”小窗，主面板不再挤文字
@@ -836,11 +842,14 @@ end
 -- 添加玩家：AddPlayer → SetPlayerSlotStatus → SetPlayerLeader → InitializePlayer
 -- 一次做完（gameplay 侧的 AddPlayerAndInitialize 负责执行顺序，这里只给身份）。
 --
--- 为什么必须补 InitializePlayer：只 AddPlayer 不初始化，玩家只有配置没有运行期对象，
--- 引擎 AI 外交子系统会在 GetDiplomaticStateIndex 上空指针闪退
--- （signal 11 SIGSEGV；证据见 API_Verification_Status.md #1）。
--- 原版地图编辑器里这一步由 SetPlayerLeader 顺带完成，官方调试面板则显式调用
--- （Civ6PC/Debug/WorldBuilder.ltp：SetPlayerSlotStatus + InitializePlayer）。
+-- ⚠️ **实机结论（2026-10-28）：这条路不可行** —— 补了 InitializePlayer 之后点按钮
+--    仍然原生闪退在 GameCore::AI::Diplomatic::GetDiplomaticStateIndex，说明运行时新增
+--    玩家缺的不是「玩家对象初始化」，而是引擎在**开局建玩家时**才构造的 AI 外交子系统，
+--    Lua 侧没有接口能补。按钮已改 Hidden="1"（XML），入口也已关闭。
+--    细节与判定依据见 API_Verification_Status.md §19.37 / #1。
+--
+-- 保留这个处理函数的原因：代码本身没写错（顺序与防护都对，桩测试 37 项过），
+-- 换成别的思路（例如只加人类玩家、先 SetHasMet 再初始化）复测时可以直接复用。
 local function AddPlayerWithInitialization()
     local script = ExposedMembers.ModMiscToolScript
     local worldBuilderAPI = script ~= nil and script.WorldBuilderAPI or nil
@@ -1350,10 +1359,13 @@ function CloseWorldBuilderTestPanel()
     Controls.WorldBuilderTestRoot:SetHide(true)
 end
 
--- 【2026-10-28 授权者要求】重新启用测试面板：验证「添加玩家 + 玩家初始化」。
--- 面板本体本来就在 modinfo 的 AddUserInterfaces 里注册着，这里只负责侧栏入口。
--- 要再收起来：改回 false（面板仍旧加载，只是没有入口）。
-local MODMISC_WB_TEST_ENTRY_ENABLED = true
+-- 【2026-10-28 授权者：线路关闭】测试面板入口重新关闭。
+-- 原因：补了 InitializePlayer 之后，运行时「添加玩家」**仍然原生闪退**在同一符号
+--   signal 11 SIGSEGV … GameCore::AI::Diplomatic::GetDiplomaticStateIndex
+-- ⇒ InitializePlayer 这条路补不上 AI 外交子系统，运行时造玩家不可行。
+-- 面板本体照旧注册（modinfo 的 AddUserInterfaces 不动），只是没有侧栏入口；
+-- 要再进来看状态：把这里改回 true。结论见 API_Verification_Status.md §19.37 与 #1。
+local MODMISC_WB_TEST_ENTRY_ENABLED = false
 
 function TryRegisterWorldBuilderTestButton()
     if not MODMISC_WB_TEST_ENTRY_ENABLED then return end
