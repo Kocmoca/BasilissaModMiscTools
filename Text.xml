@@ -185,11 +185,17 @@
 		<Row Tag="LOC_MODMISC_WB_TEST_REMOVE">
 			<Text>Remove Player</Text>
 		</Row>
+		<Row Tag="LOC_MODMISC_WB_TEST_ADD_PLAYER">
+			<Text>Add Player (with init)</Text>
+		</Row>
+		<Row Tag="LOC_MODMISC_WB_TEST_ADD_PLAYER_RESULT">
+			<Text>Player {1_PlayerID} added · WB init={2_WBInit} · engine init={3_EngineInit} · met {4_Met} players</Text>
+		</Row>
+		<Row Tag="LOC_MODMISC_WB_TEST_ADD_PLAYER_FAILED">
+			<Text>Add player failed: {1_Reason}</Text>
+		</Row>
 		<Row Tag="LOC_MODMISC_WB_TEST_APPLY">
 			<Text>Set Civilization / Leader</Text>
-		</Row>
-		<Row Tag="LOC_MODMISC_WB_TEST_SET_ERA">
-			<Text>Set Ancient Era</Text>
 		</Row>
 		<Row Tag="LOC_MODMISC_WB_TEST_GOLD">
 			<Text>Set Gold 1000</Text>
@@ -294,15 +300,6 @@
 		</Row>
 		<Row Tag="LOC_MODMISC_WB_TEST_GHOST_ACTIVATED">
 			<Text>Ghost player {1_PlayerID} activated as {2_Civ}.</Text>
-		</Row>
-		<Row Tag="LOC_MODMISC_WB_TEST_CREATE_GHOST">
-			<Text>Create Ghost Slot</Text>
-		</Row>
-		<Row Tag="LOC_MODMISC_WB_TEST_GHOST_CREATED">
-			<Text>Runtime ghost slot created: player {1_PlayerID}.</Text>
-		</Row>
-		<Row Tag="LOC_MODMISC_WB_TEST_GHOST_CREATE_FAILED">
-			<Text>Could not create a ghost slot: {1_Reason}</Text>
 		</Row>
 		<Row Tag="LOC_MODMISC_WB_TEST_CONVERT_CITY_STATE">
 			<Text>Convert to City-State</Text>

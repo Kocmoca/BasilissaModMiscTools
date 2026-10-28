@@ -184,11 +184,17 @@
 		<Replace Tag="LOC_MODMISC_WB_TEST_REMOVE" Language="zh_Hans_CN">
 			<Text>删除玩家</Text>
 		</Replace>
+		<Replace Tag="LOC_MODMISC_WB_TEST_ADD_PLAYER" Language="zh_Hans_CN">
+			<Text>添加玩家（含初始化）</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_WB_TEST_ADD_PLAYER_RESULT" Language="zh_Hans_CN">
+			<Text>已添加玩家 {1_PlayerID} · 编辑器侧初始化={2_WBInit} · 引擎侧初始化={3_EngineInit} · 已与 {4_Met} 个玩家互相见面</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_WB_TEST_ADD_PLAYER_FAILED" Language="zh_Hans_CN">
+			<Text>添加玩家失败：{1_Reason}</Text>
+		</Replace>
 		<Replace Tag="LOC_MODMISC_WB_TEST_APPLY" Language="zh_Hans_CN">
 			<Text>更改文明 / 领袖</Text>
-		</Replace>
-		<Replace Tag="LOC_MODMISC_WB_TEST_SET_ERA" Language="zh_Hans_CN">
-			<Text>设为远古时代</Text>
 		</Replace>
 		<Replace Tag="LOC_MODMISC_WB_TEST_GOLD" Language="zh_Hans_CN">
 			<Text>金币设为 1000</Text>
@@ -293,15 +299,6 @@
 		</Replace>
 		<Replace Tag="LOC_MODMISC_WB_TEST_GHOST_ACTIVATED" Language="zh_Hans_CN">
 			<Text>已将幽灵玩家 {1_PlayerID} 启用为 {2_Civ}。</Text>
-		</Replace>
-		<Replace Tag="LOC_MODMISC_WB_TEST_CREATE_GHOST" Language="zh_Hans_CN">
-			<Text>补建幽灵槽位</Text>
-		</Replace>
-		<Replace Tag="LOC_MODMISC_WB_TEST_GHOST_CREATED" Language="zh_Hans_CN">
-			<Text>运行时补建成功：玩家 {1_PlayerID}。</Text>
-		</Replace>
-		<Replace Tag="LOC_MODMISC_WB_TEST_GHOST_CREATE_FAILED" Language="zh_Hans_CN">
-			<Text>补建幽灵槽位失败：{1_Reason}</Text>
 		</Replace>
 		<Replace Tag="LOC_MODMISC_WB_TEST_CONVERT_CITY_STATE" Language="zh_Hans_CN">
 			<Text>城邦化选中玩家</Text>

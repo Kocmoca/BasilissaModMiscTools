@@ -24,6 +24,12 @@
 --   WorldBuilder.PlayerManager():SetPlayerEra(player, "ERA_ANCIENT")
 --   WorldBuilder.CityManager():Create(player, plot)
 --   WorldBuilder.MapManager():SetTerrainType(plot, terrainIndex)
+--
+-- 【2026-10-28 补】玩家生命周期少了 InitializePlayer 这一步：
+--   原版地图编辑器 AddPlayer 之后由 SetPlayerLeader 顺带完成初始化，直接调
+--   AddPlayer 就拿不到运行期对象（AI 外交子系统没建），进对局会原生闪退。
+--   现在提供 API.InitializePlayer / API.SetPlayerSlotStatus，
+--   以及一站式 API.AddPlayerAndInitialize(...)（见下面「玩家初始化」一节）。
 -- ===========================================================================
 
 WorldBuilderAPI = WorldBuilderAPI or {}
@@ -57,6 +63,170 @@ end
 
 function API.IsPlayerInitialized(playerID)
     return WorldBuilder.PlayerManager():IsPlayerInitialized(playerID)
+end
+
+-- ---------------------------------------------------------------------------
+-- 玩家初始化（AddPlayer 之后必须补的一步）
+--
+-- 原版地图编辑器的玩家生命周期是三段：AddPlayer（建槽位）→ SetPlayerLeader（给身份）
+-- → InitializePlayer（把玩家的运行期对象建出来）。官方调试面板
+-- Debug/WorldBuilder.ltp「Initialize Player As Human / As AI」就是
+-- SetPlayerSlotStatus + InitializePlayer 这个组合（原版 Lua 从不显式调用它，
+-- 因为编辑器里的 SetPlayerLeader 会顺带完成初始化）。
+--
+-- 【为什么必须补】只 AddPlayer 不 InitializePlayer，玩家只有配置没有运行期对象，
+-- 进对局后引擎 AI 外交子系统空指针闪退：
+--   signal 11 SIGSEGV … GameCore::AI::Diplomatic::GetDiplomaticStateIndex(PlayerTypes) const
+-- （证据见 API_Verification_Status.md 第 1 条）。
+-- ---------------------------------------------------------------------------
+
+-- 引擎的布尔返回值有时是 0/1，这里统一归一化（只把明确的真值算真）
+local function ToBool(value)
+    return value == true or value == 1
+end
+
+-- 槽位状态：现行引擎枚举是 SS_*。调试面板里那个 SlotStatus.HUMAN / SlotStatus.AI
+-- 是历史名，现行 SlotStatus 表里没有（传 nil 等于没设），所以这里按 isAI 映射到 SS_*。
+local function GetSlotStatusForPlayerType(isAI)
+    if SlotStatus == nil then return nil end
+    if isAI then return SlotStatus.SS_COMPUTER end
+    return SlotStatus.SS_TAKEN
+end
+
+function API.GetPlayerSlotStatusValue(isAI)
+    return GetSlotStatusForPlayerType(isAI)
+end
+
+function API.SetPlayerSlotStatus(playerID, slotStatus)
+    if playerID == nil or playerID == -1 then return false end
+    if slotStatus == nil then return false end
+    return WorldBuilder.PlayerManager():SetPlayerSlotStatus(playerID, slotStatus)
+end
+
+function API.InitializePlayer(playerID)
+    if playerID == nil or playerID == -1 then return false end
+    return WorldBuilder.PlayerManager():InitializePlayer(playerID)
+end
+
+-- 新增玩家的一站式入口：AddPlayer → SetPlayerSlotStatus → SetPlayerLeader →
+-- InitializePlayer →（可选）和所有在场玩家互相“见过面”。
+--
+-- 返回**一张表**（跨 context 多返回值不可靠，见 API_Verification_Status #24）：
+--   { ok=布尔, playerID=, reason=失败原因,
+--     steps={ {step=, ok=, detail=}, ... },
+--     wbInitialized=编辑器侧状态, engineInitialized=Players[id]:IsInitialized(),
+--     metCount=互相 SetHasMet 成功的对数 }
+function API.AddPlayerAndInitialize(isAI, leaderType, civType, civLevel, meetEveryone)
+    local result = {
+        ok = false,
+        playerID = nil,
+        reason = nil,
+        steps = {},
+        wbInitialized = nil,
+        engineInitialized = nil,
+        metCount = 0,
+    }
+
+    local function Record(stepName, stepOk, detail)
+        table.insert(result.steps, { step = stepName, ok = stepOk, detail = detail })
+        print(string.format("[ModMiscTool][WorldBuilderAPI] add player: step=%s ok=%s detail=%s",
+            tostring(stepName), tostring(stepOk), tostring(detail)))
+    end
+
+    -- ① AddPlayer：失败会返回 -1，绝不能把 -1 继续传给后面的接口（无效玩家 id ⇒ 崩溃）
+    local addOk, playerID = pcall(function() return API.AddPlayer(isAI) end)
+    if not addOk then
+        Record("AddPlayer", false, playerID)
+        result.reason = "AddPlayer 抛错: " .. tostring(playerID)
+        return result
+    end
+    result.playerID = playerID
+    if playerID == nil or playerID == -1 then
+        Record("AddPlayer", false, "playerID=" .. tostring(playerID))
+        result.reason = "AddPlayer 返回 " .. tostring(playerID)
+        return result
+    end
+    Record("AddPlayer", true, "playerID=" .. tostring(playerID))
+
+    -- ② SetPlayerSlotStatus：AddPlayer(isAI) 通常已经设好，这里在初始化之前显式再设一次，
+    --    确保 InitializePlayer 看到的是“有人占用的 AI/人类槽位”（官方调试面板同顺序）
+    local slotStatus = GetSlotStatusForPlayerType(isAI)
+    if slotStatus ~= nil then
+        local statusOk, statusErr = pcall(function()
+            return API.SetPlayerSlotStatus(playerID, slotStatus)
+        end)
+        Record("SetPlayerSlotStatus", statusOk, statusOk and tostring(slotStatus) or statusErr)
+    else
+        Record("SetPlayerSlotStatus", false, "SlotStatus 枚举不可用，跳过")
+    end
+
+    -- ③ SetPlayerLeader：身份（领袖/文明/文明等级）由调用方决定，这里只执行
+    if leaderType ~= nil and civType ~= nil and civLevel ~= nil then
+        local leaderOk, leaderErr = pcall(function()
+            return API.SetPlayerLeader(playerID, leaderType, civType, civLevel)
+        end)
+        Record("SetPlayerLeader", leaderOk, leaderOk and (civType .. "/" .. leaderType) or leaderErr)
+    else
+        Record("SetPlayerLeader", false, "身份参数不全，跳过")
+    end
+
+    -- ④ InitializePlayer：这一步就是本次补的功能
+    local initOk, initResult = pcall(function() return API.InitializePlayer(playerID) end)
+    Record("InitializePlayer", initOk, initOk and ("returned " .. tostring(initResult)) or tostring(initResult))
+
+    -- ⑤ 探针：编辑器侧 / 引擎侧各查一次，判断玩家到底算不算初始化完成
+    --    注意：不能写 `result.x = ok and value or nil` —— value 是 false 时会被 or 吞成 nil
+    local wbOk, wbValue = pcall(function() return API.IsPlayerInitialized(playerID) end)
+    if wbOk then result.wbInitialized = wbValue end
+    Record("IsPlayerInitialized", wbOk, wbOk and tostring(wbValue) or tostring(wbValue))
+
+    local engineOk, engineValue = pcall(function()
+        local player = Players[playerID]
+        if player == nil then return nil end
+        return player:IsInitialized()
+    end)
+    if engineOk then result.engineInitialized = engineValue end
+    Record("PlayerIsInitialized", engineOk, engineOk and tostring(engineValue) or tostring(engineValue))
+
+    -- ⑥ 可选：让新玩家和所有在场玩家互相“见过面”。
+    --    开局新增玩家不会走 DiplomaticStartStates 的播种，先按原版场景脚本的做法铺一遍
+    --    （Base/Assets/Scenarios/ColdWarScenario/ColdWarScenario_StartScript.lua:30-37）。
+    if meetEveryone ~= false then
+        result.metCount = API.MeetAllAlivePlayers(playerID)
+    end
+
+    result.ok = ToBool(result.wbInitialized) or ToBool(result.engineInitialized)
+    if not result.ok then
+        result.reason = "InitializePlayer 调到了，但两个探针都没返回已初始化"
+    end
+    return result
+end
+
+-- 让 playerID 和所有存活玩家互相 SetHasMet；返回成功的对数。
+-- 独立成函数：面板/其它 mod 也可能只想铺外交关系、不想新建玩家。
+function API.MeetAllAlivePlayers(playerID)
+    if playerID == nil or playerID == -1 then return 0 end
+    local player = Players[playerID]
+    if player == nil then return 0 end
+    local diplomacy = player:GetDiplomacy()
+    if diplomacy == nil then return 0 end
+
+    local metCount = 0
+    for _, otherPlayerID in ipairs(PlayerManager.GetAliveIDs()) do
+        if otherPlayerID ~= playerID then
+            local otherPlayer = Players[otherPlayerID]
+            local otherDiplomacy = otherPlayer ~= nil and otherPlayer:GetDiplomacy() or nil
+            local firstOk = pcall(function() diplomacy:SetHasMet(otherPlayerID) end)
+            local secondOk = otherDiplomacy ~= nil
+                and pcall(function() otherDiplomacy:SetHasMet(playerID) end)
+            if firstOk and secondOk then
+                metCount = metCount + 1
+            end
+        end
+    end
+    print("[ModMiscTool][WorldBuilderAPI] meet all players: player=" .. tostring(playerID)
+        .. " pairs=" .. tostring(metCount))
+    return metCount
 end
 
 function API.GetPlayerConfig(playerID)

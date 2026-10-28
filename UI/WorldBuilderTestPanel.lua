@@ -1,10 +1,10 @@
 -- ===========================================================================
 -- Mod Misc Tool: WorldBuilder（地图编辑器）接口测试面板
 --
--- 【开发用，默认不注册】本面板已从 modinfo 的 AddUserInterfaces 里摘掉：
--- 不加载、左侧栏没有入口。它的功能都通过 API 暴露给其它 mod 调用
+-- 2026-10-28 重新启用（modinfo 的 AddUserInterfaces 生效 + 下面入口开关 = true），
+-- 并按下述规则整理了按钮：已实证可用 → Hidden="1"（代码保留）；实证不能工作 → 删除。
+-- 面板功能本身仍然通过 ExposedMembers 暴露给其它 mod 调用
 -- （ExposedMembers.ModMiscToolScript.* / ExposedMembers.ModMiscToolUI.*）。
--- 需要调试时把 modinfo 里注释掉的那段 AddUserInterfaces 加回来即可。
 --
 -- 通过左侧栏入口打开；在普通对局里直接测试 Gameplay 后端
 -- （ModTool_WorldBuilderAPI.lua）提供的 WorldBuilder 接口。
@@ -12,9 +12,11 @@
 --   * 选择器：收起状态是一个按钮（显示当前选择），点击后在本面板内展开选项列表，
 --     选中即收起（列表自绘，不依赖引擎下拉弹窗，面板被 reparent 到 /InGame 也能用）
 --   * 玩家 / 文明 / 领袖 / 玩家类型（主要文明·城邦）/ 放置范围（2·4·6 格）
+--   * 添加玩家：AddPlayer → SetPlayerSlotStatus → SetPlayerLeader → InitializePlayer
+--     一条龙（缺最后一步会让 AI 外交子系统空指针闪退，见 API_Verification_Status #1）；
+--     加完自动进入“放置开拓者”流程，免得新玩家下回合被判无单位/无城市
 --   * 创建城市 / 创建单位 / 放置开拓者：点按钮后在地图上显示地块按键，
 --     点中某个地块按键即在该地块执行（复用 UI/MapButton_UI.lua 的地图按键）
---   * 新建玩家后自动进入“放置开拓者”流程
 --   * 操作结果与提示放在“提示信息”小窗，主面板不再挤文字
 --
 -- 接口来自 Gameplay 后端：ModTool_WorldBuilderAPI.lua 由 ModTool.lua include，
@@ -831,31 +833,80 @@ local function RemovePlayer()
     SetResult("RemovePlayer", playerID)
 end
 
--- 运行时补建一个幽灵槽位（EXera 路径：空槽位 + PlayerConfigurations + StartCityState）
--- 用于验证“重复文明拦截只在 UI 层、引擎层允许”的假设，不依赖复制数据库
--- 补建失败时把“卡在哪一步”直接显示到消息窗，省得每次都要拉 Lua.log。
--- 注意：跨 context 调用不依赖多返回值，失败原因统一用 getter 取。
-local function ReportGhostCreateResult(action, playerID)
-    if playerID == nil then
-        local reason = "unknown"
-        if ExposedMembers.ModMiscToolScript.GetLastGhostCreateDiagnostics ~= nil then
-            reason = tostring(ExposedMembers.ModMiscToolScript.GetLastGhostCreateDiagnostics())
-        end
-        print("[ModMiscTool][WorldBuilderTest] " .. action .. " failed: " .. reason)
-        SetOutput(Locale.Lookup("LOC_MODMISC_WB_TEST_GHOST_CREATE_FAILED", reason))
+-- 添加玩家：AddPlayer → SetPlayerSlotStatus → SetPlayerLeader → InitializePlayer
+-- 一次做完（gameplay 侧的 AddPlayerAndInitialize 负责执行顺序，这里只给身份）。
+--
+-- 为什么必须补 InitializePlayer：只 AddPlayer 不初始化，玩家只有配置没有运行期对象，
+-- 引擎 AI 外交子系统会在 GetDiplomaticStateIndex 上空指针闪退
+-- （signal 11 SIGSEGV；证据见 API_Verification_Status.md #1）。
+-- 原版地图编辑器里这一步由 SetPlayerLeader 顺带完成，官方调试面板则显式调用
+-- （Civ6PC/Debug/WorldBuilder.ltp：SetPlayerSlotStatus + InitializePlayer）。
+local function AddPlayerWithInitialization()
+    local script = ExposedMembers.ModMiscToolScript
+    local worldBuilderAPI = script ~= nil and script.WorldBuilderAPI or nil
+    if worldBuilderAPI == nil or worldBuilderAPI.AddPlayerAndInitialize == nil then
+        SetError("AddPlayer", "WorldBuilderAPI.AddPlayerAndInitialize 不可用")
         return
     end
+
+    local civEntry = GetSelectedCivEntry()
+    local leaderEntry = GetSelectedLeaderEntry()
+    if civEntry == nil or leaderEntry == nil then
+        SetError("AddPlayer", "没有可用的文明/领袖条目")
+        return
+    end
+
+    -- 决策层（面板）给身份：玩家类型决定文明等级，AI 是本次要验的崩溃路径
+    local civLevel = GetSelectedPlayerTypeLevel()
+    local isAI = true
+    local called, result = pcall(worldBuilderAPI.AddPlayerAndInitialize,
+        isAI, leaderEntry.LeaderType, civEntry.CivilizationType, civLevel, true)
+    if not called then
+        SetError("AddPlayer", result)
+        return
+    end
+    if type(result) ~= "table" then
+        SetError("AddPlayer", "返回值不是表：" .. tostring(result))
+        return
+    end
+
+    local playerID = result.playerID
+    print("[ModMiscTool][WorldBuilderTest] AddPlayer: player=" .. tostring(playerID)
+        .. " ai=" .. tostring(isAI)
+        .. " civ=" .. tostring(civEntry.CivilizationType)
+        .. " leader=" .. tostring(leaderEntry.LeaderType)
+        .. " level=" .. tostring(civLevel)
+        .. " ok=" .. tostring(result.ok)
+        .. " wbInit=" .. tostring(result.wbInitialized)
+        .. " engineInit=" .. tostring(result.engineInitialized)
+        .. " met=" .. tostring(result.metCount)
+        .. " reason=" .. tostring(result.reason))
+
+    if playerID == nil or playerID == -1 then
+        SetOutput(Locale.Lookup("LOC_MODMISC_WB_TEST_ADD_PLAYER_FAILED", tostring(result.reason)))
+        return
+    end
+
     m_SelectedPlayerID = playerID
     m_PendingPlayerSelect = playerID
     RefreshSelectorButtons()
-    print("[ModMiscTool][WorldBuilderTest] " .. action .. " ok: player=" .. tostring(playerID))
-    SetOutput(Locale.Lookup("LOC_MODMISC_WB_TEST_GHOST_CREATED", playerID))
-end
+    ShowPlayerInfo(playerID)
 
-local function CreateGhostPlayerSlot()
-    print("[ModMiscTool][WorldBuilderTest] CreateGhost: 走城邦路径 CreateGhostPlayerFromEmptySlot")
-    ReportGhostCreateResult("CreateGhost(state)",
-        ExposedMembers.ModMiscToolScript.CreateGhostPlayerFromEmptySlot())
+    if not result.ok then
+        SetOutput(Locale.Lookup("LOC_MODMISC_WB_TEST_ADD_PLAYER_FAILED", tostring(result.reason)))
+        return
+    end
+
+    SetOutput(Locale.Lookup("LOC_MODMISC_WB_TEST_ADD_PLAYER_RESULT",
+        tostring(playerID), tostring(result.wbInitialized), tostring(result.engineInitialized),
+        tostring(result.metCount)))
+
+    -- 初始化成功 ⇒ 玩家已有运行期对象。立刻放一个开拓者，免得下回合被判“无单位/无城市”而死亡。
+    StartPlotSelection("PlaceSettlerForNewPlayer", "ICON_UNIT_SETTLER",
+        "LOC_MODMISC_WB_TEST_PLACE_SETTLER", false,
+        function(plotIndex)
+            CreateUnitAtPlot(playerID, UNIT_TYPE_SETTLER, plotIndex)
+        end)
 end
 
 -- 把选中的主要文明就地城邦化（验证“给已存在的玩家换身份”这条路）
@@ -1015,11 +1066,8 @@ local function ApplyCivLeader()
     ShowPlayerInfo(playerID)
 end
 
-local function SetPlayerEra()
-    APIModule().SetPlayerEra(GetSelectedPlayerID(), "ERA_ANCIENT")
-    SetResult("SetPlayerEra", "ERA_ANCIENT")
-end
-
+-- 设时代按钮已删除（2026-10-28）：WorldBuilderAPI.SetPlayerEra 通道本身可用，
+-- 但普通对局里改了不生效 —— API_Verification_Status.md #48，别再加回来。
 local function SetPlayerGold()
     APIModule().SetPlayerGold(GetSelectedPlayerID(), 1000)
     SetResult("SetPlayerGold", 1000)
@@ -1085,12 +1133,12 @@ end
 -- ===========================================================================
 -- 屏幕适配（安卓设备默认字号偏小）
 --
--- XML 里的尺寸/字号是设计基准（900x860）；打开面板与屏幕尺寸变化时，按实际
+-- XML 里的尺寸/字号是设计基准（900x760）；打开面板与屏幕尺寸变化时，按实际
 -- 屏幕尺寸等比缩放所有控件尺寸、偏移与字号；展开列表的条目按当前缩放创建。
 -- ===========================================================================
 
 local DESIGN_WIDTH  = 900
-local DESIGN_HEIGHT = 930
+local DESIGN_HEIGHT = 760
 local SCREEN_MARGIN = 40
 local MIN_SCALE     = 0.85
 local MAX_SCALE     = 1.6
@@ -1111,6 +1159,7 @@ local GEOMETRY_CONTROLS = {
     "WorldBuilderTestTypeButton",
     "WorldBuilderTestRangeLabel",
     "WorldBuilderTestRangeButton",
+    "WorldBuilderTestAddPlayer",
     "WorldBuilderTestActivateGhost",
     "WorldBuilderTestRecycleGhost",
     "WorldBuilderTestRemove",
@@ -1119,12 +1168,11 @@ local GEOMETRY_CONTROLS = {
     "WorldBuilderTestCreateUnit",
     "WorldBuilderTestPlaceSettler",
     "WorldBuilderTestClearStart",
-    "WorldBuilderTestSetEra",
     "WorldBuilderTestGold",
     "WorldBuilderTestFaith",
     "WorldBuilderTestReveal",
+    "WorldBuilderTestGhostKillMode",
     "WorldBuilderTestDiploGhostCheck",
-    "WorldBuilderTestCreateGhost",
     "WorldBuilderTestConvertCityState",
     "WorldBuilderTestPlayerStats",
     "WorldBuilderTestConvertAllCityState",
@@ -1151,6 +1199,7 @@ local FONT_CONTROLS = {
     "WorldBuilderTestTypeButton",
     "WorldBuilderTestRangeLabel",
     "WorldBuilderTestRangeButton",
+    "WorldBuilderTestAddPlayer",
     "WorldBuilderTestActivateGhost",
     "WorldBuilderTestRecycleGhost",
     "WorldBuilderTestRemove",
@@ -1159,12 +1208,11 @@ local FONT_CONTROLS = {
     "WorldBuilderTestCreateUnit",
     "WorldBuilderTestPlaceSettler",
     "WorldBuilderTestClearStart",
-    "WorldBuilderTestSetEra",
     "WorldBuilderTestGold",
     "WorldBuilderTestFaith",
     "WorldBuilderTestReveal",
+    "WorldBuilderTestGhostKillMode",
     "WorldBuilderTestDiploGhostCheck",
-    "WorldBuilderTestCreateGhost",
     "WorldBuilderTestPlayerStats",
     "WorldBuilderTestConvertAllCityState",
     "WorldBuilderTestRepairCityState",
@@ -1302,12 +1350,10 @@ function CloseWorldBuilderTestPanel()
     Controls.WorldBuilderTestRoot:SetHide(true)
 end
 
--- 【2026-10-15 授权者要求】重新启用侧栏入口：要看幽灵玩家状态。
--- 要再收起来：把这里改回 false，并注释掉 modinfo 里的 WorldBuilderTestPanel 那段 AddUserInterfaces。
--- 【2026-10-15 授权者：进入发布阶段】调试面板**停用**：
---   ① 这个侧栏入口开关关掉；② modinfo 里这段 AddUserInterfaces 也注释掉了（见那里的说明）。
---   要再用（排障/实机验收幽灵状态）：这里改 true + modinfo 恢复那段注册即可。
-local MODMISC_WB_TEST_ENTRY_ENABLED = false
+-- 【2026-10-28 授权者要求】重新启用测试面板：验证「添加玩家 + 玩家初始化」。
+-- 面板本体本来就在 modinfo 的 AddUserInterfaces 里注册着，这里只负责侧栏入口。
+-- 要再收起来：改回 false（面板仍旧加载，只是没有入口）。
+local MODMISC_WB_TEST_ENTRY_ENABLED = true
 
 function TryRegisterWorldBuilderTestButton()
     if not MODMISC_WB_TEST_ENTRY_ENABLED then return end
@@ -1365,8 +1411,8 @@ function OnInit()
         Controls.WorldBuilderTestGhostKillMode:RegisterCallback(Mouse.eLClick,
             OnAction("GhostKillMode", ToggleGhostKillMode))
     end
-    Controls.WorldBuilderTestCreateGhost:RegisterCallback(Mouse.eLClick,
-        OnAction("CreateGhostPlayer", CreateGhostPlayerSlot))
+    Controls.WorldBuilderTestAddPlayer:RegisterCallback(Mouse.eLClick,
+        OnAction("AddPlayer", AddPlayerWithInitialization))
     Controls.WorldBuilderTestConvertCityState:RegisterCallback(Mouse.eLClick,
         OnAction("ConvertToCityState", ConvertSelectedToCityState))
     Controls.WorldBuilderTestPlayerStats:RegisterCallback(Mouse.eLClick,
@@ -1377,7 +1423,6 @@ function OnInit()
     Controls.WorldBuilderTestPlaceSettler:RegisterCallback(Mouse.eLClick, OnAction("PlaceSettler", PlaceSettler))
     Controls.WorldBuilderTestClearStart:RegisterCallback(Mouse.eLClick,
         OnAction("ClearPlayerStartingPosition", ClearPlayerStartingPosition))
-    Controls.WorldBuilderTestSetEra:RegisterCallback(Mouse.eLClick, OnAction("SetPlayerEra", SetPlayerEra))
     Controls.WorldBuilderTestGold:RegisterCallback(Mouse.eLClick, OnAction("SetPlayerGold", SetPlayerGold))
     Controls.WorldBuilderTestFaith:RegisterCallback(Mouse.eLClick, OnAction("SetPlayerFaith", SetPlayerFaith))
     Controls.WorldBuilderTestReveal:RegisterCallback(Mouse.eLClick, OnAction("SetAllRevealed", SetAllRevealed))

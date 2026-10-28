@@ -375,12 +375,56 @@ PlayerManager（文明 / 领袖 / 时代 / 金币 / 信仰 / 科技 / 市政 / �
   IsPlayerInitialized(playerID)             -> boolean
   GetPlayerConfig(playerID)                 -> { Name, Civ, Leader, CivLevel, Era, Gold, Faith, IsHuman, IsBarbarian, IsFullCiv, ... }
   GetSlotStatus(slotIndex)                  -> SlotStatus.*
+  SetPlayerSlotStatus(playerID, slotStatus) -> 槽位状态（现行枚举 SS_*，见下）
+  InitializePlayer(playerID)                -> AddPlayer 之后必须补的一步（见下）
   SetPlayerLeader(playerID, leaderType, civType, civLevel)
   SetPlayerEra(playerID, eraType)
   SetPlayerGold(playerID, amount) / SetPlayerFaith(playerID, amount)
   PlayerHasTech / SetPlayerHasTech / PlayerHasCivic / SetPlayerHasCivic
   SetPlayerStartingPosition / ClearPlayerStartingPosition / ClearStartingPosition
   GetStartPositionInfo / GetStartPositionPlayer
+
+—— 玩家生命周期：AddPlayer 之后必须补 InitializePlayer（2026-10-28 补）——
+
+  原版地图编辑器的玩家是三段式：AddPlayer（建槽位）→ SetPlayerLeader（给身份）
+  → InitializePlayer（把玩家的运行期对象建出来）。编辑器里第三步由 SetPlayerLeader
+  顺带完成，所以原版 Lua 从不显式调用它；直接调 AddPlayer 而不初始化，玩家只有
+  配置没有运行期对象，进对局后引擎 AI 外交子系统空指针闪退：
+
+      signal 11 SIGSEGV …
+      GameCore::AI::Diplomatic::GetDiplomaticStateIndex(PlayerTypes) const
+
+  接口本身早就存在（官方调试面板 Debug/WorldBuilder.ltp 的
+  「Initialize Player As Human / As AI」就是 SetPlayerSlotStatus + InitializePlayer），
+  本轮把它补成对外 API。推荐直接用一站式入口：
+
+  AddPlayerAndInitialize(isAI, leaderType, civType, civLevel, meetEveryone)
+    返回：一张表（跨 context 多返回值不可靠，所以只回一个 table）
+          { ok, playerID, reason, steps = { {step, ok, detail}, ... },
+            wbInitialized, engineInitialized, metCount }
+    说明：按 AddPlayer → SetPlayerSlotStatus → SetPlayerLeader → InitializePlayer
+          的顺序执行，每一步都 pcall 住并记进 steps；然后查两个探针
+          （WorldBuilder.IsPlayerInitialized / Players[id]:IsInitialized()）；
+          meetEveryone ~= false 时再调 MeetAllAlivePlayers。
+          ok = 两个探针任一为真。AddPlayer 返回 -1 或抛错时立刻返回，
+          后续接口一个都不碰（无效玩家 id 会崩引擎）。
+    日志：`[ModMiscTool][WorldBuilderAPI] add player: step=… ok=… detail=…`
+
+  MeetAllAlivePlayers(playerID)
+    返回：成功的对数
+    说明：和所有存活玩家**互相** SetHasMet（原版场景脚本
+          ColdWarScenario_StartScript.lua:30-37 就是这种做法）。运行时新增的玩家
+          不会走 DiplomaticStartStates 的开局播种，所以先手动铺一遍。
+
+  槽位状态常量：现行引擎枚举是 SS_OPEN(0) / SS_COMPUTER(1) / SS_CLOSED(2) /
+  SS_TAKEN(3) / SS_OBSERVER(4)。调试面板里那个 SlotStatus.HUMAN / SlotStatus.AI
+  是**历史名**，现行 SlotStatus 表里没有（传 nil 等于没设），别照抄；
+  WorldBuilderAPI.GetPlayerSlotStatusValue(isAI) 会按 isAI 映射到 SS_COMPUTER / SS_TAKEN。
+
+  ⚠️ 未实机验证：InitializePlayer 是否真的会把 AI 外交子系统一起建起来，只有实机
+     才能确认。判据看测试面板「添加玩家」的返回与日志：wbInit / engineInit 任一为真
+     ⇒ 初始化成立；若之后仍然闪退在同一符号，说明缺的是 AI 侧对象（引擎建玩家时构造，
+     Lua 无接口），只能继续走幽灵玩家路线。
   SetRandomMajorStartingPosition / SetRandomMinorStartingPosition
   SetLeaderStartingPosition / SetCivilizationStartingPosition
 
@@ -1460,17 +1504,21 @@ DB 桩按 Vassal System 的声明 SQL 喂行；自选 4 主流 + 6 城邦、`max
 
 ### 3.0 关于 WorldBuilder 测试面板（开发用；**发布态只关侧栏入口**）
 
-> **发布态（2026-10-15 授权者）**：WorldBuilder 调试面板**只关侧栏入口**
-> （`UI/WorldBuilderTestPanel.lua` 的 `MODMISC_WB_TEST_ENTRY_ENABLED = false`），
-> 面板本体与注册都保留 —— 要排障时把开关改 `true` 就能从侧栏进。
-> 下面描述的面板按钮（幽灵标记、玩家槽位统计、全部城邦化、外交压制自检、
-> 修复城邦身份、见面的幽灵转回主流）在发布态**不显示入口**，但功能代码与文案都在。
+> **当前状态（2026-10-28 授权者）**：WorldBuilder 调试面板**已重新启用**
+> （`UI/WorldBuilderTestPanel.lua` 的 `MODMISC_WB_TEST_ENTRY_ENABLED = true`，
+> `modinfo` 的 `AddUserInterfaces` 一直在注册）。本轮用途：验证「添加玩家 + 玩家初始化」。
+> 要收起来：把开关改回 `false`（面板仍旧加载，只是侧栏没有入口）。
 
 `UI/WorldBuilderTestPanel.xml/.lua` 是开发期的测试面板（选择器 + 建城/建单位/放开拓者/
-幽灵相关按钮）。**2026-10-15 授权者要求：重新注册，用来查看幽灵玩家状态**——
-`modinfo` 的 `AddUserInterfaces` 已恢复，侧栏开关
-`UI/WorldBuilderTestPanel.lua` 的 `MODMISC_WB_TEST_ENTRY_ENABLED = true`。
-要再收起来：注释掉那段 `AddUserInterfaces` + 把开关改回 false。
+幽灵相关按钮 + 本轮新增的「添加玩家（含初始化）」）。
+
+**按钮分级（2026-10-28 按实证结论整理）**：
+
+| 处理 | 按钮 | 依据 |
+|---|---|---|
+| 删除 | 补建幽灵槽位、设时代 | `API_Verification_Status.md` #3（`Players[slot]` 恒 nil）、#48（对局内改年代不生效） |
+| 隐藏（`Hidden="1"`，代码保留） | 激活幽灵、回收幽灵、更改文明/领袖、建城、建单位、放开拓者、清起始点、金币、信仰、全图、玩家槽位统计 | 均为已验证可用的通道 / 纯读诊断；要复测去掉 XML 里的 `Hidden` 即可 |
+| 可见 | 添加玩家（含初始化）、删除玩家、城邦化选中玩家、主流幽灵全部城邦化、修复城邦身份、见面的幽灵转回主流、外交压制自检、幽灵删除方式、提示信息 | 未验证 / 本轮要测 / 互斥清理入口 |
 
 看幽灵状态的两个入口（都在这个面板里）：
   * **玩家列表**：每个玩家条目直接标出「主流幽灵 / 城邦幽灵」（走

@@ -169,11 +169,17 @@
 		<Replace Tag="LOC_MODMISC_WB_TEST_REMOVE" Language="ru_RU">
 			<Text>Удалить игрока</Text>
 		</Replace>
+		<Replace Tag="LOC_MODMISC_WB_TEST_ADD_PLAYER" Language="ru_RU">
+			<Text>Добавить игрока (с инициализацией)</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_WB_TEST_ADD_PLAYER_RESULT" Language="ru_RU">
+			<Text>Игрок {1_PlayerID} добавлен · инициализация в редакторе={2_WBInit} · инициализация в движке={3_EngineInit} · знаком с {4_Met} игроками</Text>
+		</Replace>
+		<Replace Tag="LOC_MODMISC_WB_TEST_ADD_PLAYER_FAILED" Language="ru_RU">
+			<Text>Не удалось добавить игрока: {1_Reason}</Text>
+		</Replace>
 		<Replace Tag="LOC_MODMISC_WB_TEST_APPLY" Language="ru_RU">
 			<Text>Задать цивилизацию / лидера</Text>
-		</Replace>
-		<Replace Tag="LOC_MODMISC_WB_TEST_SET_ERA" Language="ru_RU">
-			<Text>Установить древнюю эру</Text>
 		</Replace>
 		<Replace Tag="LOC_MODMISC_WB_TEST_GOLD" Language="ru_RU">
 			<Text>Задать золото 1000</Text>
@@ -276,15 +282,6 @@
 		</Replace>
 		<Replace Tag="LOC_MODMISC_WB_TEST_GHOST_ACTIVATED" Language="ru_RU">
 			<Text>Призрачный игрок {1_PlayerID} активирован как {2_Civ}.</Text>
-		</Replace>
-		<Replace Tag="LOC_MODMISC_WB_TEST_CREATE_GHOST" Language="ru_RU">
-			<Text>Создать призрачный слот</Text>
-		</Replace>
-		<Replace Tag="LOC_MODMISC_WB_TEST_GHOST_CREATED" Language="ru_RU">
-			<Text>Слот призрака создан во время выполнения: игрок {1_PlayerID}.</Text>
-		</Replace>
-		<Replace Tag="LOC_MODMISC_WB_TEST_GHOST_CREATE_FAILED" Language="ru_RU">
-			<Text>Не удалось создать слот призрака: {1_Reason}</Text>
 		</Replace>
 		<Replace Tag="LOC_MODMISC_WB_TEST_CONVERT_CITY_STATE" Language="ru_RU">
 			<Text>Преобразовать в город-государство</Text>
